@@ -45,8 +45,12 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         ParameterID { id::masterVolume, 1 }, "Master Volume",
         NormalisableRange<float> { 0.0f, 10.0f, 0.001f }, 1.0f));
 
+    // Built-in banks only for now: Juno 0..127, DX7 128..255, piano 256. User
+    // patches (1024..1055) arrive with the M3 patch browser. Keeping the range to
+    // loadable patches stops host parameter-fuzzing from asking AMY for the
+    // undefined 257..1023 gap (which crashes it).
     layout.add(std::make_unique<AudioParameterInt>(
-        ParameterID { id::patchA, 1 }, "Patch", 0, 1055, 0));
+        ParameterID { id::patchA, 1 }, "Patch", 0, 256, 0));
 
     layout.add(std::make_unique<AudioParameterInt>(
         ParameterID { id::numVoices, 1 }, "Voices", 1, 16, 6));

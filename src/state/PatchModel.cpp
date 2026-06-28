@@ -8,6 +8,12 @@ PatchModel::PatchModel() = default;
 
 namespace
 {
+// Patch numbers AMY can actually load: built-in banks 0..256 (Juno/DX7/piano) and
+// the user-patch slots 1024..1055. Anything else (the 257..1023 gap, empty user
+// slots out of range) makes AMY read garbage osc counts and crash, so we never
+// emit a load for them — fall back to Juno patch 0.
+bool isLoadablePatch(int p) { return (p >= 0 && p <= 256) || (p >= 1024 && p <= 1055); }
+
 // AMY amp envelope as breakpoint set bp0: "attackMs,1,decayMs,sustain,releaseMs,0".
 // Time/value pairs; the final pair is the release, triggered on note-off.
 std::string adsrToBp0(const PatchModel::Synth& s)
@@ -22,9 +28,13 @@ std::vector<std::string> PatchModel::toWireMessages() const
 {
     std::vector<std::string> out;
 
-    // 1. Full reset so we start from a known state.
+    // 1. Release all synths/voices/oscs so we start from a known state. We use
+    //    RESET_SYNTHS, NOT RESET_AMY: RESET_AMY does amy_stop()+amy_start() (frees
+    //    and reallocates every global buffer) immediately on the calling thread —
+    //    catastrophic when this runs on the audio thread during a patch change.
+    //    RESET_SYNTHS just tears down synths prior to re-loading them.
     {
-        WireBuilder w; w.reset(amy::Reset::Amy);
+        WireBuilder w; w.reset(amy::Reset::Synths);
         out.emplace_back(w.str());
     }
 
@@ -32,7 +42,9 @@ std::vector<std::string> PatchModel::toWireMessages() const
     //    automatable macros (broadcast to the synth's voices).
     for (const auto& s : synths)
     {
-        { WireBuilder w; w.synth(s.channel).numVoices(s.numVoices).patch(s.patchNumber);
+        const int patch  = isLoadablePatch(s.patchNumber) ? s.patchNumber : 0;
+        const int voices = juce::jlimit(1, 16, s.numVoices);
+        { WireBuilder w; w.synth(s.channel).numVoices(voices).patch(patch);
           out.emplace_back(w.str()); }
 
         for (const auto& cmd : s.oscWireCommands)

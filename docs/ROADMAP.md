@@ -30,7 +30,20 @@ confirmed + guarded (see ENGINE_NOTES §4). Remaining manual check: play in Logi
 **DoD:** `cmake --build --preset mac-release` succeeds; `pluginval` strictness 7
 passes; `auval -v aumu Amyp Mand` passes; you can play notes in Logic/Live.
 
-## M2 — No hanging notes + recall
+## M2 — No hanging notes + recall ✅ (2026-06-28)
+Done: 7 NoteRouter lifecycle tests prove every note-on is balanced (normal/
+transport-stop/sustain/panic/multi-channel); PatchModel macro fields + lossless
+ValueTree round-trip + ordered `toWireMessages` (RESET_SYNTHS → patch → i<ch>F/R/A
+macros → global V/h/k/M); APVTS↔model sync + RT-safe macro streaming
+(`streamWire` audio-thread path, AsyncUpdater for structural patch/voices); pitch-
+bend range → octaves. Hardening from fuzzing: clamp patch to loadable ranges
+(0..256 / 1024..1055), and use RESET_SYNTHS not RESET_AMY (the latter did
+amy_stop()+amy_start() on the audio thread → crash). **DoD met:** 16/16 ctest incl.
+a cutoff-sweep timbre test; `auval` + pluginval strictness 7 PASS on AU + VST3
+(incl. parameter thread-safety + state-restoration fuzz). Remaining manual checks:
+hold chord → stop → silence; save/reload → identical; automate cutoff in Logic.
+
+Original tasks:
 1. Finish `NoteRouter` (transport flush, sustain deferral, panic, defensive offs).
 2. Finish `PatchModel` + `get/setStateInformation`; APVTS ↔ model sync.
 3. Map core macros (cutoff, resonance, amp ADSR, reverb/chorus/echo, volume) to

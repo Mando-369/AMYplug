@@ -60,9 +60,9 @@ TEST_CASE("toWireMessages rebuilds in order: reset, patch, macros, FX", "[state]
     const auto w = m.toWireMessages();
 
     REQUIRE_FALSE(w.empty());
-    // First message is a full reset (RESET_AMY == 32768).
-    REQUIRE(w.front().find('S')      != std::string::npos);
-    REQUIRE(w.front().find("32768")  != std::string::npos);
+    // First message releases synths/voices/oscs (RESET_SYNTHS == 262144).
+    REQUIRE(w.front().find('S')       != std::string::npos);
+    REQUIRE(w.front().find("262144")  != std::string::npos);
     // Synth setup + each macro broadcast to synth 1.
     REQUIRE(anyContains(w, "K0"));       // patch 0
     REQUIRE(anyContains(w, "i1F"));      // filter cutoff
