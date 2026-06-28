@@ -8,7 +8,17 @@ Project skeleton, build system, docs, interfaces, stubs.
 **DoD:** repo present; `CLAUDE.md` + `docs/` describe the plan; CMake references
 resolve once submodules are present.
 
-## M1 — It builds and makes sound
+## M1 — It builds and makes sound ✅ (2026-06-28)
+Done: AMY submodule fetched (JUCE reused from a local checkout via
+`AMYPLUG_JUCE_DIR`); `AmyConfig.h` confirmed vs `amy.h` (256/44100/2/int16);
+`AmyConstants.h` `Wave`/`Reset` corrected; `SoftwareBackend` drives AMY in library
+mode (SPSC wire FIFO + alloc-free note path + Lagrange resampler); `amy_platform_stubs.c`
+satisfies device hooks. **DoD met:** Release build of AU/VST3/Standalone succeeds;
+`auval -v aumu Amyp Mand` PASS (render at 11025–192000 Hz + mono + MIDI); pluginval
+strictness 7 PASS on AU + VST3; 5/5 ctest pass (incl. an engine render test proving
+note 60 / Juno-0 is audible and silences on note-off). Single-instance limitation
+confirmed + guarded (see ENGINE_NOTES §4). Remaining manual check: play in Logic/Live.
+
 1. `scripts/bootstrap.sh`; grep AMY headers → fill real values in `AmyConfig.h`
    (`AMY_BLOCK_SIZE`, `AMY_SAMPLE_RATE`, channels, `output_sample_type`) and
    confirm AMY's source-file list in `cmake/amy.cmake`.

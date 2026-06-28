@@ -42,12 +42,29 @@ cfg.platform.multithread = 0;
 amy_start(cfg);
 ```
 
-> AMY has a global/static state model (it's a microcontroller library). Assume
-> **one AMY instance per process**. If two plugin instances load, they may share
-> AMY's globals. Investigate early: either (a) confirm AMY supports multiple
-> contexts, or (b) guard a single shared engine and route per-instance via
-> distinct `synth` numbers, or (c) accept single-instance for v1 and document it.
-> This is a known risk — see ROADMAP M1.
+### Single-instance investigation — RESOLVED for v1 (2026-06-28)
+
+**Finding (confirmed in code):** AMY keeps *all* engine state in a single
+file-scope global — `global_state_t amy_global;` (`third_party/amy/src/amy.c:151`).
+Synth/voice/osc tables, the delta queue, buses, and the active config all live in
+that one struct; `global_init()`/`global_deinit()` allocate and free it. There is
+no per-context handle. So **AMY is single-instance per process** — two plugin
+instances would share one engine (and would both pull from
+`amy_simple_fill_buffer()`, corrupting each other's audio and synth numbering).
+
+**Decision: option (c) — single-instance for v1, with a crash guard.**
+`SoftwareBackend` keeps a process-wide `std::atomic<int> s_engineUsers`: the first
+backend to `prepare()` calls `amy_start()`, and the last to `release()` calls
+`amy_stop()`. This prevents a second instance from re-`amy_start()`-ing (re-init)
+or a destructor from `amy_stop()`-ing the engine out from under a live instance
+(double free). It does **not** make two instances sound correct — it only keeps
+them from crashing.
+
+**M-future options if true multi-instance is needed:** (a) petition AMY upstream
+for a context handle, or (b) run a single shared engine owned by the first
+instance and route each plugin instance to a disjoint range of `synth` numbers +
+mix the shared render down per-instance. Both are out of scope for M1. For now,
+**document "one AMYplug instance per project" in the user docs.**
 
 ## 5. Realtime safety
 
