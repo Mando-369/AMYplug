@@ -46,6 +46,24 @@ endif()
 include(cmake/amy.cmake)
 
 # ---------------------------------------------------------------------------
+# Generated: built-in patch names (parsed from AMY's patches.h comments — the
+# same source AMY's web build uses). Names are stripped from the compiled library.
+# ---------------------------------------------------------------------------
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(AMYPLUG_GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
+set(AMYPLUG_PATCH_NAMES_H "${AMYPLUG_GENERATED_DIR}/BuiltinPatchNames.h")
+add_custom_command(
+    OUTPUT  "${AMYPLUG_PATCH_NAMES_H}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${AMYPLUG_GENERATED_DIR}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_patch_names.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/third_party/amy/src/patches.h" "${AMYPLUG_PATCH_NAMES_H}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen_patch_names.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/third_party/amy/src/patches.h"
+    COMMENT "Generating BuiltinPatchNames.h from AMY patches.h"
+    VERBATIM)
+add_custom_target(amyplug_patch_names DEPENDS "${AMYPLUG_PATCH_NAMES_H}")
+
+# ---------------------------------------------------------------------------
 # The plugin
 # ---------------------------------------------------------------------------
 juce_add_plugin(AMYplug
@@ -73,9 +91,11 @@ target_sources(AMYplug PRIVATE
     src/engine/AmyWire.cpp
     src/engine/amy_platform_stubs.c   # no-op AMY device hooks for library mode
     src/midi/NoteRouter.cpp
-    src/state/PatchModel.cpp)
+    src/state/PatchModel.cpp
+    src/state/PatchLibrary.cpp)
 
-target_include_directories(AMYplug PRIVATE src)
+target_include_directories(AMYplug PRIVATE src "${AMYPLUG_GENERATED_DIR}")
+add_dependencies(AMYplug amyplug_patch_names)
 
 target_compile_definitions(AMYplug PUBLIC
     JUCE_WEB_BROWSER=0

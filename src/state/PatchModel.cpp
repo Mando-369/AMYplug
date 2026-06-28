@@ -12,7 +12,7 @@ namespace
 // the user-patch slots 1024..1055. Anything else (the 257..1023 gap, empty user
 // slots out of range) makes AMY read garbage osc counts and crash, so we never
 // emit a load for them — fall back to Juno patch 0.
-bool isLoadablePatch(int p) { return (p >= 0 && p <= 256) || (p >= 1024 && p <= 1055); }
+bool isLoadablePatch(int p) { return (p >= 0 && p <= 257) || (p >= 1024 && p <= 1055); }
 
 // AMY amp envelope as breakpoint set bp0: "attackMs,1,decayMs,sustain,releaseMs,0".
 // Time/value pairs; the final pair is the release, triggered on note-off.

@@ -5,6 +5,7 @@
 #include "engine/IAmyBackend.h"
 #include "midi/NoteRouter.h"
 #include "state/PatchModel.h"
+#include "state/PatchLibrary.h"
 #include "state/Parameters.h"
 #include <memory>
 #include <cmath>
@@ -45,7 +46,13 @@ public:
     // --- AMYplug-specific (used by the editor) ----------------------------
     juce::AudioProcessorValueTreeState& apvts() { return state; }
     PatchModel&  patch()        { return model; }
+    PatchLibrary& patchLibrary() { return patchLib; }
     void         requestPanic() { panicRequested.store(true); }     // RT-checked
+
+    // User-patch (preset) save/load, used by the editor's browser.
+    void saveUserPatch(const juce::String& name);
+    bool loadUserPatch(const juce::String& name);
+    void applyPreset(const PatchModel& preset);   // push preset values to the params
     void         setMode(IAmyBackend::Kind mode);                   // Software/Hardware
     IAmyBackend::Kind currentMode() const { return activeKind; }
     IAmyBackend* backend() { return active; }                       // for device UI
@@ -59,8 +66,9 @@ private:
     void streamMacrosToBackend();        // audio thread: push changed macros to AMY
 
     juce::AudioProcessorValueTreeState state;
-    PatchModel  model;
-    NoteRouter  router;
+    PatchModel   model;
+    PatchLibrary patchLib;
+    NoteRouter   router;
 
     std::unique_ptr<IAmyBackend> software;
     std::unique_ptr<IAmyBackend> hardware;

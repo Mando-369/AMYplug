@@ -182,6 +182,46 @@ void AmyPlugProcessor::handleAsyncUpdate()
     rebuildEngineFromModel();   // message thread: structural change (patch/voices)
 }
 
+void AmyPlugProcessor::saveUserPatch(const juce::String& name)
+{
+    syncModelFromParams();          // capture the live preset into the model
+    patchLib.save(name, model);
+}
+
+bool AmyPlugProcessor::loadUserPatch(const juce::String& name)
+{
+    PatchModel preset;
+    if (! patchLib.load(name, preset))
+        return false;
+    applyPreset(preset);
+    return true;
+}
+
+void AmyPlugProcessor::applyPreset(const PatchModel& preset)
+{
+    // Drive everything through the parameters so the host sees the change (UI,
+    // automation, undo) and the existing rebuild/stream paths fire.
+    auto setP = [this] (const char* id, float value)
+    {
+        if (auto* p = state.getParameter(id))
+            p->setValueNotifyingHost(p->convertTo0to1(value));
+    };
+
+    const PatchModel::Synth s = preset.synths.empty() ? PatchModel::Synth {} : preset.synths.front();
+    setP(params::id::patchA,       (float) s.patchNumber);
+    setP(params::id::numVoices,    (float) s.numVoices);
+    setP(params::id::filterCutoff, s.filterCutoff);
+    setP(params::id::filterReso,   s.filterReso);
+    setP(params::id::ampAttack,    s.ampAttack);
+    setP(params::id::ampDecay,     s.ampDecay);
+    setP(params::id::ampSustain,   s.ampSustain);
+    setP(params::id::ampRelease,   s.ampRelease);
+    setP(params::id::masterVolume, preset.masterVolume);
+    setP(params::id::reverb,       preset.reverb);
+    setP(params::id::chorus,       preset.chorus);
+    setP(params::id::echo,         preset.echo);
+}
+
 void AmyPlugProcessor::parameterChanged(const juce::String& id, float newValue)
 {
     if (id == params::id::mode)
