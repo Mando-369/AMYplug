@@ -46,7 +46,7 @@ void AmyPlugEditor::paint(juce::Graphics& g)
     g.drawText("AMYplug", 16, 12, 300, 28, juce::Justification::left);
     g.setColour(juce::Colours::grey);
     g.setFont(juce::FontOptions(12.0f));
-    g.drawText("AMY for your DAW · pre-alpha scaffold", 16, 40, 400, 18,
+    g.drawText(juce::String::fromUTF8("AMY for your DAW · pre-alpha scaffold"), 16, 40, 400, 18,
                juce::Justification::left);
 }
 
