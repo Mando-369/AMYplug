@@ -22,14 +22,22 @@ endif()
 # (miniaudio / I2S / libminiaudio / examples) — we feed AMY no device I/O.
 file(GLOB AMY_SOURCES CONFIGURE_DEPENDS "${AMY_DIR}/src/*.c")
 
-# Filter out files we must not compile into a plugin (audio/midi device drivers,
-# example mains, etc.). Adjust this list once the real file names are confirmed.
+# Filter out files we must not compile into a plugin. Confirmed against the AMY
+# submodule (third_party/amy/src) on 2026-06-28:
+#   * amy-example.c / amy-message.c / amy-piano.c -> each defines its own main()
+#   * libminiaudio-audio.c                        -> desktop audio device backend
+#   * pyamy.c                                     -> CPython bindings (needs <Python.h>)
+#   * examples.c                                  -> example_* demos, only used by the mains above
+# i2s.c and usb.c are MCU-only (guarded by ESP/ARDUINO/AMY_MCU) and compile to
+# empty translation units on desktop, so they are harmless and left in.
 set(AMY_EXCLUDE_PATTERNS
-    "miniaudio"      # AMY's desktop audio device backend
+    "miniaudio"      # libminiaudio-audio.c — desktop audio device backend
     "libminiaudio"
     "amy-example"    # example main()
     "amy-message"    # CLI tool with its own main()
-    "examples")
+    "amy-piano"      # piano example with its own main()
+    "pyamy"          # CPython extension module (requires Python.h)
+    "examples")      # example_* demo songs (only referenced by the excluded mains)
 foreach(src ${AMY_SOURCES})
     foreach(pat ${AMY_EXCLUDE_PATTERNS})
         if(src MATCHES "${pat}")

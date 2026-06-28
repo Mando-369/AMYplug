@@ -24,13 +24,23 @@ option(AMYPLUG_BUILD_TESTS "Build AMYplug unit tests" ON)
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
-# JUCE comes in as a submodule under third_party/JUCE (run scripts/bootstrap.sh).
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/JUCE/CMakeLists.txt")
+# JUCE: prefer an external checkout (AMYPLUG_JUCE_DIR) for local dev so we don't
+# duplicate a multi-hundred-MB submodule on machines that already have JUCE; fall
+# back to the third_party/JUCE submodule (used by CI / fresh clones). Set
+# AMYPLUG_JUCE_DIR via CMakeUserPresets.json (gitignored) or -DAMYPLUG_JUCE_DIR=...
+set(AMYPLUG_JUCE_DIR "" CACHE PATH
+    "External JUCE source dir. If empty, uses the third_party/JUCE submodule.")
+
+if(AMYPLUG_JUCE_DIR AND EXISTS "${AMYPLUG_JUCE_DIR}/CMakeLists.txt")
+    message(STATUS "AMYplug: using external JUCE at ${AMYPLUG_JUCE_DIR}")
+    add_subdirectory("${AMYPLUG_JUCE_DIR}" "${CMAKE_BINARY_DIR}/JUCE-build")
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/JUCE/CMakeLists.txt")
+    add_subdirectory(third_party/JUCE)
+else()
     message(FATAL_ERROR
-        "JUCE submodule not found. Run ./scripts/bootstrap.sh "
-        "(git submodule update --init --recursive) first.")
+        "JUCE not found. Either set -DAMYPLUG_JUCE_DIR=/path/to/JUCE, or run "
+        "./scripts/bootstrap.sh to fetch the third_party/JUCE submodule.")
 endif()
-add_subdirectory(third_party/JUCE)
 
 # libamy: builds AMY's C sources into a static lib in 'library' mode (no audio/midi I/O).
 include(cmake/amy.cmake)

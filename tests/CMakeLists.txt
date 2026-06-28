@@ -19,6 +19,16 @@ target_include_directories(amyplug_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 # needs JUCE types, link the relevant juce modules here.
 target_link_libraries(amyplug_tests PRIVATE Catch2::Catch2WithMain)
 
+# On Apple Silicon an unsigned Mach-O is SIGKILLed at launch. CMake/Xcode does not
+# sign this plain console executable (only the plugin bundles get signed), and the
+# universal-binary lipo step strips any ad-hoc signature, so catch_discover_tests
+# (which runs the binary to enumerate cases) would fail. Ad-hoc re-sign post-build.
+if(APPLE)
+    add_custom_command(TARGET amyplug_tests POST_BUILD
+        COMMAND codesign --force --sign - "$<TARGET_FILE:amyplug_tests>"
+        VERBATIM)
+endif()
+
 include(CTest)
 include(Catch)
 catch_discover_tests(amyplug_tests)

@@ -3,24 +3,24 @@
 //
 // AmyConfig.h — compile-time facts about the embedded AMY engine.
 //
-// THESE ARE PLACEHOLDERS. First implementation task (CLAUDE.md §7): after
-// `scripts/bootstrap.sh`, read third_party/amy/src/*.h and replace the values
-// below with the real ones, then delete this notice. Grep:
+// We keep these in one place so the rest of the plugin never hard-codes them.
+// Values confirmed against third_party/amy/src/amy.h on 2026-06-28 for the
+// desktop (non-MCU, non-Emscripten) configuration we build:
+//   AMY_BLOCK_SIZE 256 · AMY_SAMPLE_RATE 44100 · AMY_NCHANS 2 ·
+//   typedef int16_t output_sample_type   (amy.h:218)
+// If AMY's headers ever change these defaults, re-grep and update here:
 //   grep -nE 'AMY_BLOCK_SIZE|AMY_SAMPLE_RATE|AMY_NCHANS|output_sample_type' \
 //        third_party/amy/src/*.h
-//
-// We keep these in one place so the rest of the plugin never hard-codes them.
 
 #include <cstdint>
 
 namespace amyplug
 {
-// --- Confirm against AMY headers ------------------------------------------
-inline constexpr int   kAmySampleRate = 44100;  // AMY_SAMPLE_RATE (compile-time in AMY)
+// --- Confirmed against AMY headers (amy.h) --------------------------------
+inline constexpr int   kAmySampleRate = 44100;  // AMY_SAMPLE_RATE
 inline constexpr int   kAmyBlockSize  = 256;    // AMY_BLOCK_SIZE (frames per fill)
-inline constexpr int   kAmyChannels   = 2;      // AMY renders interleaved stereo
-// AMY's sample type is typically int16_t; confirm `output_sample_type`.
-using AmySample = std::int16_t;
+inline constexpr int   kAmyChannels   = 2;      // AMY_NCHANS (interleaved stereo)
+using AmySample = std::int16_t;                 // output_sample_type
 // --------------------------------------------------------------------------
 
 // AMY SysEx manufacturer id used to wrap wire messages for the AMYboard.
