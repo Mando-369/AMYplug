@@ -22,8 +22,13 @@ jobs:
       - name: Install tooling
         run: brew install cmake ninja
 
+      # JUCE is not vendored as a submodule (to keep local clones lean — devs reuse
+      # an existing JUCE via AMYPLUG_JUCE_DIR). Fetch a pinned JUCE for CI instead.
+      - name: Fetch JUCE
+        run: git clone --depth 1 --branch 8.0.13 https://github.com/juce-framework/JUCE.git "$HOME/JUCE"
+
       - name: Configure
-        run: cmake --preset mac-release
+        run: cmake --preset mac-release -DAMYPLUG_JUCE_DIR="$HOME/JUCE"
 
       - name: Build
         run: cmake --build --preset mac-release
