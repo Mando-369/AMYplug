@@ -53,6 +53,16 @@ chord → stop transport → instant silence; save/reload project → identical 
 automate cutoff → smooth, recorded, recalled.
 
 ## M3 — Patch system & editor v1
+**M3a done ✅ (2026-06-28):** built-in patch browser with real names (parsed from
+AMY's `patches.h` comments at build time via `scripts/gen_patch_names.py` → 258
+named patches, grouped Juno/DX7/Piano/AMYboard) + prev/next; user-patch save/load/
+delete to an on-disk `PatchLibrary` (`~/…/AMYplug/Patches/*.amypatch`); a real
+editor layout with labelled macro knobs (cutoff/reso/ADSR/FX/volume/voices/bend).
+`patchA` extended to 0..257. 19/19 ctest, auval + pluginval strictness 7 (AU+VST3)
+pass. **Deferred (M3b+):** deep per-engine editors (FM operator graph, PCM/drums,
+modular osc graph) and DX7/Juno SysEx import (converters not in this AMY build).
+
+Original tasks:
 1. Patch browser for built-in banks (Juno 0–127, DX7 128–255, piano, PCM).
 2. Load/save **user patches** (1024–1055); import DX7 + Juno-6 SysEx (AMY ships
    `fm.py`/`juno.py` references — port the mapping or call AMY's converters).
