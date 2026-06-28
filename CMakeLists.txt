@@ -71,6 +71,7 @@ target_sources(AMYplug PRIVATE
     src/engine/SoftwareBackend.cpp
     src/engine/HardwareBackend.cpp
     src/engine/AmyWire.cpp
+    src/engine/amy_platform_stubs.c   # no-op AMY device hooks for library mode
     src/midi/NoteRouter.cpp
     src/state/PatchModel.cpp)
 

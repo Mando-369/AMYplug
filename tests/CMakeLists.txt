@@ -29,6 +29,21 @@ if(APPLE)
         VERBATIM)
 endif()
 
+# Engine render test: links libamy and proves the embedded engine makes sound and
+# silences cleanly. Kept separate from the pure-logic tests above because it pulls
+# in AMY's global engine state.
+add_executable(amyplug_engine_tests
+    EngineRenderTests.cpp
+    ${CMAKE_SOURCE_DIR}/src/engine/amy_platform_stubs.c)
+target_include_directories(amyplug_engine_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(amyplug_engine_tests PRIVATE Catch2::Catch2WithMain libamy)
+if(APPLE)
+    add_custom_command(TARGET amyplug_engine_tests POST_BUILD
+        COMMAND codesign --force --sign - "$<TARGET_FILE:amyplug_engine_tests>"
+        VERBATIM)
+endif()
+
 include(CTest)
 include(Catch)
 catch_discover_tests(amyplug_tests)
+catch_discover_tests(amyplug_engine_tests)
