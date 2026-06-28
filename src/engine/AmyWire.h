@@ -34,6 +34,10 @@ public:
     WireBuilder& resonance(float q)    { return field('R', q); }
     WireBuilder& duty(float d)         { return field('d', d); }
     WireBuilder& pan(float p)          { return field('Q', p); }
+    WireBuilder& volume(float v)       { return field('V', v); }   // global
+    WireBuilder& reverb(float v)       { return field('h', v); }   // per-bus level
+    WireBuilder& chorus(float v)       { return field('k', v); }
+    WireBuilder& echo(float v)         { return field('M', v); }
     WireBuilder& bp0(const char* s)    { return field('A', s); }
     WireBuilder& bp1(const char* s)    { return field('B', s); }
     WireBuilder& pitchBend(float v)    { return field('s', v); }

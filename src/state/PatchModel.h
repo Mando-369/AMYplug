@@ -29,6 +29,17 @@ public:
         int  channel     = 1;     // 1..16 (== AMY synth)
         int  patchNumber = 0;     // AMY patch (0 Juno..)
         int  numVoices   = 6;
+
+        // Automatable macros applied on top of the loaded patch (defaults mirror
+        // Parameters.h). cutoff/reso broadcast to every voice via i<ch>F/R; the
+        // amp ADSR becomes AMY breakpoint set bp0 (i<ch>A). See toWireMessages().
+        float filterCutoff = 8000.0f; // Hz
+        float filterReso   = 0.7f;
+        float ampAttack    = 0.005f;  // seconds
+        float ampDecay     = 0.1f;
+        float ampSustain   = 0.7f;    // 0..1
+        float ampRelease   = 0.25f;
+
         // User-patch wire commands (for synths built from scratch / edited).
         std::vector<std::string> oscWireCommands;
     };

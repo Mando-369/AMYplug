@@ -43,7 +43,33 @@ if(APPLE)
         VERBATIM)
 endif()
 
+# Logic tests that need JUCE types (MidiBuffer, ValueTree): NoteRouter lifecycle
+# and PatchModel state round-trip. Built as a console app so JUCE's CMake wires up
+# the module machinery; Catch2WithMain still provides main().
+juce_add_console_app(amyplug_logic_tests)
+target_sources(amyplug_logic_tests PRIVATE
+    NoteRouterTests.cpp
+    StateTests.cpp
+    ${CMAKE_SOURCE_DIR}/src/midi/NoteRouter.cpp
+    ${CMAKE_SOURCE_DIR}/src/state/PatchModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/engine/AmyWire.cpp)
+target_include_directories(amyplug_logic_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(amyplug_logic_tests PRIVATE
+    JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_STANDALONE_APPLICATION=1)
+target_link_libraries(amyplug_logic_tests PRIVATE
+    Catch2::Catch2WithMain
+    juce::juce_audio_basics
+    juce::juce_data_structures
+    juce::juce_recommended_config_flags)
+if(APPLE)
+    add_custom_command(TARGET amyplug_logic_tests POST_BUILD
+        COMMAND codesign --force --sign - "$<TARGET_FILE:amyplug_logic_tests>"
+        VERBATIM)
+endif()
+
 include(CTest)
 include(Catch)
 catch_discover_tests(amyplug_tests)
 catch_discover_tests(amyplug_engine_tests)
+catch_discover_tests(amyplug_logic_tests)
