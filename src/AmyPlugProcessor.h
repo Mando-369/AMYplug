@@ -7,11 +7,13 @@
 #include "state/PatchModel.h"
 #include "state/Parameters.h"
 #include <memory>
+#include <cmath>
 
 namespace amyplug
 {
 class AmyPlugProcessor final : public juce::AudioProcessor,
-                               private juce::AudioProcessorValueTreeState::Listener
+                               private juce::AudioProcessorValueTreeState::Listener,
+                               private juce::AsyncUpdater
 {
 public:
     AmyPlugProcessor();
@@ -50,7 +52,11 @@ public:
 
 private:
     void parameterChanged(const juce::String& id, float newValue) override;
-    void rebuildEngineFromModel();   // off-thread; syncs backend to model+params
+    void handleAsyncUpdate() override;   // message thread: structural rebuild
+    void rebuildEngineFromModel();       // off-thread; syncs backend to model+params
+    void syncModelFromParams();          // copy current APVTS values into `model`
+    void cacheParamPointers();           // resolve atomic param pointers once
+    void streamMacrosToBackend();        // audio thread: push changed macros to AMY
 
     juce::AudioProcessorValueTreeState state;
     PatchModel  model;
@@ -62,7 +68,14 @@ private:
     IAmyBackend::Kind activeKind = IAmyBackend::Kind::Software;
 
     std::atomic<bool> panicRequested { false };
-    std::atomic<bool> rebuildPending { false };
+
+    // Cached APVTS atomics for RT-safe macro streaming from processBlock. The
+    // last* values are touched only on the audio thread (change detection).
+    struct Macro { std::atomic<float>* ptr = nullptr; float last = std::nanf(""); };
+    Macro mCutoff, mReso, mVolume, mReverb, mChorus, mEcho;
+    Macro mAttack, mDecay, mSustain, mRelease;   // ADSR -> one bp0 message
+    std::atomic<float>* pBendRange = nullptr;    // pitch-bend range (semitones)
+    static constexpr int kMacroSynth = 1;        // M2: macros target synth 1
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmyPlugProcessor)
 };

@@ -32,6 +32,11 @@ void HardwareBackend::sendWire(const char* msg, int len)
     }
 }
 
+void HardwareBackend::streamWire(const char* msg, int len)
+{
+    sendWire(msg, len);   // same SysEx path; queued for the host MIDI-out
+}
+
 void HardwareBackend::noteOn(int synth, int midiNote, float velocity)
 {
     const int ch = juce::jlimit(1, 16, synth); // AMY synth 1..16 == MIDI channel

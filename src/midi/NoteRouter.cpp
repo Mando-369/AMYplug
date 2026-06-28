@@ -17,7 +17,7 @@ void NoteRouter::process(const juce::MidiBuffer& midi, IAmyBackend& backend)
         else if (m.isAllNotesOff() || m.isAllSoundOff())
             allNotesOff(&backend);
         else if (m.isPitchWheel())
-            backend.pitchBend((float) (m.getPitchWheelValue() - 8192) / 8192.0f);
+            backend.pitchBend((float) (m.getPitchWheelValue() - 8192) / 8192.0f * bendOctaveScale);
         else if (m.isSustainPedalOn())  { sustainDown[ch - 1] = true;  backend.sustainPedal(ch, true); }
         else if (m.isSustainPedalOff())
         {

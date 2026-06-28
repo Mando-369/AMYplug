@@ -28,15 +28,22 @@ public:
     // (Software mode) or ignored (Hardware mode). MIDI already translated upstream.
     virtual void processBlock(juce::AudioBuffer<float>& audio) = 0;
 
-    // Send a single already-built AMY wire message (ASCII). RT-safe: must not
-    // allocate; implementations push to a preallocated lock-free FIFO.
+    // Send a single already-built AMY wire message (ASCII) from the MESSAGE thread:
+    // implementations push to a preallocated lock-free FIFO, applied next block.
     virtual void sendWire(const char* msg, int len) = 0;
+
+    // Like sendWire, but called ON THE AUDIO THREAD (e.g. parameter automation
+    // streamed from processBlock). Must apply immediately and not allocate. The
+    // SoftwareBackend hands it straight to AMY; HardwareBackend queues it as SysEx.
+    virtual void streamWire(const char* msg, int len) = 0;
 
     // Convenience note-control used by NoteRouter (RT-safe).
     virtual void noteOn(int synth, int midiNote, float velocity) = 0;
     virtual void noteOff(int synth, int midiNote) = 0;
     virtual void allNotesOff() = 0;          // the anti-hang hammer
-    virtual void pitchBend(float semitonesNormalized) = 0;
+    // Pitch offset in OCTAVES (AMY's `s` unit). NoteRouter already applied the
+    // pitch-bend range, so 0.1667 == +2 semitones. (HardwareBackend approximates.)
+    virtual void pitchBend(float octaves) = 0;
     virtual void sustainPedal(int synth, bool down) = 0;
 
     // Re-create the entire AMY state from the canonical model (project load,

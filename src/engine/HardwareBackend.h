@@ -25,6 +25,7 @@ public:
     void processBlock(juce::AudioBuffer<float>& audio) override; // clears audio
 
     void sendWire(const char* msg, int len) override;            // -> SysEx
+    void streamWire(const char* msg, int len) override;          // -> SysEx (audio thread)
     void noteOn(int synth, int midiNote, float velocity) override;
     void noteOff(int synth, int midiNote) override;
     void allNotesOff() override;

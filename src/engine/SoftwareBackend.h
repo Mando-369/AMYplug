@@ -36,6 +36,7 @@ public:
     void processBlock(juce::AudioBuffer<float>& audio) override;
 
     void sendWire(const char* msg, int len) override;   // message thread -> FIFO
+    void streamWire(const char* msg, int len) override; // audio thread -> AMY now
     void noteOn(int synth, int midiNote, float velocity) override;  // audio thread
     void noteOff(int synth, int midiNote) override;                 // audio thread
     void allNotesOff() override;                                    // audio thread

@@ -200,6 +200,13 @@ void SoftwareBackend::sendWire(const char* msg, int len)
     pushWire(msg, len);
 }
 
+void SoftwareBackend::streamWire(const char* msg, int len)
+{
+    // Audio thread: apply immediately (msg is null-terminated by WireBuilder::str).
+    juce::ignoreUnused(len);
+    amyAddNow(msg);
+}
+
 // ---------------------------------------------------------------------------
 // Note control (audio thread, direct to AMY — allocation-free path)
 // ---------------------------------------------------------------------------

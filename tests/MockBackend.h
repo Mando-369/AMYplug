@@ -43,7 +43,8 @@ public:
     void release() override {}
     void processBlock(juce::AudioBuffer<float>& audio) override { audio.clear(); }
 
-    void sendWire(const char* msg, int len) override { wires.emplace_back(msg, (size_t) len); }
+    void sendWire(const char* msg, int len) override   { wires.emplace_back(msg, (size_t) len); }
+    void streamWire(const char* msg, int len) override  { wires.emplace_back(msg, (size_t) len); }
     void noteOn(int synth, int note, float vel) override { notes.push_back({ synth, note, vel, true }); }
     void noteOff(int synth, int note) override          { notes.push_back({ synth, note, 0.0f, false }); }
     void allNotesOff() override                          { ++allNotesOffCount; }

@@ -40,6 +40,13 @@ public:
     // (playing -> stopped) we flush, which kills sustained/hung notes.
     void updateTransport(bool isPlaying, IAmyBackend& backend);
 
+    // Pitch-bend range in semitones (default ±2). AMY's pitch_bend is in octaves,
+    // so we convert: octaves = normalizedWheel * semitones / 12.
+    void setPitchBendRangeSemitones(float semitones)
+    {
+        bendOctaveScale = juce::jlimit(1.0f, 24.0f, semitones) / 12.0f;
+    }
+
     bool anyActive() const { return activeCount > 0; }
 
 private:
@@ -50,7 +57,8 @@ private:
     std::array<std::bitset<kNumNotes>, kNumChannels> active {};
     std::array<std::bitset<kNumNotes>, kNumChannels> heldBySustain {}; // pending offs
     std::array<bool, kNumChannels> sustainDown {};
-    int  activeCount = 0;
-    bool wasPlaying  = false;
+    int   activeCount = 0;
+    bool  wasPlaying  = false;
+    float bendOctaveScale = 2.0f / 12.0f;   // ±2 semitones default
 };
 } // namespace amyplug
