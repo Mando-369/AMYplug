@@ -1,0 +1,29 @@
+AMYplug — an open-source AU/VST3 controller-instrument for AMY and the AMYboard
+Copyright (C) 2026 Mando-369 and the AMYplug contributors
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along
+with this program. If not, see <https://www.gnu.org/licenses/>.
+
+------------------------------------------------------------------------------
+WHY AGPL-3.0
+------------------------------------------------------------------------------
+AMYplug links the JUCE 8 framework. JUCE's free license is AGPL-3.0, so any
+distributed binary that includes JUCE must be licensed under AGPL-3.0. The full,
+canonical text of the GNU AGPL-3.0 belongs in this file; `scripts/bootstrap.sh`
+will fetch it from https://www.gnu.org/licenses/agpl-3.0.txt if it is missing.
+
+First-party AMYplug source files (everything under `src/` authored in this repo)
+are ALSO offered under the MIT license at each contributor's option, to maximize
+reuse — see the SPDX headers in those files. The bundled AMY engine
+(`third_party/amy`) is MIT-licensed by its authors. See NOTICES.md.

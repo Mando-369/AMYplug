@@ -1,0 +1,40 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "mac-debug",
+      "displayName": "macOS Debug (AU+VST3)",
+      "generator": "Xcode",
+      "binaryDir": "${sourceDir}/build/mac-debug",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "mac-release",
+      "displayName": "macOS Release (AU+VST3)",
+      "generator": "Xcode",
+      "binaryDir": "${sourceDir}/build/mac-release",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "ninja-release",
+      "displayName": "Ninja Release (cross-platform CI)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ninja-release",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "mac-debug",    "configurePreset": "mac-debug",    "configuration": "Debug" },
+    { "name": "mac-release",  "configurePreset": "mac-release",  "configuration": "Release" },
+    { "name": "ninja-release","configurePreset": "ninja-release" }
+  ],
+  "testPresets": [
+    { "name": "mac-debug",   "configurePreset": "mac-debug",   "configuration": "Debug",
+      "output": { "outputOnFailure": true } },
+    { "name": "mac-release", "configurePreset": "mac-release", "configuration": "Release",
+      "output": { "outputOnFailure": true } }
+  ]
+}

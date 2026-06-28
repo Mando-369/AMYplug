@@ -1,0 +1,24 @@
+# Unit tests via Catch2 (fetched by CMake). Pure logic only — no audio device,
+# no JUCE GUI. We test the wire-message builder, note-router bookkeeping, and
+# PatchModel round-trip serialization.
+
+include(FetchContent)
+FetchContent_Declare(
+    Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG        v3.5.4)
+FetchContent_MakeAvailable(Catch2)
+
+add_executable(amyplug_tests
+    WireMessageTests.cpp
+    ${CMAKE_SOURCE_DIR}/src/engine/AmyWire.cpp)
+
+target_include_directories(amyplug_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+# AmyWire.cpp includes AmyConfig.h only (no JUCE), so tests stay light. If a test
+# needs JUCE types, link the relevant juce modules here.
+target_link_libraries(amyplug_tests PRIVATE Catch2::Catch2WithMain)
+
+include(CTest)
+include(Catch)
+catch_discover_tests(amyplug_tests)

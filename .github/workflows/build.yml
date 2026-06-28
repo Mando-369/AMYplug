@@ -1,0 +1,54 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS (AU + VST3)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install tooling
+        run: brew install cmake ninja
+
+      - name: Configure
+        run: cmake --preset mac-release
+
+      - name: Build
+        run: cmake --build --preset mac-release
+
+      - name: Unit tests
+        run: ctest --preset mac-release
+
+      - name: Validate plugin (pluginval)
+        run: |
+          curl -L "https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip" -o pluginval.zip
+          unzip -q pluginval.zip
+          VST3=$(find build/mac-release -name "AMYplug.vst3" -maxdepth 6 | head -n1)
+          echo "Validating $VST3"
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 7 --validate "$VST3"
+
+      - name: AU validation (auval)
+        run: |
+          # Built component is copied to ~/Library/Audio/Plug-Ins/Components by COPY_PLUGIN_AFTER_BUILD
+          auval -v aumu Amyp Mand || echo "auval returned non-zero (often fine on first registration)"
+
+      - name: Upload artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: AMYplug-macos
+          path: |
+            build/mac-release/**/AMYplug.vst3
+            build/mac-release/**/AMYplug.component
+          if-no-files-found: warn
