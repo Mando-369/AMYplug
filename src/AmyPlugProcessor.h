@@ -83,6 +83,7 @@ private:
     Macro mCutoff, mReso, mVolume, mReverb, mChorus, mEcho;
     Macro mAttack, mDecay, mSustain, mRelease;   // ADSR -> one bp0 message
     std::atomic<float>* pBendRange = nullptr;    // pitch-bend range (semitones)
+    std::atomic<float>* pPatch     = nullptr;    // current patch number (for engine-aware macros)
     static constexpr int kMacroSynth = 1;        // M2: macros target synth 1
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmyPlugProcessor)

@@ -71,6 +71,20 @@ TEST_CASE("toWireMessages rebuilds in order: reset, patch, macros, FX", "[state]
     REQUIRE(anyContains(w, "V"));        // global volume
 }
 
+TEST_CASE("amp-ADSR macro overrides bp0 only for Juno, not DX7 (pitch-env safety)", "[state]")
+{
+    // bp0/eg0 is the amp envelope on Juno (0..127) but the carrier PITCH envelope on
+    // DX7 (128..255). Overriding it on DX7 glitches the note's pitch at onset, so we
+    // must not emit i1A there.
+    PatchModel juno; juno.synths[0].patchNumber = 0;
+    REQUIRE(anyContains(juno.toWireMessages(), "i1A"));
+
+    PatchModel dx7; dx7.synths[0].patchNumber = 130;
+    REQUIRE_FALSE(anyContains(dx7.toWireMessages(), "i1A"));
+    // ...but cutoff/reso macros are still emitted for DX7.
+    REQUIRE(anyContains(dx7.toWireMessages(), "i1F"));
+}
+
 TEST_CASE("amp ADSR encodes as a 6-field bp0 breakpoint string", "[state]")
 {
     PatchModel m;

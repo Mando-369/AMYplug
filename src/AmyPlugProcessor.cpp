@@ -41,6 +41,7 @@ void AmyPlugProcessor::cacheParamPointers()
     mSustain.ptr = state.getRawParameterValue(params::id::ampSustain);
     mRelease.ptr = state.getRawParameterValue(params::id::ampRelease);
     pBendRange   = state.getRawParameterValue(params::id::pitchBendRange);
+    pPatch       = state.getRawParameterValue(params::id::patchA);
 }
 
 AmyPlugProcessor::~AmyPlugProcessor() = default;
@@ -167,12 +168,19 @@ void AmyPlugProcessor::streamMacrosToBackend()
         if (a != mAttack.last || d != mDecay.last || s != mSustain.last || r != mRelease.last)
         {
             mAttack.last = a; mDecay.last = d; mSustain.last = s; mRelease.last = r;
-            char bp[48];
-            std::snprintf(bp, sizeof bp, "%d,1,%d,%.3f,%d,0",
-                          (int) std::lround(a * 1000.0f), (int) std::lround(d * 1000.0f),
-                          (double) s, (int) std::lround(r * 1000.0f));
-            WireBuilder w; w.synth(ch).bp0(bp);
-            active->streamWire(w.str(), w.size());
+            // bp0 is the amp envelope only on Juno (0..127); on DX7 etc. it drives
+            // the carrier's pitch, so don't override it there (record the change but
+            // don't send). Mirrors PatchModel::ampEnvIsBp0.
+            const int curPatch = pPatch ? (int) std::lround(pPatch->load(std::memory_order_relaxed)) : 0;
+            if (curPatch >= 0 && curPatch <= 127)
+            {
+                char bp[48];
+                std::snprintf(bp, sizeof bp, "%d,1,%d,%.3f,%d,0",
+                              (int) std::lround(a * 1000.0f), (int) std::lround(d * 1000.0f),
+                              (double) s, (int) std::lround(r * 1000.0f));
+                WireBuilder w; w.synth(ch).bp0(bp);
+                active->streamWire(w.str(), w.size());
+            }
         }
     }
 }

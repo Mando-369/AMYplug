@@ -14,6 +14,13 @@ namespace
 // emit a load for them — fall back to Juno patch 0.
 bool isLoadablePatch(int p) { return (p >= 0 && p <= 257) || (p >= 1024 && p <= 1055); }
 
+// The amp-ADSR macro writes breakpoint set bp0 (eg0). That is only the AMPLITUDE
+// envelope on the Juno analog engine (0..127); on DX7 (128..255) bp0/eg0 drives the
+// carrier's PITCH envelope (freq coef references eg0), so overriding it wrecks the
+// note's pitch at onset. Until the per-engine editor can target the right envelope,
+// only apply the ADSR macro for Juno patches.
+bool ampEnvIsBp0(int patchNumber) { return patchNumber >= 0 && patchNumber <= 127; }
+
 // AMY amp envelope as breakpoint set bp0: "attackMs,1,decayMs,sustain,releaseMs,0".
 // Time/value pairs; the final pair is the release, triggered on note-off.
 std::string adsrToBp0(const PatchModel::Synth& s)
@@ -52,7 +59,8 @@ std::vector<std::string> PatchModel::toWireMessages() const
 
         { WireBuilder w; w.synth(s.channel).filterFreq(s.filterCutoff); out.emplace_back(w.str()); }
         { WireBuilder w; w.synth(s.channel).resonance(s.filterReso);    out.emplace_back(w.str()); }
-        { WireBuilder w; w.synth(s.channel).bp0(adsrToBp0(s).c_str());  out.emplace_back(w.str()); }
+        if (ampEnvIsBp0(patch))   // skip on DX7 etc., where bp0 is the pitch envelope
+            { WireBuilder w; w.synth(s.channel).bp0(adsrToBp0(s).c_str()); out.emplace_back(w.str()); }
     }
 
     // 3. Global mix + effects (bus 0).
