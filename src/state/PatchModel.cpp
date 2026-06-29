@@ -54,6 +54,9 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
         + "c2L1Z").toStdString());
 
     // osc 1 — LFO (note-coef 0 keeps it at lfoFreq regardless of the played note).
+    // NOTE: this LFO is per-voice (each voice has its own osc 1), i.e. "Poly" mode.
+    // TODO (M5 LFO modes): add Free (one shared global LFO), Key (retrigger on
+    // note-on), and Sync (lock rate to host tempo). See ROADMAP M5.
     out.emplace_back((pre + "v1w" + juce::String(a.lfoWave) + "f" + F(a.lfoFreq) + ",0Z").toStdString());
 
     // osc 2 — OSC A. freq = tune(idx0, octaves), note tracking (idx1 default 1),

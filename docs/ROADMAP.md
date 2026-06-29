@@ -91,6 +91,11 @@ session onto the board.
 
 ## M5 — Depth & polish
 - Full modulation editor (CtrlCoefs, dual EGs, mod routings, LFOs).
+- **LFO modes** (M3b ships per-voice/free only; add a mode selector):
+  - **Free** — global, free-running (one shared LFO, not retriggered).
+  - **Key** — retrigger phase on each note-on.
+  - **Poly** — per-voice independent LFO (current M3b behaviour).
+  - **Sync** — lock LFO rate to host tempo (uses the DAW transport BPM).
 - MPE; per-note expression; sequencer/clock sync option.
 - Wavetable loading (waveeditonline), sampler (`load_sample`/`disk_sample`).
 - Preset pack; resizable/scalable UI; metering.
