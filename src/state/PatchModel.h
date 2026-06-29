@@ -36,7 +36,8 @@ public:
     {
         // OSC A (osc 2) / OSC B (osc 3) — note-following audio oscillators.
         int   aWave = 3,   bWave = 1;      // amy::Wave (SawUp, Pulse)
-        float aTune = 0.0f, bTune = 0.0f;  // semitones offset from the played note
+        float aFreq = 440.0f, bFreq = 440.0f; // Hz at A4 (note 69); the osc tracks
+                                             // the keyboard from there. 440 = normal.
         float aDuty = 0.5f, bDuty = 0.5f;
         float aLevel = 0.7f, bLevel = 0.5f;
         // LFO (osc 1) — fixed low frequency (note-coef 0), modulates the others.

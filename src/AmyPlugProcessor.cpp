@@ -61,6 +61,8 @@ void AmyPlugProcessor::cacheParamPointers()
     mOscALevel.ptr = state.getRawParameterValue(params::id::oscALevel);
     mOscBDuty.ptr  = state.getRawParameterValue(params::id::oscBDuty);
     mOscBLevel.ptr = state.getRawParameterValue(params::id::oscBLevel);
+    mOscAFreq.ptr  = state.getRawParameterValue(params::id::oscAFreq);
+    mOscBFreq.ptr  = state.getRawParameterValue(params::id::oscBFreq);
     mVcfA.ptr      = state.getRawParameterValue(params::id::vcfAttack);
     mVcfD.ptr      = state.getRawParameterValue(params::id::vcfDecay);
     mVcfS.ptr      = state.getRawParameterValue(params::id::vcfSustain);
@@ -171,6 +173,7 @@ void AmyPlugProcessor::syncModelFromParams()
     auto rd = [this] (const char* id, float def) {
         if (auto* p = state.getRawParameterValue(id)) return p->load(); return def; };
     a.aWave = (int) rd(params::id::oscAWave, 3);  a.bWave = (int) rd(params::id::oscBWave, 1);
+    a.aFreq = rd(params::id::oscAFreq, 440.0f);  a.bFreq = rd(params::id::oscBFreq, 440.0f);
     a.vcfFreq = s.filterCutoff; a.vcfReso = s.filterReso;     // reused params
     a.aDuty = rd(params::id::oscADuty, 0.5f);  a.bDuty = rd(params::id::oscBDuty, 0.5f);
     a.aLevel = rd(params::id::oscALevel, 0.7f); a.bLevel = rd(params::id::oscBLevel, 0.5f);
@@ -276,9 +279,10 @@ void AmyPlugProcessor::streamAnalogParams()
     one(mLfoFreq,   "i1v1f%g,0");
     two(mLfoPitch,  "i1v2f,,,,,%g", "i1v3f,,,,,%g");
     two(mLfoPwm,    "i1v2d,,,,,%g", "i1v3d,,,,,%g");
-    // OSC A/B duty (idx0) + level (amp const). Waves are structural (rebuild).
-    one(mOscADuty, "i1v2d%g");  one(mOscALevel, "i1v2a%g");
-    one(mOscBDuty, "i1v3d%g");  one(mOscBLevel, "i1v3a%g");
+    // OSC A/B freq (idx0 = Hz at A4, keeps note tracking) + duty + level. Waves are
+    // structural (rebuild).
+    one(mOscAFreq, "i1v2f%g");  one(mOscADuty, "i1v2d%g");  one(mOscALevel, "i1v2a%g");
+    one(mOscBFreq, "i1v3f%g");  one(mOscBDuty, "i1v3d%g");  one(mOscBLevel, "i1v3a%g");
 
     // Envelopes — re-send the whole breakpoint set if any of its 4 changed.
     auto env = [this] (char letter, Macro& a, Macro& d, Macro& s, Macro& r)
@@ -358,6 +362,7 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     setP(params::id::engine, s.engine == PatchModel::Engine::Analog ? 1.0f : 0.0f);
     const auto& a = s.analog;
     setP(params::id::oscAWave, (float) a.aWave);   setP(params::id::oscBWave, (float) a.bWave);
+    setP(params::id::oscAFreq, a.aFreq);           setP(params::id::oscBFreq, a.bFreq);
     setP(params::id::oscADuty, a.aDuty);           setP(params::id::oscBDuty, a.bDuty);
     setP(params::id::oscALevel, a.aLevel);         setP(params::id::oscBLevel, a.bLevel);
     setP(params::id::lfoWave, (float) a.lfoWave);  setP(params::id::lfoFreq, a.lfoFreq);

@@ -33,9 +33,11 @@ namespace id
     //     above are reused as VCF freq/reso, amp env and level. ---
     inline constexpr auto engine        = "engine";        // 0 = Factory preset, 1 = Analog
     inline constexpr auto oscAWave      = "osc_a_wave";
+    inline constexpr auto oscAFreq      = "osc_a_freq";
     inline constexpr auto oscADuty      = "osc_a_duty";
     inline constexpr auto oscALevel     = "osc_a_level";
     inline constexpr auto oscBWave      = "osc_b_wave";
+    inline constexpr auto oscBFreq      = "osc_b_freq";
     inline constexpr auto oscBDuty      = "osc_b_duty";
     inline constexpr auto oscBLevel     = "osc_b_level";
     inline constexpr auto lfoWave       = "lfo_wave";
@@ -107,10 +109,15 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::engine, 1 }, "Engine",
         StringArray { "Factory", "Analog" }, 0));
 
+    // Osc freq = the pitch at A4 (note 69); the osc tracks the keyboard from there.
+    // 440 = normal tuning, 220 = octave down, ~466 = +1 semitone, etc.
+    auto oscFreq = [] { return NormalisableRange<float> { 20.0f, 2000.0f, 0.0f, 0.3f }; };
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::oscAWave, 1 }, "Osc A Wave", waveNames, 3));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscAFreq, 1 }, "Osc A Freq", oscFreq(), 440.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscADuty, 1 }, "Osc A Duty", unit(), 0.5f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscALevel, 1 }, "Osc A Level", unit(), 0.7f));
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::oscBWave, 1 }, "Osc B Wave", waveNames, 1));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscBFreq, 1 }, "Osc B Freq", oscFreq(), 440.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscBDuty, 1 }, "Osc B Duty", unit(), 0.5f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscBLevel, 1 }, "Osc B Level", unit(), 0.5f));
 

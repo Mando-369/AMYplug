@@ -167,10 +167,12 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     // --- Juno tab panel ---------------------------------------------------
     junoPanel.addSection("OSC A");
     junoPanel.addChoice(params::id::oscAWave, "Wave");
+    junoPanel.addKnob(params::id::oscAFreq, "Freq");
     junoPanel.addKnob(params::id::oscADuty, "Duty");
     junoPanel.addKnob(params::id::oscALevel, "Level");
     junoPanel.addSection("OSC B");
     junoPanel.addChoice(params::id::oscBWave, "Wave");
+    junoPanel.addKnob(params::id::oscBFreq, "Freq");
     junoPanel.addKnob(params::id::oscBDuty, "Duty");
     junoPanel.addKnob(params::id::oscBLevel, "Level");
     junoPanel.addSection("LFO");

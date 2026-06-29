@@ -91,7 +91,7 @@ private:
     // Analog-engine continuous params (streamed osc-level on change). vcfFreq/reso
     // reuse mCutoff/mReso; the amp envelope reuses mAttack..mRelease.
     Macro mVcfKbd, mVcfEnv, mLfoFreq, mLfoPitch, mLfoPwm, mLfoFilter;
-    Macro mOscADuty, mOscALevel, mOscBDuty, mOscBLevel;
+    Macro mOscADuty, mOscALevel, mOscBDuty, mOscBLevel, mOscAFreq, mOscBFreq;
     Macro mVcfA, mVcfD, mVcfS, mVcfR;            // VCF envelope (bp1)
     Macro mEqLow, mEqMid, mEqHigh;
     static constexpr int kMacroSynth = 1;        // M2: macros target synth 1
