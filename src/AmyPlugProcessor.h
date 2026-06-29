@@ -64,6 +64,8 @@ private:
     void syncModelFromParams();          // copy current APVTS values into `model`
     void cacheParamPointers();           // resolve atomic param pointers once
     void streamMacrosToBackend();        // audio thread: push changed macros to AMY
+    void streamAnalogParams();           // audio thread: analog (Juno) engine streaming
+    bool engineIsAnalog() const;
 
     juce::AudioProcessorValueTreeState state;
     PatchModel   model;
@@ -84,6 +86,14 @@ private:
     Macro mAttack, mDecay, mSustain, mRelease;   // ADSR -> one bp0 message
     std::atomic<float>* pBendRange = nullptr;    // pitch-bend range (semitones)
     std::atomic<float>* pPatch     = nullptr;    // current patch number (for engine-aware macros)
+    std::atomic<float>* pEngine    = nullptr;    // 0 = Factory, 1 = Analog
+
+    // Analog-engine continuous params (streamed osc-level on change). vcfFreq/reso
+    // reuse mCutoff/mReso; the amp envelope reuses mAttack..mRelease.
+    Macro mVcfKbd, mVcfEnv, mLfoFreq, mLfoPitch, mLfoPwm, mLfoFilter;
+    Macro mOscADuty, mOscALevel, mOscBDuty, mOscBLevel;
+    Macro mVcfA, mVcfD, mVcfS, mVcfR;            // VCF envelope (bp1)
+    Macro mEqLow, mEqMid, mEqHigh;
     static constexpr int kMacroSynth = 1;        // M2: macros target synth 1
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmyPlugProcessor)

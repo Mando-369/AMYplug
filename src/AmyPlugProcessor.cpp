@@ -5,6 +5,7 @@
 #include "engine/HardwareBackend.h"
 #include "engine/AmyWire.h"
 #include <cstdio>
+#include <cstring>
 #include <cmath>
 
 namespace amyplug
@@ -26,6 +27,10 @@ AmyPlugProcessor::AmyPlugProcessor()
     state.addParameterListener(params::id::mode,      this);
     state.addParameterListener(params::id::patchA,    this);
     state.addParameterListener(params::id::numVoices, this);
+    // Structural analog params (change the osc graph) → full rebuild.
+    for (auto* id : { params::id::engine, params::id::oscAWave, params::id::oscBWave,
+                      params::id::lfoWave, params::id::vcfType })
+        state.addParameterListener(id, this);
 }
 
 void AmyPlugProcessor::cacheParamPointers()
@@ -42,6 +47,30 @@ void AmyPlugProcessor::cacheParamPointers()
     mRelease.ptr = state.getRawParameterValue(params::id::ampRelease);
     pBendRange   = state.getRawParameterValue(params::id::pitchBendRange);
     pPatch       = state.getRawParameterValue(params::id::patchA);
+    pEngine      = state.getRawParameterValue(params::id::engine);
+
+    mVcfKbd.ptr    = state.getRawParameterValue(params::id::vcfKbd);
+    mVcfEnv.ptr    = state.getRawParameterValue(params::id::vcfEnv);
+    mLfoFreq.ptr   = state.getRawParameterValue(params::id::lfoFreq);
+    mLfoPitch.ptr  = state.getRawParameterValue(params::id::lfoToPitch);
+    mLfoPwm.ptr    = state.getRawParameterValue(params::id::lfoToPwm);
+    mLfoFilter.ptr = state.getRawParameterValue(params::id::lfoToFilter);
+    mOscADuty.ptr  = state.getRawParameterValue(params::id::oscADuty);
+    mOscALevel.ptr = state.getRawParameterValue(params::id::oscALevel);
+    mOscBDuty.ptr  = state.getRawParameterValue(params::id::oscBDuty);
+    mOscBLevel.ptr = state.getRawParameterValue(params::id::oscBLevel);
+    mVcfA.ptr      = state.getRawParameterValue(params::id::vcfAttack);
+    mVcfD.ptr      = state.getRawParameterValue(params::id::vcfDecay);
+    mVcfS.ptr      = state.getRawParameterValue(params::id::vcfSustain);
+    mVcfR.ptr      = state.getRawParameterValue(params::id::vcfRelease);
+    mEqLow.ptr     = state.getRawParameterValue(params::id::eqLow);
+    mEqMid.ptr     = state.getRawParameterValue(params::id::eqMid);
+    mEqHigh.ptr    = state.getRawParameterValue(params::id::eqHigh);
+}
+
+bool AmyPlugProcessor::engineIsAnalog() const
+{
+    return pEngine != nullptr && pEngine->load(std::memory_order_relaxed) >= 0.5f;
 }
 
 AmyPlugProcessor::~AmyPlugProcessor() = default;
@@ -132,11 +161,34 @@ void AmyPlugProcessor::syncModelFromParams()
     if (mReverb.ptr)  model.reverb     = mReverb.ptr->load();
     if (mChorus.ptr)  model.chorus     = mChorus.ptr->load();
     if (mEcho.ptr)    model.echo       = mEcho.ptr->load();
+
+    // Engine + analog (Juno) params. filterCutoff/reso and the amp ADSR above are
+    // reused as VCF freq/reso and the amp envelope, so mirror them into AnalogParams.
+    s.engine = engineIsAnalog() ? PatchModel::Engine::Analog : PatchModel::Engine::FactoryPreset;
+    auto& a = s.analog;
+    auto rd = [this] (const char* id, float def) {
+        if (auto* p = state.getRawParameterValue(id)) return p->load(); return def; };
+    a.aWave = (int) rd(params::id::oscAWave, 3);  a.bWave = (int) rd(params::id::oscBWave, 1);
+    a.vcfFreq = s.filterCutoff; a.vcfReso = s.filterReso;     // reused params
+    a.aDuty = rd(params::id::oscADuty, 0.5f);  a.bDuty = rd(params::id::oscBDuty, 0.5f);
+    a.aLevel = rd(params::id::oscALevel, 0.7f); a.bLevel = rd(params::id::oscBLevel, 0.5f);
+    a.lfoWave = (int) rd(params::id::lfoWave, 4); a.lfoFreq = rd(params::id::lfoFreq, 4.0f);
+    a.lfoToPitch = rd(params::id::lfoToPitch, 0.0f); a.lfoToPwm = rd(params::id::lfoToPwm, 0.0f);
+    a.lfoToFilter = rd(params::id::lfoToFilter, 0.0f);
+    a.filterType = (int) rd(params::id::vcfType, 1);
+    a.vcfKbd = rd(params::id::vcfKbd, 0.0f); a.vcfEnv = rd(params::id::vcfEnv, 0.0f);
+    a.vcfA = rd(params::id::vcfAttack, 0.0f); a.vcfD = rd(params::id::vcfDecay, 0.6f);
+    a.vcfS = rd(params::id::vcfSustain, 0.3f); a.vcfR = rd(params::id::vcfRelease, 0.4f);
+    a.ampA = s.ampAttack; a.ampD = s.ampDecay; a.ampS = s.ampSustain; a.ampR = s.ampRelease;
+    if (mEqLow.ptr)  model.eqLow  = mEqLow.ptr->load();
+    if (mEqMid.ptr)  model.eqMid  = mEqMid.ptr->load();
+    if (mEqHigh.ptr) model.eqHigh = mEqHigh.ptr->load();
 }
 
 void AmyPlugProcessor::streamMacrosToBackend()
 {
     if (active == nullptr) return;
+    if (engineIsAnalog()) { streamAnalogParams(); return; }
     constexpr int ch = kMacroSynth;
 
     auto stream = [this] (Macro& m, auto build)
@@ -185,9 +237,66 @@ void AmyPlugProcessor::streamMacrosToBackend()
     }
 }
 
+void AmyPlugProcessor::streamAnalogParams()
+{
+    // Audio thread, RT-safe (snprintf into stack buffers). Waves/filter-type/engine
+    // are structural (rebuild); everything here streams osc-level coef updates that
+    // AMY applies per-index without retriggering. Synth 1 (kMacroSynth) for M3b.
+    auto one = [this] (Macro& m, const char* fmt)
+    {
+        if (m.ptr == nullptr) return;
+        const float v = m.ptr->load(std::memory_order_relaxed);
+        if (v != m.last) { m.last = v; char b[64]; std::snprintf(b, sizeof b, fmt, (double) v);
+                           active->streamWire(b, (int) std::strlen(b)); }
+    };
+
+    // VCF (osc 0): freq=idx0, reso, kbd=idx1, env=idx4, lfo→filter=idx5.
+    one(mCutoff,    "i1v0F%g");
+    one(mReso,      "i1v0R%g");
+    one(mVcfKbd,    "i1v0F,%g");
+    one(mVcfEnv,    "i1v0F,,,,%g");
+    one(mLfoFilter, "i1v0F,,,,,%g");
+    // LFO (osc 1) freq, and its depth onto OSC A/B pitch (idx5) and PWM (idx5).
+    one(mLfoFreq,   "i1v1f%g,0");
+    one(mLfoPitch,  "i1v2f,,,,,%g");  one(mLfoPitch, "i1v3f,,,,,%g");
+    one(mLfoPwm,    "i1v2d,,,,,%g");  one(mLfoPwm,   "i1v3d,,,,,%g");
+    // OSC A/B duty (idx0) + level (amp const).
+    one(mOscADuty,  "i1v2d%g");  one(mOscALevel, "i1v2a%g");
+    one(mOscBDuty,  "i1v3d%g");  one(mOscBLevel, "i1v3a%g");
+
+    // Envelopes — re-send the whole breakpoint set if any of its 4 changed.
+    auto env = [this] (char letter, Macro& a, Macro& d, Macro& s, Macro& r)
+    {
+        if (! (a.ptr && d.ptr && s.ptr && r.ptr)) return;
+        const float av=a.ptr->load(), dv=d.ptr->load(), sv=s.ptr->load(), rv=r.ptr->load();
+        if (av!=a.last || dv!=d.last || sv!=s.last || rv!=r.last)
+        {
+            a.last=av; d.last=dv; s.last=sv; r.last=rv;
+            char b[80]; std::snprintf(b, sizeof b, "i1v0%c%d,1,%d,%.3f,%d,0", letter,
+                (int) std::lround(av*1000.0f), (int) std::lround(dv*1000.0f), (double) sv,
+                (int) std::lround(rv*1000.0f));
+            active->streamWire(b, (int) std::strlen(b));
+        }
+    };
+    env('A', mAttack, mDecay, mSustain, mRelease);  // amp env (bp0)
+    env('B', mVcfA,   mVcfD,  mVcfS,    mVcfR);      // filter env (bp1)
+
+    // Global 3-band EQ (x low,mid,high) — re-send if any changed.
+    if (mEqLow.ptr && mEqMid.ptr && mEqHigh.ptr)
+    {
+        const float l=mEqLow.ptr->load(), md=mEqMid.ptr->load(), h=mEqHigh.ptr->load();
+        if (l!=mEqLow.last || md!=mEqMid.last || h!=mEqHigh.last)
+        {
+            mEqLow.last=l; mEqMid.last=md; mEqHigh.last=h;
+            char b[48]; std::snprintf(b, sizeof b, "x%g,%g,%g", (double)l,(double)md,(double)h);
+            active->streamWire(b, (int) std::strlen(b));
+        }
+    }
+}
+
 void AmyPlugProcessor::handleAsyncUpdate()
 {
-    rebuildEngineFromModel();   // message thread: structural change (patch/voices)
+    rebuildEngineFromModel();   // message thread: structural change (patch/voices/engine)
 }
 
 void AmyPlugProcessor::saveUserPatch(const juce::String& name)
@@ -228,6 +337,22 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     setP(params::id::reverb,       preset.reverb);
     setP(params::id::chorus,       preset.chorus);
     setP(params::id::echo,         preset.echo);
+
+    // Engine + analog (Juno) controls.
+    setP(params::id::engine, s.engine == PatchModel::Engine::Analog ? 1.0f : 0.0f);
+    const auto& a = s.analog;
+    setP(params::id::oscAWave, (float) a.aWave);   setP(params::id::oscBWave, (float) a.bWave);
+    setP(params::id::oscADuty, a.aDuty);           setP(params::id::oscBDuty, a.bDuty);
+    setP(params::id::oscALevel, a.aLevel);         setP(params::id::oscBLevel, a.bLevel);
+    setP(params::id::lfoWave, (float) a.lfoWave);  setP(params::id::lfoFreq, a.lfoFreq);
+    setP(params::id::lfoToPitch, a.lfoToPitch);    setP(params::id::lfoToPwm, a.lfoToPwm);
+    setP(params::id::lfoToFilter, a.lfoToFilter);
+    setP(params::id::vcfType, (float) a.filterType);
+    setP(params::id::vcfKbd, a.vcfKbd);            setP(params::id::vcfEnv, a.vcfEnv);
+    setP(params::id::vcfAttack, a.vcfA);  setP(params::id::vcfDecay, a.vcfD);
+    setP(params::id::vcfSustain, a.vcfS); setP(params::id::vcfRelease, a.vcfR);
+    setP(params::id::eqLow, preset.eqLow); setP(params::id::eqMid, preset.eqMid);
+    setP(params::id::eqHigh, preset.eqHigh);
 }
 
 void AmyPlugProcessor::parameterChanged(const juce::String& id, float newValue)

@@ -28,7 +28,31 @@ namespace id
     inline constexpr auto chorus        = "chorus_level";
     inline constexpr auto echo          = "echo_level";
     inline constexpr auto pitchBendRange= "pitch_bend_range";
-    // ... append more as the editor grows. Group per-engine params behind these.
+
+    // --- Analog (Juno) engine, M3b. filterCutoff/filterReso/ampADSR/masterVolume
+    //     above are reused as VCF freq/reso, amp env and level. ---
+    inline constexpr auto engine        = "engine";        // 0 = Factory preset, 1 = Analog
+    inline constexpr auto oscAWave      = "osc_a_wave";
+    inline constexpr auto oscADuty      = "osc_a_duty";
+    inline constexpr auto oscALevel     = "osc_a_level";
+    inline constexpr auto oscBWave      = "osc_b_wave";
+    inline constexpr auto oscBDuty      = "osc_b_duty";
+    inline constexpr auto oscBLevel     = "osc_b_level";
+    inline constexpr auto lfoWave       = "lfo_wave";
+    inline constexpr auto lfoFreq       = "lfo_freq";
+    inline constexpr auto lfoToPitch    = "lfo_to_pitch";
+    inline constexpr auto lfoToPwm      = "lfo_to_pwm";
+    inline constexpr auto lfoToFilter   = "lfo_to_filter";
+    inline constexpr auto vcfType       = "vcf_type";
+    inline constexpr auto vcfKbd        = "vcf_kbd";
+    inline constexpr auto vcfEnv        = "vcf_env";
+    inline constexpr auto vcfAttack     = "vcf_attack";
+    inline constexpr auto vcfDecay      = "vcf_decay";
+    inline constexpr auto vcfSustain    = "vcf_sustain";
+    inline constexpr auto vcfRelease    = "vcf_release";
+    inline constexpr auto eqLow         = "eq_low";
+    inline constexpr auto eqMid         = "eq_mid";
+    inline constexpr auto eqHigh        = "eq_high";
 }
 
 // Builds the parameter layout. Implemented inline so the processor can call it
@@ -73,6 +97,43 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echo,   1 }, "Echo",   NormalisableRange<float> { 0.0f, 1.0f }, 0.0f));
 
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::pitchBendRange, 1 }, "Pitch Bend Range", 1, 24, 2));
+
+    // --- Analog (Juno) engine -------------------------------------------------
+    const StringArray waveNames { "Sine", "Pulse", "Saw Down", "Saw Up", "Triangle", "Noise" };
+    const StringArray filtNames { "Off", "LPF", "BPF", "HPF", "LPF24" };
+    auto unit  = [] { return NormalisableRange<float> { 0.0f, 1.0f }; };
+    auto secs  = [] { return NormalisableRange<float> { 0.0f, 10.0f, 0.0f, 0.3f }; };
+
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::engine, 1 }, "Engine",
+        StringArray { "Factory", "Analog" }, 0));
+
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::oscAWave, 1 }, "Osc A Wave", waveNames, 3));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscADuty, 1 }, "Osc A Duty", unit(), 0.5f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscALevel, 1 }, "Osc A Level", unit(), 0.7f));
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::oscBWave, 1 }, "Osc B Wave", waveNames, 1));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscBDuty, 1 }, "Osc B Duty", unit(), 0.5f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscBLevel, 1 }, "Osc B Level", unit(), 0.5f));
+
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::lfoWave, 1 }, "LFO Wave", waveNames, 4));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::lfoFreq, 1 }, "LFO Freq",
+        NormalisableRange<float> { 0.1f, 20.0f, 0.0f, 0.4f }, 4.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::lfoToPitch, 1 }, "LFO→Pitch", unit(), 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::lfoToPwm, 1 }, "LFO→PWM", unit(), 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::lfoToFilter, 1 }, "LFO→Filter", unit(), 0.0f));
+
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::vcfType, 1 }, "VCF Type", filtNames, 1));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::vcfKbd, 1 }, "VCF Kbd", unit(), 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::vcfEnv, 1 }, "VCF Env",
+        NormalisableRange<float> { 0.0f, 8.0f }, 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::vcfAttack, 1 }, "VCF Attack", secs(), 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::vcfDecay, 1 }, "VCF Decay", secs(), 0.6f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::vcfSustain, 1 }, "VCF Sustain", unit(), 0.3f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::vcfRelease, 1 }, "VCF Release", secs(), 0.4f));
+
+    auto eqRange = [] { return NormalisableRange<float> { -15.0f, 15.0f }; };
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::eqLow, 1 }, "EQ Low", eqRange(), 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::eqMid, 1 }, "EQ Mid", eqRange(), 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::eqHigh, 1 }, "EQ High", eqRange(), 0.0f));
 
     return layout;
 }
