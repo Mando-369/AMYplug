@@ -19,7 +19,8 @@ public:
     void addKnob(const juce::String& paramId, const juce::String& name);
     void addChoice(const juce::String& paramId, const juce::String& name);
 
-    void setColumns(int n) { columns = juce::jmax(1, n); }
+    void setCellSize(int w, int h) { cellW = w; rowH = h; }
+    int  preferredHeight() const;     // total height needed for all sections
     void paint(juce::Graphics&) override;
     void resized() override;
 
@@ -38,7 +39,8 @@ private:
     juce::AudioProcessorValueTreeState& apvts;
     juce::StringArray sectionTitles;
     std::vector<std::unique_ptr<Control>> controls;
-    int columns = 4;
+    int cellW = 88, rowH = 100;
+    static constexpr int kTitleH = 20, kGap = 8;
 };
 
 // Centered message for not-yet-built tabs.
@@ -86,7 +88,8 @@ private:
     std::unique_ptr<Apvts::ButtonAttachment> engineAtt;
 
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
-    ControlPanel     junoPanel { proc.apvts() };   // owned by the tab once added
+    juce::Viewport   junoViewport;                 // scrolls the Juno panel if tall
+    ControlPanel     junoPanel { proc.apvts() };   // viewed by junoViewport
     ControlPanel     fxPanel   { proc.apvts() };   // global FX rack (right column)
 
     int lastPatch = -1;

@@ -59,42 +59,55 @@ void ControlPanel::addChoice(const juce::String& paramId, const juce::String& na
     controls.push_back(std::move(c));
 }
 
+int ControlPanel::preferredHeight() const
+{
+    return 8 + sectionTitles.size() * (kTitleH + rowH + kGap);
+}
+
 void ControlPanel::paint(juce::Graphics& g)
 {
-    const int titleH = 18, rowH = 84;
     auto r = getLocalBounds().reduced(4);
     for (int sec = 0; sec < sectionTitles.size(); ++sec)
     {
-        auto box = r.removeFromTop(titleH + rowH);
-        g.setColour(kPanel);   g.fillRoundedRectangle(box.toFloat(), 4.0f);
-        auto tb = box.removeFromTop(titleH);
-        g.setColour(kTitle);   g.fillRoundedRectangle(tb.toFloat(), 4.0f);
+        auto box = r.removeFromTop(kTitleH + rowH);
+        g.setColour(kPanel);   g.fillRoundedRectangle(box.toFloat(), 5.0f);
+        auto tb = box.removeFromTop(kTitleH);
+        g.setColour(kTitle);   g.fillRoundedRectangle(tb.toFloat(), 5.0f);
         g.setColour(juce::Colours::white);
-        g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
         g.drawText(sectionTitles[sec], tb, juce::Justification::centred);
-        r.removeFromTop(6);
+        r.removeFromTop(kGap);
     }
 }
 
 void ControlPanel::resized()
 {
-    const int titleH = 18, rowH = 84, cellW = 70;
     auto r = getLocalBounds().reduced(4);
     for (int sec = 0; sec < sectionTitles.size(); ++sec)
     {
-        auto box = r.removeFromTop(titleH + rowH);
-        box.removeFromTop(titleH);
-        int x = box.getX() + 4;
-        for (auto& c : controls)
+        auto box = r.removeFromTop(kTitleH + rowH);
+        box.removeFromTop(kTitleH);
+
+        int count = 0;
+        for (auto& c : controls) if (c->section == sec) ++count;
+        if (count > 0)
         {
-            if (c->section != sec) continue;
-            juce::Rectangle<int> cell(x, box.getY() + 2, cellW, rowH - 4);
-            c->label.setBounds(cell.removeFromTop(15));
-            if (c->combo) c->combo->setBounds(cell.removeFromTop(26).reduced(2, 1));
-            else if (c->knob) c->knob->setBounds(cell.reduced(3, 0));
-            x += cellW;
+            // Spread the section's controls evenly across its full width, each
+            // centred in its own equal slot (so a 3-knob row isn't bunched left).
+            const int slotW = box.getWidth() / count;
+            int i = 0;
+            for (auto& c : controls)
+            {
+                if (c->section != sec) continue;
+                juce::Rectangle<int> slot(box.getX() + i * slotW, box.getY() + 4, slotW, rowH - 8);
+                auto cell = slot.withSizeKeepingCentre(juce::jmin(cellW, slotW - 4), rowH - 8);
+                c->label.setBounds(cell.removeFromTop(16));
+                if (c->combo) c->combo->setBounds(cell.removeFromTop(28).reduced(0, 1));
+                else if (c->knob) c->knob->setBounds(cell.reduced(2, 0));
+                ++i;
+            }
         }
-        r.removeFromTop(6);
+        r.removeFromTop(kGap);
     }
 }
 
@@ -183,7 +196,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     junoPanel.addKnob(params::id::ampSustain, "S");
     junoPanel.addKnob(params::id::ampRelease, "R");
 
+    junoPanel.setCellSize(86, 94);
+
     // --- global FX rack ---------------------------------------------------
+    fxPanel.setCellSize(78, 94);
     fxPanel.addSection("EQ");
     fxPanel.addKnob(params::id::eqLow, "Low");
     fxPanel.addKnob(params::id::eqMid, "Mid");
@@ -194,13 +210,15 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     addAndMakeVisible(fxPanel);
 
     // --- tabs -------------------------------------------------------------
+    junoViewport.setViewedComponent(&junoPanel, false);
+    junoViewport.setScrollBarsShown(true, false);
     tabs.setOutline(0);
-    tabs.addTab("Juno",     kPanel, &junoPanel, false);
+    tabs.addTab("Juno",     kPanel, &junoViewport, false);
     tabs.addTab("DX7",      kPanel, new PlaceholderPanel("DX7 FM operator editor\n(coming in M3c)"), true);
     tabs.addTab("AMYboard", kPanel, new PlaceholderPanel("Hardware control\n(coming in M4)"), true);
     addAndMakeVisible(tabs);
 
-    setSize(720, 560);
+    setSize(880, 880);
     startTimerHz(15);
 }
 
@@ -301,9 +319,13 @@ void AmyPlugEditor::resized()
     r.removeFromTop(10);
 
     // Tabs (left) + FX rack (right).
-    auto fx = r.removeFromRight(180);
+    auto fx = r.removeFromRight(250);
     fxPanel.setBounds(fx);
-    r.removeFromRight(8);
+    r.removeFromRight(10);
     tabs.setBounds(r);
+
+    // Size the scrolled Juno panel to the viewport width; it scrolls if taller.
+    const int vw = juce::jmax(200, junoViewport.getMaximumVisibleWidth());
+    junoPanel.setSize(vw, junoPanel.preferredHeight());
 }
 } // namespace amyplug
