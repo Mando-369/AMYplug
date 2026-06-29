@@ -92,7 +92,8 @@ private:
     ControlPanel     junoPanel { proc.apvts() };   // viewed by junoViewport
     ControlPanel     fxPanel   { proc.apvts() };   // global FX rack (right column)
 
-    int lastPatch = -1;
+    int  lastPatch  = -1;
+    int  lastAnalog = -1;   // tri-state so the first tick always applies the dim
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmyPlugEditor)
 };

@@ -280,6 +280,22 @@ void AmyPlugEditor::timerCallback()
         const int n = juce::jlimit(0, kBuiltinPatchCount - 1, (int) std::lround(raw->load()));
         if (n != lastPatch) { lastPatch = n; patchBox.setSelectedId(n + 1, juce::dontSendNotification); }
     }
+
+    // Show which engine is live: dim the inactive one. Analog on -> the factory
+    // PATCH box is bypassed; Analog off -> the Juno tab isn't driving any sound.
+    if (auto* e = proc.apvts().getRawParameterValue(params::id::engine))
+    {
+        const bool analog = e->load() >= 0.5f;
+        if (analog != lastAnalog)
+        {
+            lastAnalog = analog;
+            junoPanel.setEnabled(analog);
+            junoPanel.setAlpha(analog ? 1.0f : 0.4f);
+            for (auto* c : { (juce::Component*) &patchBox, (juce::Component*) &prevButton,
+                             (juce::Component*) &nextButton, (juce::Component*) &browserLabel })
+                c->setAlpha(analog ? 0.4f : 1.0f);
+        }
+    }
 }
 
 void AmyPlugEditor::paint(juce::Graphics& g)
