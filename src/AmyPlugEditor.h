@@ -64,23 +64,24 @@ private:
     int algo = 1;
 };
 
-// The DX7 tab: the algorithm diagram on top, the scrolling operator controls below.
+// The DX7 tab: a top row with the algorithm diagram + selector + feedback knob,
+// and the scrolling per-operator controls below.
 class Dx7TabComponent : public juce::Component
 {
 public:
-    Dx7TabComponent(AlgorithmDiagram& d, juce::Component& controls)
-        : diagram(d), controlsView(controls)
-    { addAndMakeVisible(diagram); addAndMakeVisible(controlsView); }
-    void resized() override
-    {
-        auto r = getLocalBounds();
-        diagram.setBounds(r.removeFromTop(kDiagramH));
-        controlsView.setBounds(r);
-    }
-    static constexpr int kDiagramH = 188;
+    Dx7TabComponent(juce::AudioProcessorValueTreeState& apvts,
+                    AlgorithmDiagram& diagram, juce::Component& controls);
+    void resized() override;
+    static constexpr int kTopH = 188;
 private:
+    using Apvts = juce::AudioProcessorValueTreeState;
     AlgorithmDiagram& diagram;
     juce::Component&   controlsView;
+    juce::ComboBox     algoBox;
+    juce::Slider       fbKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow };
+    juce::Label        algoLabel, fbLabel;
+    std::unique_ptr<Apvts::ComboBoxAttachment> algoAtt;
+    std::unique_ptr<Apvts::SliderAttachment>   fbAtt;
 };
 
 class AmyPlugEditor final : public juce::AudioProcessorEditor,
@@ -127,7 +128,7 @@ private:
     juce::Viewport   fmViewport;                    // scrolls the FM (DX7) panel
     ControlPanel     fmPanel   { proc.apvts() };    // viewed by fmViewport
     AlgorithmDiagram algoDiagram;                    // operator graph for the DX7 tab
-    Dx7TabComponent  dx7Tab { algoDiagram, fmViewport };
+    Dx7TabComponent  dx7Tab { proc.apvts(), algoDiagram, fmViewport };
     ControlPanel     fxPanel   { proc.apvts() };   // global FX rack (right column)
 
     void setEngineIndex(int idx);   // 0 Factory, 1 Analog, 2 FM

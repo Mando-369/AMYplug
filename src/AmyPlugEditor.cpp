@@ -181,10 +181,14 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
     for (int op = 1; op <= 6; ++op) { minx = juce::jmin(minx, xpos[(size_t) op]); maxx = juce::jmax(maxx, xpos[(size_t) op]); }
     const int boxW = 40, boxH = 26;
     const int rowGap = (area.getHeight() - boxH) / juce::jmax(1, maxd);
+    // Fixed horizontal spacing between operator columns, with the whole graph
+    // centred in the panel (rather than stretched edge-to-edge).
+    const float colSpacing = boxW + 30.0f;
+    const float usedW   = (maxx - minx) * colSpacing + boxW;
+    const float originX = area.getX() + (area.getWidth() - usedW) * 0.5f - minx * colSpacing;
     auto boxOf = [&] (int op)
     {
-        const float fx = (maxx > minx) ? (xpos[(size_t) op] - minx) / (maxx - minx) : 0.5f;
-        const int x = area.getX() + juce::roundToInt(fx * (float) (area.getWidth() - boxW));
+        const int x = juce::roundToInt(originX + xpos[(size_t) op] * colSpacing);
         const int y = area.getBottom() - boxH - depth[(size_t) op] * rowGap;
         return juce::Rectangle<int> { x, y, boxW, boxH };
     };
@@ -197,17 +201,19 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
             auto a = boxOf(op).toFloat(); auto b = boxOf(t).toFloat();
             g.drawLine(a.getCentreX(), a.getBottom(), b.getCentreX(), b.getY(), 1.6f);
         }
-    // Carrier -> output bar.
+    // Carrier -> output bar (the rail spans only the carrier cluster).
     g.setColour(kAccent);
+    int barL = area.getRight(), barR = area.getX();
     for (int c : topo.carriers)
     {
         auto bx = boxOf(c).toFloat();
         g.drawLine(bx.getCentreX(), bx.getBottom(), bx.getCentreX(), (float) outBar.getCentreY(), 1.6f);
+        barL = juce::jmin(barL, (int) bx.getCentreX()); barR = juce::jmax(barR, (int) bx.getCentreX());
     }
-    g.drawLine((float) outBar.getX(), (float) outBar.getCentreY(),
-               (float) outBar.getRight(), (float) outBar.getCentreY(), 1.6f);
+    g.drawLine((float) barL, (float) outBar.getCentreY(), (float) barR, (float) outBar.getCentreY(), 1.6f);
     g.setFont(juce::FontOptions(9.0f));
-    g.drawText("output", outBar, juce::Justification::centredRight);
+    g.drawText("output", juce::Rectangle<int> { barR + 4, outBar.getY(), 48, outBar.getHeight() },
+               juce::Justification::centredLeft);
 
     // Operator boxes.
     for (int op = 1; op <= 6; ++op)
@@ -232,6 +238,51 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
             g.drawText("FB", tag, juce::Justification::centred);
         }
     }
+}
+
+// ===========================================================================
+// Dx7TabComponent
+// ===========================================================================
+Dx7TabComponent::Dx7TabComponent(Apvts& apvts, AlgorithmDiagram& d, juce::Component& controls)
+    : diagram(d), controlsView(controls)
+{
+    addAndMakeVisible(diagram);
+    addAndMakeVisible(controlsView);
+
+    if (auto* p = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter(params::id::fmAlgorithm)))
+        algoBox.addItemList(p->choices, 1);
+    algoAtt = std::make_unique<Apvts::ComboBoxAttachment>(apvts, params::id::fmAlgorithm, algoBox);
+    addAndMakeVisible(algoBox);
+
+    fbKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 15);
+    fbAtt = std::make_unique<Apvts::SliderAttachment>(apvts, params::id::fmFeedback, fbKnob);
+    addAndMakeVisible(fbKnob);
+
+    for (auto* l : { &algoLabel, &fbLabel })
+    {
+        l->setJustificationType(juce::Justification::centred);
+        l->setFont(juce::FontOptions(11.0f, juce::Font::bold));
+        l->setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+        addAndMakeVisible(*l);
+    }
+    algoLabel.setText("ALGORITHM", juce::dontSendNotification);
+    fbLabel.setText("FEEDBACK", juce::dontSendNotification);
+}
+
+void Dx7TabComponent::resized()
+{
+    auto r = getLocalBounds();
+    auto top   = r.removeFromTop(kTopH);
+    auto right = top.removeFromRight(150).reduced(10, 8);   // selector + feedback column
+    diagram.setBounds(top);
+
+    algoLabel.setBounds(right.removeFromTop(16));
+    algoBox.setBounds(right.removeFromTop(26));
+    right.removeFromTop(12);
+    fbLabel.setBounds(right.removeFromTop(16));
+    fbKnob.setBounds(right.removeFromTop(juce::jmin(80, right.getHeight())));
+
+    controlsView.setBounds(r);
 }
 
 // ===========================================================================
@@ -340,11 +391,8 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
 
     junoPanel.setCellSize(86, 94);
 
-    // --- DX7 (FM) tab panel -----------------------------------------------
-    fmPanel.addSection("ALGORITHM");
-    fmPanel.addChoice(params::id::fmAlgorithm, "carriers = the ops you hear");
-    fmPanel.addSection("FEEDBACK");
-    fmPanel.addKnob(params::id::fmFeedback, "Amount");
+    // --- DX7 (FM) tab panel: per-operator controls (algorithm + feedback live in
+    //     the tab's top row alongside the diagram) ---------------------------
     for (int op = 1; op <= params::kFmOps; ++op)
     {
         fmPanel.addSection("OP " + juce::String(op));
