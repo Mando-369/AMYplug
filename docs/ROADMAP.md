@@ -53,6 +53,17 @@ chord → stop transport → instant silence; save/reload project → identical 
 automate cutoff → smooth, recorded, recalled.
 
 ## M3 — Patch system & editor v1
+**M3b done ✅ (2026-06-29):** tabbed editor (Juno · DX7 · AMYboard) matching the
+AMYboard online controller. The **Juno tab** is a real editable analog engine — a
+4-oscillator subtractive voice (osc0 VCF/VCA, osc1 LFO, osc2/3 OSC A/B) built from
+AMY's "amyboard default" template, with OSC A/B · LFO+depths · VCF · VCF-ENV · AMP-ENV
+panels and a global EQ/Chorus/Reverb/Echo rack — all automatable + recalled. An
+"Analog" engine toggle switches synth 1 between Factory presets and the analog voice.
+PatchModel gained Engine + AnalogParams + 3-band EQ; osc-level streaming is RT-safe.
+DX7 & AMYboard tabs are placeholders. 22/22 ctest, auval + pluginval strictness 7
+(AU+VST3, incl. engine-switch + analog-param fuzzing) pass. **Deferred:** DX7 FM
+operator editor (M3c); per-osc detune/octave; hardware control (M4).
+
 **M3a done ✅ (2026-06-28):** built-in patch browser with real names (parsed from
 AMY's `patches.h` comments at build time via `scripts/gen_patch_names.py` → 258
 named patches, grouped Juno/DX7/Piano/AMYboard) + prev/next; user-patch save/load/
