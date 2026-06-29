@@ -53,6 +53,36 @@ private:
     juce::String text;
 };
 
+// Draws the selected FM algorithm's operator graph (modulators stacked above the
+// carriers they feed, feedback marked) so you can see which OP does what.
+class AlgorithmDiagram : public juce::Component
+{
+public:
+    void setAlgorithm(int a) { if (a != algo) { algo = a; repaint(); } }
+    void paint(juce::Graphics&) override;
+private:
+    int algo = 1;
+};
+
+// The DX7 tab: the algorithm diagram on top, the scrolling operator controls below.
+class Dx7TabComponent : public juce::Component
+{
+public:
+    Dx7TabComponent(AlgorithmDiagram& d, juce::Component& controls)
+        : diagram(d), controlsView(controls)
+    { addAndMakeVisible(diagram); addAndMakeVisible(controlsView); }
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        diagram.setBounds(r.removeFromTop(kDiagramH));
+        controlsView.setBounds(r);
+    }
+    static constexpr int kDiagramH = 188;
+private:
+    AlgorithmDiagram& diagram;
+    juce::Component&   controlsView;
+};
+
 class AmyPlugEditor final : public juce::AudioProcessorEditor,
                             private juce::Timer
 {
@@ -72,6 +102,7 @@ private:
     void stepPatch(int delta);
     void selectPatch(int patchNumber);
     void showSaveDialog();
+    void importDx7();
 
     AmyPlugProcessor& proc;
 
@@ -82,18 +113,31 @@ private:
     juce::TextButton nextButton   { ">" };
     juce::TextButton saveButton   { "Save..." };
     juce::TextButton deleteButton { "Delete" };
-    juce::ToggleButton engineToggle { "Analog" };
+    juce::TextButton importButton { "Import DX7..." };
+    std::unique_ptr<juce::FileChooser> fileChooser;
+    juce::ComboBox   engineBox;                    // Factory / Analog / FM
     juce::Label      browserLabel { {}, "PATCH" };
     juce::Label      userLabel    { {}, "USER" };
-    std::unique_ptr<Apvts::ButtonAttachment> engineAtt;
+    juce::Label      engineLabel  { {}, "ENGINE" };
+    std::unique_ptr<Apvts::ComboBoxAttachment> engineAtt;
 
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
     juce::Viewport   junoViewport;                 // scrolls the Juno panel if tall
     ControlPanel     junoPanel { proc.apvts() };   // viewed by junoViewport
+    juce::Viewport   fmViewport;                    // scrolls the FM (DX7) panel
+    ControlPanel     fmPanel   { proc.apvts() };    // viewed by fmViewport
+    AlgorithmDiagram algoDiagram;                    // operator graph for the DX7 tab
+    Dx7TabComponent  dx7Tab { algoDiagram, fmViewport };
     ControlPanel     fxPanel   { proc.apvts() };   // global FX rack (right column)
 
+    void setEngineIndex(int idx);   // 0 Factory, 1 Analog, 2 FM
+
+    std::vector<PatchLibrary::Entry> userEntries;   // mirrors the USER combo items
+
     int  lastPatch  = -1;
-    int  lastAnalog = -1;   // tri-state so the first tick always applies the dim
+    int  lastEngine = -1;   // tri-state so the first tick always applies the dim
+    int  lastTab    = -1;   // detect user tab clicks to drive the engine
+    int  lastAlgo   = -1;   // refresh the algorithm diagram when it changes
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmyPlugEditor)
 };

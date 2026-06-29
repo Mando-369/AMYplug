@@ -92,7 +92,8 @@ target_sources(AMYplug PRIVATE
     src/engine/amy_platform_stubs.c   # no-op AMY device hooks for library mode
     src/midi/NoteRouter.cpp
     src/state/PatchModel.cpp
-    src/state/PatchLibrary.cpp)
+    src/state/PatchLibrary.cpp
+    src/state/Dx7Import.cpp)
 
 target_include_directories(AMYplug PRIVATE src "${AMYPLUG_GENERATED_DIR}")
 add_dependencies(AMYplug amyplug_patch_names)

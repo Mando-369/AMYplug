@@ -74,6 +74,51 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
         + "f" + F(a.bFreq) + ",,,,," + F(a.lfoToPitch)
         + "L1Z").toStdString());
 }
+
+// Build the editable FM (DX7) voice osc-by-osc — AMY's ALGO engine. osc0 is the
+// ALGO controller (wave ALGO=8): it tracks the note (f0,1), carries the algorithm
+// (o<n>), the operator list (O1,2,3,4,5,6), feedback (b) and the master amp
+// envelope (A). oscs 1..6 are sine operators: amp = level via the eg0 coef
+// (a0,0,0,<level>,0,0) so each operator is shaped by its own bp0 envelope, and
+// pitch = note x ratio (I<ratio>). Operators derive their frequency from the ALGO
+// osc, so they take no note-tracking f of their own.
+void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
+{
+    const auto& fm = s.fm;
+    const juce::String pre = "i" + juce::String(s.channel);
+    auto F = [] (float v) { return juce::String(v, 4); };
+
+    // 7 oscs per voice: 0 = ALGO controller, 1..6 = operators.
+    out.emplace_back((pre + "iv" + juce::String(juce::jlimit(1, 16, s.numVoices)) + "in7Z").toStdString());
+
+    for (int i = 0; i < PatchModel::kFmOps; ++i)
+    {
+        const auto& op = fm.ops[i];
+        // amp = level x (1 + eg0): const + eg0 coef both = level, so the operator's
+        // own A/D/S/R envelope shapes it and level 0 is truly silent. A pure-eg0 amp
+        // (const 0) leaves the operator inaudible in AMY, hence the const term.
+        out.emplace_back((pre + "v" + juce::String(i + 1) + "w0"
+            + "a" + F(op.level) + ",0,0," + F(op.level) + ",0,0"
+            + "I" + F(op.ratio)                      // freq = note x ratio
+            + "A" + adsrBp(op.a, op.d, op.s, op.r)
+            + "Z").toStdString());
+    }
+
+    // osc 0 — ALGO controller. CONSTANT amp (a const,note,vel,...): const 1 + vel,
+    // NO amp envelope — the per-operator envelopes own the voice's shape AND its
+    // release. (A master amp env here would gate the whole voice off before the
+    // operators finish releasing, which breaks note-off tails.) Matches fm.py.
+    // f0,1 = const 0, note-coef 1 → standard A4=440 tracking. AMY's algorithm table
+    // lists operators 6→1 (algo_source[5] = DX7 operator 1), so we map oscs 6..1
+    // into the O list to make our "OP 1" = DX7 operator 1.
+    out.emplace_back((pre + "v0w8"
+        + "f0,1"
+        + "a1,0,1,0,0,0"
+        + "b" + F(fm.feedback)
+        + "O6,5,4,3,2,1"
+        + "o" + juce::String(juce::jlimit(1, 32, fm.algorithm))
+        + "Z").toStdString());
+}
 } // namespace
 
 std::vector<std::string> PatchModel::toWireMessages() const
@@ -97,6 +142,11 @@ std::vector<std::string> PatchModel::toWireMessages() const
         if (s.engine == Engine::Analog)
         {
             emitAnalog(out, s);
+            continue;
+        }
+        if (s.engine == Engine::FM)
+        {
+            emitFm(out, s);
             continue;
         }
 
@@ -163,6 +213,20 @@ juce::ValueTree PatchModel::toValueTree() const
             { "a_ampA", a.ampA }, { "a_ampD", a.ampD }, { "a_ampS", a.ampS }, { "a_ampR", a.ampR },
             { "a_level", a.level } })
             sv.setProperty(p.first, p.second, nullptr);
+        const auto& fm = s.fm;
+        sv.setProperty("fm_algorithm", fm.algorithm, nullptr);
+        sv.setProperty("fm_feedback",  fm.feedback,  nullptr);
+        for (int i = 0; i < kFmOps; ++i)
+        {
+            const auto& op = fm.ops[i];
+            const juce::String k = "fm_op" + juce::String(i + 1) + "_";
+            sv.setProperty(k + "ratio", op.ratio, nullptr);
+            sv.setProperty(k + "level", op.level, nullptr);
+            sv.setProperty(k + "a", op.a, nullptr);
+            sv.setProperty(k + "d", op.d, nullptr);
+            sv.setProperty(k + "s", op.s, nullptr);
+            sv.setProperty(k + "r", op.r, nullptr);
+        }
         juce::String joined;
         for (const auto& c : s.oscWireCommands) joined << juce::String(c) << "\n";
         sv.setProperty("oscWire", joined, nullptr);
@@ -215,6 +279,20 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
         a.ampA = (float) sv.getProperty("a_ampA", a.ampA); a.ampD = (float) sv.getProperty("a_ampD", a.ampD);
         a.ampS = (float) sv.getProperty("a_ampS", a.ampS); a.ampR = (float) sv.getProperty("a_ampR", a.ampR);
         a.level = (float) sv.getProperty("a_level", a.level);
+        auto& fm = s.fm;
+        fm.algorithm = (int)   sv.getProperty("fm_algorithm", fm.algorithm);
+        fm.feedback  = (float) sv.getProperty("fm_feedback",  fm.feedback);
+        for (int i = 0; i < kFmOps; ++i)
+        {
+            auto& op = fm.ops[i];
+            const juce::String k = "fm_op" + juce::String(i + 1) + "_";
+            op.ratio = (float) sv.getProperty(k + "ratio", op.ratio);
+            op.level = (float) sv.getProperty(k + "level", op.level);
+            op.a = (float) sv.getProperty(k + "a", op.a);
+            op.d = (float) sv.getProperty(k + "d", op.d);
+            op.s = (float) sv.getProperty(k + "s", op.s);
+            op.r = (float) sv.getProperty(k + "r", op.r);
+        }
         auto lines = juce::StringArray::fromLines(sv.getProperty("oscWire").toString());
         for (auto& l : lines) if (l.isNotEmpty()) s.oscWireCommands.push_back(l.toStdString());
         synths.push_back(std::move(s));

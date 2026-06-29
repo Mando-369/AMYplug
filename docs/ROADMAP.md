@@ -53,6 +53,54 @@ chord → stop transport → instant silence; save/reload project → identical 
 automate cutoff → smooth, recorded, recalled.
 
 ## M3 — Patch system & editor v1
+**M3 refinements ✅ (2026-06-29):**
+- **DX7 release fix.** The ALGO controller osc no longer carries a master amp
+  envelope (it gated the whole voice off before the operators released, so note-off
+  tails were clamped to ~50–250 ms regardless of the Release knobs). It now has a
+  constant velocity-sensitive amp (`a1,0,1,0,0,0`, matching `fm.py`) and the
+  per-operator A/D/S/R own the voice's release. Regression test in `EngineRenderTests`.
+- **Master Volume knob** added to the FX rack (the AMY `0.1*volume` scaler), and
+  master volume + reverb/chorus/echo/EQ now stream live in **all** engines via a
+  shared `streamGlobalFx()` (previously inconsistent per engine — Analog didn't
+  stream them at all).
+- **Algorithm menu + live diagram.** `fmAlgorithm` is now a 32-entry choice (was an
+  int knob; same normalised stepping, so recall/automation are unchanged). The DX7
+  tab draws the selected algorithm's operator graph (`AlgorithmDiagram`) — carriers
+  vs modulators, connections and an **FB** tag on the feedback op — reconstructed
+  from AMY's bus routing in `FmAlgorithms.h` (topology unit-tested for algos 1/2/22).
+
+**M3d done ✅ (2026-06-29):** **DX7 `.syx` cartridge import.** An "Import DX7…"
+button reads a standard DX7 SysEx file (32-voice packed bulk dump *or* single-voice
+VCED, with/without the F0..F7 wrapper) and turns every voice into a named **FM-engine
+user patch** in the PatchLibrary — load one and the DX7 tab populates. Imported voices
+are filed under a **group folder named after the cartridge** (PatchLibrary now scans
+one level of subfolders; the USER combo shows section headings) so they don't clutter
+the user's own "My Patches" list. Also fixed an across-the-board **−20 dB level**: AMY
+treats `volume=10` as unity (`0.1*volume`), so the master-volume default moved 1.0 → 4.0. `Dx7Import` is
+a faithful C++ port of AMY's own `fm.py` converter (the script behind the factory DX7
+bank): exact operator ratios (`coarse·(1+(fine+(detune−7)/8)/100)`, coarse 0 ⇒ 0.5),
+output level (`2·2^((L−99)/8)`), feedback (`0.00125·2^fb`) and algorithm; the DX7
+4-rate/4-level EG is approximated as our per-op A/D/S/R via AMY's own rate→time curve.
+Operator order matches `emitFm`'s `O6,5,4,3,2,1` (our ops[0] = DX7 operator 1).
+**Verified:** packed-bulk decoding is cross-checked against the VCED layout in a unit
+test (no real cartridge needed); 28/28 ctest, auval + pluginval strictness 7 (AU+VST3)
+pass. **Deferred:** LFO/vibrato, keyboard rate/level scaling, velocity sensitivity and
+true fixed-frequency operators (approximated as a ratio) — see `Dx7Import.cpp`.
+
+**M3c done ✅ (2026-06-29):** the **DX7 tab** is now a real editable 6-operator FM
+voice on AMY's ALGO engine — osc0 is the ALGO controller (algorithm 1–32 + feedback;
+see the M3 release-fix note re: its amp), oscs 1–6 are sine operators each with a frequency ratio, output
+level and full A/D/S/R. Operator amp = `a<level>,0,0,<level>,0,0` (= level·(1+eg0),
+so level 0 is truly silent and note-offs stay clean), pitch = note·ratio (`I`), and
+the operator list is emitted `O6,5,4,3,2,1` because AMY's algorithm table indexes
+operators 6→1 (so our "OP 1" = DX7 operator 1). `PatchModel` gained `FmParams`/`FmOp`
++ `emitFm`; the `engine` param is now a 3-way Factory/Analog/FM choice (top-bar combo
++ tab auto-select + dimming); algorithm changes rebuild, everything else streams
+RT-safe. **Verified:** an offline engine-render test proves the FM voice is audible
+and silences on note-off; 25/25 ctest, auval + pluginval strictness 7 (AU+VST3, incl.
+FM-param + engine-switch fuzzing) pass. **Deferred:** FM LFO/vibrato (operators take
+no `L`), per-op fixed-frequency mode, keyboard scaling/velocity sens; AMYboard (M4).
+
 **M3b done ✅ (2026-06-29):** tabbed editor (Juno · DX7 · AMYboard) matching the
 AMYboard online controller. The **Juno tab** is a real editable analog engine — a
 4-oscillator subtractive voice (osc0 VCF/VCA, osc1 LFO, osc2/3 OSC A/B) built from

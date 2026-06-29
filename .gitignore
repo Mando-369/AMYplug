@@ -34,3 +34,6 @@ CMakeUserPresets.json
 # Local license cache fetched by bootstrap (the canonical AGPL text)
 # (keep tracked once present; ignore only temp copies)
 /LICENSE.full.tmp
+
+# Local DX7 patch library for testing import (third-party, not distributed)
+dx7_sounds/

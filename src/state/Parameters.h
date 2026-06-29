@@ -8,6 +8,7 @@
 // host stores them in projects) — never renumber, only append.
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "FmAlgorithms.h"
 
 namespace amyplug::params
 {
@@ -55,7 +56,22 @@ namespace id
     inline constexpr auto eqLow         = "eq_low";
     inline constexpr auto eqMid         = "eq_mid";
     inline constexpr auto eqHigh        = "eq_high";
+
+    // --- FM (DX7) engine, M3c. A 6-operator voice: an ALGO controller osc plus
+    //     6 sine operators. The amp ADSR (ampAttack..) above is reused as the
+    //     master output envelope on the ALGO osc. ---
+    inline constexpr auto fmAlgorithm   = "fm_algorithm";   // 1..32 (DX7 algorithms)
+    inline constexpr auto fmFeedback    = "fm_feedback";    // 0..1 on the ALGO osc
+
+    // Per-operator ids are generated (op = 1..6). field = ratio|level|attack|decay|sustain|release.
+    inline juce::String fmOp(int op, const char* field)
+    {
+        return juce::String("fm_op") + juce::String(op) + "_" + field;
+    }
 }
+
+// How many FM operators the DX7 engine exposes (oscs 1..6; osc 0 is the ALGO ctrl).
+inline constexpr int kFmOps = 6;
 
 // Builds the parameter layout. Implemented inline so the processor can call it
 // from its initializer list.
@@ -67,9 +83,12 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterChoice>(
         ParameterID { id::mode, 1 }, "Mode", StringArray { "Software", "Hardware" }, 0));
 
+    // AMY treats volume=10 as unity (it scales output by 0.1*volume), so the old
+    // default of 1.0 ran ~20 dB down. 4.0 puts a single voice near -8 dB (healthy);
+    // very dense chords can still approach full scale (AMY clips internally there).
     layout.add(std::make_unique<AudioParameterFloat>(
         ParameterID { id::masterVolume, 1 }, "Master Volume",
-        NormalisableRange<float> { 0.0f, 10.0f, 0.001f }, 1.0f));
+        NormalisableRange<float> { 0.0f, 10.0f, 0.001f }, 4.0f));
 
     // Built-in banks: Juno 0..127, DX7 128..255, piano 256, amyboard-default 257
     // (patch_commands[258] in AMY's patches.h). Keeping the range to loadable
@@ -107,7 +126,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     auto secs  = [] { return NormalisableRange<float> { 0.0f, 10.0f, 0.0f, 0.3f }; };
 
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::engine, 1 }, "Engine",
-        StringArray { "Factory", "Analog" }, 0));
+        StringArray { "Factory", "Analog", "FM" }, 0));
 
     // Osc freq = the pitch at A4 (note 69); the osc tracks the keyboard from there.
     // 440 = normal tuning, 220 = octave down, ~466 = +1 semitone, etc.
@@ -141,6 +160,40 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::eqLow, 1 }, "EQ Low", eqRange(), 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::eqMid, 1 }, "EQ Mid", eqRange(), 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::eqHigh, 1 }, "EQ High", eqRange(), 0.0f));
+
+    // --- FM (DX7) engine ------------------------------------------------------
+    // Algorithm: a 32-entry menu (1..32); the editor draws the operator diagram for
+    // the selected one. A 32-step choice has the same normalised stepping as the old
+    // 1..32 int param, so existing projects recall the same algorithm (0-based index).
+    StringArray algoLabels;
+    for (int a = 1; a <= 32; ++a) algoLabels.add(juce::String(a));
+    layout.add(std::make_unique<AudioParameterChoice>(
+        ParameterID { id::fmAlgorithm, 1 }, "FM Algorithm", algoLabels, 0));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::fmFeedback, 1 }, "FM Feedback", unit(), 0.0f));
+
+    // Per-operator: frequency ratio (multiple of the note), output level (= FM
+    // modulation index for modulators), and a full A/D/S/R envelope. Defaults give
+    // a simple 2-operator tone (op1 carrier, op2 modulator) under algorithm 1.
+    auto ratioRange = [] { return NormalisableRange<float> { 0.5f, 16.0f, 0.0f, 0.4f }; };
+    auto levelRange = [] { return NormalisableRange<float> { 0.0f, 4.0f, 0.0f, 0.5f }; };
+    for (int op = 1; op <= kFmOps; ++op)
+    {
+        const bool active = (op <= 2);                 // op1+op2 sound by default
+        const float lvl   = active ? 1.0f : 0.0f;
+        const float ratio = 1.0f;
+        layout.add(std::make_unique<AudioParameterFloat>(
+            ParameterID { id::fmOp(op, "ratio"), 1 }, "Op " + juce::String(op) + " Ratio", ratioRange(), ratio));
+        layout.add(std::make_unique<AudioParameterFloat>(
+            ParameterID { id::fmOp(op, "level"), 1 }, "Op " + juce::String(op) + " Level", levelRange(), lvl));
+        layout.add(std::make_unique<AudioParameterFloat>(
+            ParameterID { id::fmOp(op, "attack"),  1 }, "Op " + juce::String(op) + " Attack",  secs(), 0.005f));
+        layout.add(std::make_unique<AudioParameterFloat>(
+            ParameterID { id::fmOp(op, "decay"),   1 }, "Op " + juce::String(op) + " Decay",   secs(), (op == 2 ? 0.5f : 0.3f)));
+        layout.add(std::make_unique<AudioParameterFloat>(
+            ParameterID { id::fmOp(op, "sustain"), 1 }, "Op " + juce::String(op) + " Sustain", unit(), (op == 2 ? 0.3f : 0.7f)));
+        layout.add(std::make_unique<AudioParameterFloat>(
+            ParameterID { id::fmOp(op, "release"), 1 }, "Op " + juce::String(op) + " Release", secs(), 0.4f));
+    }
 
     return layout;
 }

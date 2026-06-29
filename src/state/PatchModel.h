@@ -53,6 +53,25 @@ public:
         float level = 0.8f;                // overall voice level (osc0 amp)
     };
 
+    // The editable FM (DX7-style) voice — a 6-operator phase-modulation synth that
+    // mirrors AMY's ALGO engine: osc0 is the ALGO controller (algorithm + feedback +
+    // master envelope), oscs 1..6 are sine operators. Each operator outputs
+    // level x its own envelope; pitch = note x ratio. All values are the source of
+    // truth (fully recalled). The master amp envelope reuses Synth::ampA..ampR.
+    struct FmOp
+    {
+        float ratio = 1.0f;       // operator freq = note freq x ratio
+        float level = 0.0f;       // output amplitude / modulation index (0..4)
+        float a = 0.005f, d = 0.3f, s = 0.7f, r = 0.4f;   // per-op envelope (seconds + sustain 0..1)
+    };
+    static constexpr int kFmOps = 6;
+    struct FmParams
+    {
+        int   algorithm = 1;      // 1..32 (DX7 algorithms)
+        float feedback  = 0.0f;   // 0..1, self-feedback on the ALGO osc
+        FmOp  ops[kFmOps];
+    };
+
     struct Synth
     {
         int  channel     = 1;     // 1..16 (== AMY synth)
@@ -61,6 +80,7 @@ public:
         int  numVoices   = 6;
 
         AnalogParams analog;      // used when engine == Analog
+        FmParams     fm;          // used when engine == FM
 
         // Automatable macros applied on top of a FACTORY patch (defaults mirror
         // Parameters.h). cutoff/reso broadcast to every voice via i<ch>F/R; the
@@ -78,8 +98,9 @@ public:
 
     std::vector<Synth> synths { Synth {} };
 
-    // Global effects + mix (mirrors Parameters.h).
-    float masterVolume = 1.0f;
+    // Global effects + mix (mirrors Parameters.h). AMY's volume is unity at 10
+    // (it scales by 0.1*volume), so 4.0 ~= -8 dB on a single voice.
+    float masterVolume = 4.0f;
     float reverb = 0.0f, chorus = 0.0f, echo = 0.0f;
     float eqLow = 0.0f, eqMid = 0.0f, eqHigh = 0.0f;   // dB, AMY 3-band EQ ('x')
 

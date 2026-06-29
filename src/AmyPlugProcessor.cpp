@@ -4,6 +4,7 @@
 #include "engine/SoftwareBackend.h"
 #include "engine/HardwareBackend.h"
 #include "engine/AmyWire.h"
+#include "state/Dx7Import.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -31,7 +32,8 @@ AmyPlugProcessor::AmyPlugProcessor()
     // unsafe to stream live — it can race the engine-switch rebuild and hit an
     // oscillator that isn't set up yet). Continuous params stream live.
     for (auto* id : { params::id::engine, params::id::oscAWave, params::id::oscBWave,
-                      params::id::lfoWave, params::id::vcfType })
+                      params::id::lfoWave, params::id::vcfType,
+                      params::id::fmAlgorithm })   // FM: routing change → rebuild
         state.addParameterListener(id, this);
 }
 
@@ -70,11 +72,31 @@ void AmyPlugProcessor::cacheParamPointers()
     mEqLow.ptr     = state.getRawParameterValue(params::id::eqLow);
     mEqMid.ptr     = state.getRawParameterValue(params::id::eqMid);
     mEqHigh.ptr    = state.getRawParameterValue(params::id::eqHigh);
+
+    pAlgorithm     = state.getRawParameterValue(params::id::fmAlgorithm);
+    mFmFeedback.ptr = state.getRawParameterValue(params::id::fmFeedback);
+    for (int i = 0; i < PatchModel::kFmOps; ++i)
+    {
+        const int op = i + 1;
+        mFmRatio[i].ptr = state.getRawParameterValue(params::id::fmOp(op, "ratio"));
+        mFmLevel[i].ptr = state.getRawParameterValue(params::id::fmOp(op, "level"));
+        mFmA[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "attack"));
+        mFmD[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "decay"));
+        mFmS[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "sustain"));
+        mFmR[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "release"));
+    }
 }
 
 bool AmyPlugProcessor::engineIsAnalog() const
 {
-    return pEngine != nullptr && pEngine->load(std::memory_order_relaxed) >= 0.5f;
+    return pEngine != nullptr
+        && (int) std::lround(pEngine->load(std::memory_order_relaxed)) == 1;   // 1 = Analog
+}
+
+bool AmyPlugProcessor::engineIsFM() const
+{
+    return pEngine != nullptr
+        && (int) std::lround(pEngine->load(std::memory_order_relaxed)) == 2;   // 2 = FM
 }
 
 AmyPlugProcessor::~AmyPlugProcessor() = default;
@@ -168,7 +190,9 @@ void AmyPlugProcessor::syncModelFromParams()
 
     // Engine + analog (Juno) params. filterCutoff/reso and the amp ADSR above are
     // reused as VCF freq/reso and the amp envelope, so mirror them into AnalogParams.
-    s.engine = engineIsAnalog() ? PatchModel::Engine::Analog : PatchModel::Engine::FactoryPreset;
+    s.engine = engineIsFM()     ? PatchModel::Engine::FM
+             : engineIsAnalog() ? PatchModel::Engine::Analog
+                                : PatchModel::Engine::FactoryPreset;
     auto& a = s.analog;
     auto rd = [this] (const char* id, float def) {
         if (auto* p = state.getRawParameterValue(id)) return p->load(); return def; };
@@ -188,12 +212,28 @@ void AmyPlugProcessor::syncModelFromParams()
     if (mEqLow.ptr)  model.eqLow  = mEqLow.ptr->load();
     if (mEqMid.ptr)  model.eqMid  = mEqMid.ptr->load();
     if (mEqHigh.ptr) model.eqHigh = mEqHigh.ptr->load();
+
+    // FM (DX7) engine params. The master amp envelope reuses s.ampAttack..ampRelease.
+    auto& fm = s.fm;
+    if (pAlgorithm)      fm.algorithm = (int) std::lround(pAlgorithm->load()) + 1;   // choice index 0..31 -> algo 1..32
+    if (mFmFeedback.ptr) fm.feedback  = mFmFeedback.ptr->load();
+    for (int i = 0; i < PatchModel::kFmOps; ++i)
+    {
+        auto& op = fm.ops[i];
+        if (mFmRatio[i].ptr) op.ratio = mFmRatio[i].ptr->load();
+        if (mFmLevel[i].ptr) op.level = mFmLevel[i].ptr->load();
+        if (mFmA[i].ptr)     op.a     = mFmA[i].ptr->load();
+        if (mFmD[i].ptr)     op.d     = mFmD[i].ptr->load();
+        if (mFmS[i].ptr)     op.s     = mFmS[i].ptr->load();
+        if (mFmR[i].ptr)     op.r     = mFmR[i].ptr->load();
+    }
 }
 
 void AmyPlugProcessor::streamMacrosToBackend()
 {
     if (active == nullptr) return;
     if (engineIsAnalog()) { streamAnalogParams(); return; }
+    if (engineIsFM())     { streamFmParams();     return; }
     constexpr int ch = kMacroSynth;
 
     auto stream = [this] (Macro& m, auto build)
@@ -210,10 +250,7 @@ void AmyPlugProcessor::streamMacrosToBackend()
 
     stream(mCutoff, [] (WireBuilder& w, float v) { w.synth(ch).filterFreq(v); });
     stream(mReso,   [] (WireBuilder& w, float v) { w.synth(ch).resonance(v); });
-    stream(mVolume, [] (WireBuilder& w, float v) { w.volume(v); });
-    stream(mReverb, [] (WireBuilder& w, float v) { w.reverb(v); });
-    stream(mChorus, [] (WireBuilder& w, float v) { w.chorus(v); });
-    stream(mEcho,   [] (WireBuilder& w, float v) { w.echo(v); });
+    streamGlobalFx();   // master volume + reverb/chorus/echo/EQ
 
     // Amp ADSR -> one bp0 breakpoint message, rebuilt if any of the four changed.
     if (mAttack.ptr && mDecay.ptr && mSustain.ptr && mRelease.ptr)
@@ -301,14 +338,86 @@ void AmyPlugProcessor::streamAnalogParams()
     env('A', mAttack, mDecay, mSustain, mRelease);  // amp env (bp0)
     env('B', mVcfA,   mVcfD,  mVcfS,    mVcfR);      // filter env (bp1)
 
-    // Global 3-band EQ (x low,mid,high) — re-send if any changed.
+    streamGlobalFx();   // master volume + reverb/chorus/echo/EQ
+}
+
+void AmyPlugProcessor::streamFmParams()
+{
+    // Audio thread, RT-safe. The FM (DX7) voice: osc 0 is the ALGO controller,
+    // oscs 1..6 are operators. The algorithm (o) is structural (rebuild); feedback,
+    // per-op ratio/level/envelope and the master envelope stream as coef updates.
+    auto one = [this] (Macro& m, const char* fmt)
+    {
+        if (m.ptr == nullptr) return;
+        const float v = m.ptr->load(std::memory_order_relaxed);
+        if (v != m.last) { m.last = v; char b[64]; std::snprintf(b, sizeof b, fmt, (double) v);
+                           active->streamWire(b, (int) std::strlen(b)); }
+    };
+
+    // Re-send an A/D/S/R breakpoint set (letter 'A' = bp0) for one osc if it changed.
+    auto env = [this] (int osc, Macro& a, Macro& d, Macro& s, Macro& r)
+    {
+        if (! (a.ptr && d.ptr && s.ptr && r.ptr)) return;
+        const float av=a.ptr->load(), dv=d.ptr->load(), sv=s.ptr->load(), rv=r.ptr->load();
+        if (av!=a.last || dv!=d.last || sv!=s.last || rv!=r.last)
+        {
+            a.last=av; d.last=dv; s.last=sv; r.last=rv;
+            char b[80]; std::snprintf(b, sizeof b, "i1v%dA%d,1,%d,%.3f,%d,0", osc,
+                (int) std::lround(av*1000.0f), (int) std::lround(dv*1000.0f), (double) sv,
+                (int) std::lround(rv*1000.0f));
+            active->streamWire(b, (int) std::strlen(b));
+        }
+    };
+
+    one(mFmFeedback, "i1v0b%g");                       // ALGO osc self-feedback
+
+    for (int i = 0; i < PatchModel::kFmOps; ++i)
+    {
+        const int osc = i + 1;
+        char rf[24], lf[44];
+        std::snprintf(rf, sizeof rf, "i1v%dI%%g", osc);                // ratio -> i1v<osc>I%g
+        std::snprintf(lf, sizeof lf, "i1v%da%%g,0,0,%%g,0,0", osc);    // level -> const + eg0 coef
+        one(mFmRatio[i], rf);
+        if (mFmLevel[i].ptr != nullptr)                                // level writes %g twice
+        {
+            const float v = mFmLevel[i].ptr->load(std::memory_order_relaxed);
+            if (v != mFmLevel[i].last)
+            {
+                mFmLevel[i].last = v;
+                char b[64]; std::snprintf(b, sizeof b, lf, (double) v, (double) v);
+                active->streamWire(b, (int) std::strlen(b));
+            }
+        }
+        env(osc, mFmA[i], mFmD[i], mFmS[i], mFmR[i]);             // per-op envelope (owns release)
+    }
+
+    // No master amp env on the ALGO osc — the operator envelopes own the voice.
+    streamGlobalFx();   // master volume + reverb/chorus/echo/EQ
+}
+
+void AmyPlugProcessor::streamGlobalFx()
+{
+    // Master volume + bus FX (reverb/chorus/echo) + 3-band EQ — global, shared by
+    // every engine. Streamed RT-safe so the UI knobs are live in all modes.
+    if (active == nullptr) return;
+    auto one = [this] (Macro& m, const char* fmt)
+    {
+        if (m.ptr == nullptr) return;
+        const float v = m.ptr->load(std::memory_order_relaxed);
+        if (v != m.last) { m.last = v; char b[48]; std::snprintf(b, sizeof b, fmt, (double) v);
+                           active->streamWire(b, (int) std::strlen(b)); }
+    };
+    one(mVolume, "V%g");
+    one(mReverb, "h%g");
+    one(mChorus, "k%g");
+    one(mEcho,   "M%g");
     if (mEqLow.ptr && mEqMid.ptr && mEqHigh.ptr)
     {
-        const float l=mEqLow.ptr->load(), md=mEqMid.ptr->load(), h=mEqHigh.ptr->load();
-        if (l!=mEqLow.last || md!=mEqMid.last || h!=mEqHigh.last)
+        const float l = mEqLow.ptr->load(), md = mEqMid.ptr->load(), h = mEqHigh.ptr->load();
+        if (l != mEqLow.last || md != mEqMid.last || h != mEqHigh.last)
         {
-            mEqLow.last=l; mEqMid.last=md; mEqHigh.last=h;
-            char b[48]; std::snprintf(b, sizeof b, "x%g,%g,%g", (double)l,(double)md,(double)h);
+            mEqLow.last = l; mEqMid.last = md; mEqHigh.last = h;
+            char b[48]; std::snprintf(b, sizeof b, "x%g,%g,%g", (double) l, (double) md, (double) h);
             active->streamWire(b, (int) std::strlen(b));
         }
     }
@@ -327,18 +436,46 @@ void AmyPlugProcessor::saveUserPatch(const juce::String& name)
 
 bool AmyPlugProcessor::loadUserPatch(const juce::String& name)
 {
+    return loadUserPatch(juce::String(), name);
+}
+
+bool AmyPlugProcessor::loadUserPatch(const juce::String& group, const juce::String& name)
+{
     PatchModel preset;
-    if (! patchLib.load(name, preset))
+    if (! patchLib.load(group, name, preset))
         return false;
     applyPreset(preset);
     return true;
+}
+
+int AmyPlugProcessor::importDx7Cartridge(const juce::File& file)
+{
+    const auto voices = Dx7Import::parseFile(file);
+    // Group the cartridge's voices under a folder named after the file, so they
+    // don't clutter the user's own patch list.
+    const juce::String group = file.getFileNameWithoutExtension();
+    int imported = 0;
+    juce::StringArray used;
+    for (const auto& v : voices)
+    {
+        juce::String name = v.name.trim();
+        if (name.isEmpty()) name = "DX7 Voice " + juce::String(imported + 1);
+        // De-duplicate within the cartridge so each voice gets its own file.
+        juce::String unique = name;
+        for (int n = 2; used.contains(unique); ++n) unique = name + " " + juce::String(n);
+        used.add(unique);
+
+        patchLib.save(group, unique, Dx7Import::toPatchModel(v));
+        ++imported;
+    }
+    return imported;
 }
 
 void AmyPlugProcessor::applyPreset(const PatchModel& preset)
 {
     // Drive everything through the parameters so the host sees the change (UI,
     // automation, undo) and the existing rebuild/stream paths fire.
-    auto setP = [this] (const char* id, float value)
+    auto setP = [this] (juce::StringRef id, float value)
     {
         if (auto* p = state.getParameter(id))
             p->setValueNotifyingHost(p->convertTo0to1(value));
@@ -358,8 +495,9 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     setP(params::id::chorus,       preset.chorus);
     setP(params::id::echo,         preset.echo);
 
-    // Engine + analog (Juno) controls.
-    setP(params::id::engine, s.engine == PatchModel::Engine::Analog ? 1.0f : 0.0f);
+    // Engine + analog (Juno) controls. Engine choice index: 0 Factory, 1 Analog, 2 FM.
+    setP(params::id::engine, s.engine == PatchModel::Engine::FM     ? 2.0f
+                           : s.engine == PatchModel::Engine::Analog ? 1.0f : 0.0f);
     const auto& a = s.analog;
     setP(params::id::oscAWave, (float) a.aWave);   setP(params::id::oscBWave, (float) a.bWave);
     setP(params::id::oscAFreq, a.aFreq);           setP(params::id::oscBFreq, a.bFreq);
@@ -374,6 +512,22 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     setP(params::id::vcfSustain, a.vcfS); setP(params::id::vcfRelease, a.vcfR);
     setP(params::id::eqLow, preset.eqLow); setP(params::id::eqMid, preset.eqMid);
     setP(params::id::eqHigh, preset.eqHigh);
+
+    // FM (DX7) controls.
+    const auto& fm = s.fm;
+    setP(params::id::fmAlgorithm, (float) (fm.algorithm - 1));   // algo 1..32 -> choice index 0..31
+    setP(params::id::fmFeedback,  fm.feedback);
+    for (int i = 0; i < PatchModel::kFmOps; ++i)
+    {
+        const int op = i + 1;
+        const auto& o = fm.ops[i];
+        setP(params::id::fmOp(op, "ratio"),   o.ratio);
+        setP(params::id::fmOp(op, "level"),   o.level);
+        setP(params::id::fmOp(op, "attack"),  o.a);
+        setP(params::id::fmOp(op, "decay"),   o.d);
+        setP(params::id::fmOp(op, "sustain"), o.s);
+        setP(params::id::fmOp(op, "release"), o.r);
+    }
 }
 
 void AmyPlugProcessor::parameterChanged(const juce::String& id, float newValue)

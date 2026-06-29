@@ -103,6 +103,80 @@ TEST_CASE("Filter-cutoff macro audibly changes timbre (automation proof)", "[eng
     amy_stop();
 }
 
+TEST_CASE("FM (ALGO) voice renders audible sound and silences on note-off", "[engine][fm]")
+{
+    amy_config_t c = amy_default_config();
+    c.audio = AMY_AUDIO_IS_NONE; c.midi = AMY_MIDI_IS_NONE;
+    c.platform.multicore = 0; c.platform.multithread = 0;
+    amy_start(c);
+
+    // Build a 6-operator ALGO voice the way PatchModel::emitFm does: operators on
+    // oscs 1..6 (op1+op2 audible), then the ALGO controller on osc 0 (algorithm 1).
+    amy_add_message((char*) "i1iv1in7Z");
+    amy_add_message((char*) "i1v1w0a1,0,0,1,0,0I1A5,1,300,0.700,400,0Z");  // op1 carrier (level 1)
+    amy_add_message((char*) "i1v2w0a1,0,0,1,0,0I2A5,1,500,0.300,400,0Z");  // op2 modulator (level 1)
+    amy_add_message((char*) "i1v3w0a0,0,0,0,0,0I1A5,1,300,0.000,400,0Z");  // op3..6 silent (level 0)
+    amy_add_message((char*) "i1v4w0a0,0,0,0,0,0I1A5,1,300,0.000,400,0Z");
+    amy_add_message((char*) "i1v5w0a0,0,0,0,0,0I1A5,1,300,0.000,400,0Z");
+    amy_add_message((char*) "i1v6w0a0,0,0,0,0,0I1A5,1,300,0.000,400,0Z");
+    amy_add_message((char*) "i1v0w8f0,1a1,0,1,0,0,0b0.0000O6,5,4,3,2,1o1Z");
+    amy_add_message((char*) "i1n60l1Z");                    // note-on
+
+    const Stats sound = renderStats(200);
+    REQUIRE(sound.rms  > 1e-4);
+    REQUIRE(sound.peak > 1e-3);
+
+    amy_add_message((char*) "i1n60l0Z");                    // note-off
+    renderStats(400);
+    REQUIRE(renderStats(40).rms < 1e-4);                    // silent (no hanging note)
+
+    amy_stop();
+}
+
+TEST_CASE("FM operator release controls the note-off tail (regression)", "[engine][fm]")
+{
+    // The ALGO osc must NOT carry a master amp envelope, or it gates the voice off
+    // before the operators release. With a constant-amp ALGO osc, the operator's own
+    // release time governs the tail. Prove a long release still rings where a short
+    // release has already gone silent.
+    auto build = [] (const char* relMs)
+    {
+        amy_config_t c = amy_default_config();
+        c.audio = AMY_AUDIO_IS_NONE; c.midi = AMY_MIDI_IS_NONE;
+        c.platform.multicore = 0; c.platform.multithread = 0;
+        amy_start(c);
+        amy_add_message((char*) "i1iv1in7Z");
+        char b[160];
+        std::snprintf(b, sizeof b, "i1v1w0a1,0,0,1,0,0I1A5,1,300,0.700,%s,0Z", relMs);
+        amy_add_message(b);
+        amy_add_message((char*) "i1v2w0a0,0,0,0,0,0I1Z");
+        amy_add_message((char*) "i1v3w0a0,0,0,0,0,0I1Z");
+        amy_add_message((char*) "i1v4w0a0,0,0,0,0,0I1Z");
+        amy_add_message((char*) "i1v5w0a0,0,0,0,0,0I1Z");
+        amy_add_message((char*) "i1v6w0a0,0,0,0,0,0I1Z");
+        amy_add_message((char*) "i1v0w8f0,1a1,0,1,0,0,0b0O6,5,4,3,2,1o1Z");
+        amy_add_message((char*) "i1n60l1Z");
+    };
+
+    build("50");                                   // short release
+    renderStats(60);
+    amy_add_message((char*) "i1n60l0Z");
+    renderStats(40);                               // ~0.23 s after note-off
+    const double shortTail = renderStats(20).rms;
+    amy_stop();
+
+    build("3000");                                 // long release
+    renderStats(60);
+    amy_add_message((char*) "i1n60l0Z");
+    renderStats(40);                               // same point after note-off
+    const double longTail = renderStats(20).rms;
+    amy_stop();
+
+    INFO("shortTail=" << shortTail << "  longTail=" << longTail);
+    REQUIRE(shortTail < 1e-3);                      // short release: already silent
+    REQUIRE(longTail  > 2e-3);                      // long release: still ringing (~40% of on-level)
+}
+
 TEST_CASE("RESET_ALL_NOTES silences a held note (panic / transport-stop path)", "[engine]")
 {
     amy_config_t c = amy_default_config();

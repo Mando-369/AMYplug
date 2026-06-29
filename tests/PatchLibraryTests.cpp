@@ -52,6 +52,41 @@ TEST_CASE("PatchLibrary saves and reloads a named preset", "[library]")
     dir.deleteRecursively();
 }
 
+TEST_CASE("PatchLibrary groups (subfolders) keep imports out of the user list", "[library]")
+{
+    auto dir = makeTempDir();
+    PatchLibrary lib; lib.setDirectory(dir);
+
+    PatchModel mine;  mine.synths[0].patchNumber = 5;
+    PatchModel voice; voice.synths[0].engine = PatchModel::Engine::FM;
+
+    REQUIRE(lib.save("My Sound", mine));                 // root (the user's own)
+    REQUIRE(lib.save("DX7 ROM 1A", "BRASS   1", voice)); // grouped (imported cartridge)
+    REQUIRE(lib.save("DX7 ROM 1A", "E.PIANO 1", voice));
+
+    // names() is the user's own list only — imports don't pollute it.
+    REQUIRE(lib.names().contains("My Sound"));
+    REQUIRE_FALSE(lib.names().contains("BRASS   1"));
+
+    // entries() exposes everything, grouped; root group sorts first.
+    const auto& es = lib.entries();
+    REQUIRE(es.size() == 3);
+    REQUIRE(es.front().group.isEmpty());
+    int inGroup = 0;
+    for (const auto& e : es) if (e.group == "DX7 ROM 1A") ++inGroup;
+    REQUIRE(inGroup == 2);
+
+    // Load + remove are group-aware; a same-named patch in another group is untouched.
+    PatchModel out;
+    REQUIRE(lib.load("DX7 ROM 1A", "BRASS   1", out));
+    REQUIRE(out.synths[0].engine == PatchModel::Engine::FM);
+    REQUIRE(lib.remove("DX7 ROM 1A", "BRASS   1"));
+    REQUIRE_FALSE(lib.load("DX7 ROM 1A", "BRASS   1", out));
+    REQUIRE(lib.load("DX7 ROM 1A", "E.PIANO 1", out));
+
+    dir.deleteRecursively();
+}
+
 TEST_CASE("PatchLibrary rejects empty names", "[library]")
 {
     auto dir = makeTempDir();

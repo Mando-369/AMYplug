@@ -5,6 +5,7 @@
 // in the right order: reset -> patch -> macros -> global FX.
 #include <catch2/catch_test_macros.hpp>
 #include "state/PatchModel.h"
+#include "state/FmAlgorithms.h"
 #include <algorithm>
 
 using namespace amyplug;
@@ -120,6 +121,90 @@ TEST_CASE("Analog params survive the ValueTree round-trip", "[state][analog]")
     REQUIRE(b.synths[0].analog.aWave   == 5);
     REQUIRE(b.synths[0].analog.lfoToFilter == 0.42f);
     REQUIRE(b.eqLow == -3.0f);
+}
+
+TEST_CASE("FM engine builds the 6-operator ALGO voice", "[state][fm]")
+{
+    PatchModel m;
+    m.synths[0].engine = PatchModel::Engine::FM;
+    auto& fm = m.synths[0].fm;
+    fm.algorithm = 22;
+    fm.feedback  = 0.16f;
+    fm.ops[0].ratio = 1.0f;  fm.ops[0].level = 1.0f;
+    fm.ops[1].ratio = 2.0f;  fm.ops[1].level = 0.7f;
+    const auto w = m.toWireMessages();
+
+    REQUIRE(anyContains(w, "in7"));        // 7 oscs per voice (0 = ALGO ctrl, 1..6 ops)
+    REQUIRE(anyContains(w, "v0w8"));       // osc0 = ALGO wave (8)
+    REQUIRE(anyContains(w, "o22"));        // algorithm 22
+    REQUIRE(anyContains(w, "b0.1600"));    // feedback on the ALGO osc
+    REQUIRE(anyContains(w, "O6,5,4,3,2,1"));   // operator list (AMY orders ops 6→1)
+    REQUIRE(anyContains(w, "v1w0"));       // operator 1 = sine
+    REQUIRE(anyContains(w, "v6w0"));       // operator 6 = sine
+    REQUIRE(anyContains(w, "I1.0000"));    // op1 ratio
+    REQUIRE(anyContains(w, "I2.0000"));    // op2 ratio
+    REQUIRE(anyContains(w, "a1.0000,0,0,1.0000")); // op1 amp = level x (1 + eg0)
+    REQUIRE_FALSE(anyContains(w, "K"));    // FM never loads a factory patch
+}
+
+TEST_CASE("FM algorithm carriers match the known DX7 topologies", "[state][fm]")
+{
+    // Carriers = operators routed to the output (what you hear). Spot-check against
+    // the standard DX7 algorithms.
+    auto carriers = [] (int a)
+    {
+        auto arr = fm::algorithmCarriers(a);
+        std::vector<int> v; for (int x : arr) v.push_back(x);
+        return v;
+    };
+    REQUIRE(carriers(1)  == std::vector<int> { 1, 3 });        // algo 1: ops 1 & 3
+    REQUIRE(carriers(5)  == std::vector<int> { 1, 3, 5 });     // algo 5: three stacks
+    REQUIRE(carriers(16) == std::vector<int> { 1 });           // algo 16: single carrier
+    REQUIRE(carriers(32) == std::vector<int> { 1, 2, 3, 4, 5, 6 }); // algo 32: all carriers
+}
+
+TEST_CASE("FM algorithm topology reconstructs modulation + feedback", "[state][fm]")
+{
+    // Algo 1: stacks 6->5->4->3 (op6 feedback) and 2->1; carriers 1,3.
+    auto a1 = fm::algorithmTopology(1);
+    REQUIRE(a1.feedback[6]);
+    REQUIRE_FALSE(a1.feedback[2]);
+    REQUIRE(a1.modulators[1] == juce::Array<int> { 2 });
+    REQUIRE(a1.modulators[3] == juce::Array<int> { 4 });
+    REQUIRE(a1.modulators[5] == juce::Array<int> { 6 });
+
+    // Algo 2 has the same chains but feedback on op2 instead of op6 (why #1 and #2
+    // look identical by carriers but are different algorithms).
+    auto a2 = fm::algorithmTopology(2);
+    REQUIRE(a2.feedback[2]);
+    REQUIRE_FALSE(a2.feedback[6]);
+
+    // Algo 22: op6 (feedback) fans out to carriers 3,4,5 in parallel; 2->1.
+    auto a22 = fm::algorithmTopology(22);
+    REQUIRE(a22.feedback[6]);
+    REQUIRE(a22.modulators[3] == juce::Array<int> { 6 });
+    REQUIRE(a22.modulators[4] == juce::Array<int> { 6 });
+    REQUIRE(a22.modulators[5] == juce::Array<int> { 6 });
+    REQUIRE(a22.modulators[1] == juce::Array<int> { 2 });
+}
+
+TEST_CASE("FM params survive the ValueTree round-trip", "[state][fm]")
+{
+    PatchModel a;
+    a.synths[0].engine = PatchModel::Engine::FM;
+    a.synths[0].fm.algorithm = 17;
+    a.synths[0].fm.feedback  = 0.33f;
+    a.synths[0].fm.ops[3].ratio = 4.5f;
+    a.synths[0].fm.ops[3].level = 2.2f;
+    a.synths[0].fm.ops[3].s     = 0.25f;
+
+    PatchModel b; b.fromValueTree(a.toValueTree());
+    REQUIRE(b.synths[0].engine == PatchModel::Engine::FM);
+    REQUIRE(b.synths[0].fm.algorithm == 17);
+    REQUIRE(b.synths[0].fm.feedback  == 0.33f);
+    REQUIRE(b.synths[0].fm.ops[3].ratio == 4.5f);
+    REQUIRE(b.synths[0].fm.ops[3].level == 2.2f);
+    REQUIRE(b.synths[0].fm.ops[3].s     == 0.25f);
 }
 
 TEST_CASE("amp ADSR encodes as a 6-field bp0 breakpoint string", "[state]")

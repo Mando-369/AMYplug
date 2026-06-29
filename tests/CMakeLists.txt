@@ -52,9 +52,11 @@ target_sources(amyplug_logic_tests PRIVATE
     StateTests.cpp
     PatchLibraryTests.cpp
     PatchNamesTests.cpp
+    Dx7ImportTests.cpp
     ${CMAKE_SOURCE_DIR}/src/midi/NoteRouter.cpp
     ${CMAKE_SOURCE_DIR}/src/state/PatchModel.cpp
     ${CMAKE_SOURCE_DIR}/src/state/PatchLibrary.cpp
+    ${CMAKE_SOURCE_DIR}/src/state/Dx7Import.cpp
     ${CMAKE_SOURCE_DIR}/src/engine/AmyWire.cpp)
 target_include_directories(amyplug_logic_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR} "${AMYPLUG_GENERATED_DIR}")

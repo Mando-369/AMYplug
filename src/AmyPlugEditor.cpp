@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR MIT
 #include "AmyPlugEditor.h"
 #include "state/Parameters.h"
+#include "state/FmAlgorithms.h"
 #include "BuiltinPatchNames.h"
+#include <array>
 
 namespace amyplug
 {
@@ -100,7 +102,10 @@ void ControlPanel::resized()
             {
                 if (c->section != sec) continue;
                 juce::Rectangle<int> slot(box.getX() + i * slotW, box.getY() + 4, slotW, rowH - 8);
-                auto cell = slot.withSizeKeepingCentre(juce::jmin(cellW, slotW - 4), rowH - 8);
+                // Combos fill their slot (menus like the FM algorithm need the width);
+                // knobs stay capped at cellW so they don't balloon when alone.
+                const int cw = c->combo ? (slotW - 4) : juce::jmin(cellW, slotW - 4);
+                auto cell = slot.withSizeKeepingCentre(cw, rowH - 8);
                 c->label.setBounds(cell.removeFromTop(16));
                 if (c->combo) c->combo->setBounds(cell.removeFromTop(28).reduced(0, 1));
                 else if (c->knob) c->knob->setBounds(cell.reduced(2, 0));
@@ -116,6 +121,117 @@ void PlaceholderPanel::paint(juce::Graphics& g)
     g.setColour(juce::Colours::grey);
     g.setFont(juce::FontOptions(15.0f));
     g.drawFittedText(text, getLocalBounds().reduced(20), juce::Justification::centred, 3);
+}
+
+// ===========================================================================
+// AlgorithmDiagram
+// ===========================================================================
+void AlgorithmDiagram::paint(juce::Graphics& g)
+{
+    const juce::Colour kAccent { 0xff5ec8d8 };       // carriers / output
+    const juce::Colour kMod    { 0xff39424a };       // modulator fill
+    g.setColour(juce::Colour { 0xff20262b });
+    g.fillRoundedRectangle(getLocalBounds().toFloat(), 6.0f);
+
+    const auto topo = fm::algorithmTopology(algo);
+    if (topo.carriers.isEmpty()) return;
+
+    // modulates[op] = the operators that `op` modulates (children point downward).
+    std::array<juce::Array<int>, 7> modulates;
+    for (int op = 1; op <= 6; ++op)
+        for (int m : topo.modulators[op]) modulates[(size_t) m].add(op);
+
+    // depth from the output (carriers = 0); higher = further up the stack.
+    std::array<int, 7> depth; depth.fill(-1);
+    for (int op = 1; op <= 6; ++op) if (topo.carriers.contains(op)) depth[(size_t) op] = 0;
+    for (int iter = 0; iter < 7; ++iter)
+        for (int op = 1; op <= 6; ++op)
+            if (depth[(size_t) op] < 0)
+            {
+                int d = -1; bool ready = true;
+                for (int t : modulates[(size_t) op])
+                {
+                    if (depth[(size_t) t] < 0) { ready = false; break; }
+                    d = juce::jmax(d, depth[(size_t) t]);
+                }
+                if (ready) depth[(size_t) op] = modulates[(size_t) op].isEmpty() ? 0 : d + 1;
+            }
+    for (int op = 1; op <= 6; ++op) if (depth[(size_t) op] < 0) depth[(size_t) op] = 0;
+
+    // x: carriers spread left->right; each modulator centres over what it feeds.
+    std::array<float, 7> xpos; xpos.fill(0.0f);
+    for (int i = 0; i < topo.carriers.size(); ++i) xpos[(size_t) topo.carriers[i]] = (float) i;
+    int maxd = 0; for (int op = 1; op <= 6; ++op) maxd = juce::jmax(maxd, depth[(size_t) op]);
+    for (int d = 1; d <= maxd; ++d)
+        for (int op = 1; op <= 6; ++op)
+            if (depth[(size_t) op] == d)
+            {
+                float s = 0; int n = 0;
+                for (int t : modulates[(size_t) op]) { s += xpos[(size_t) t]; ++n; }
+                xpos[(size_t) op] = n ? s / (float) n : 0.0f;
+            }
+
+    auto area = getLocalBounds().reduced(12);
+    g.setColour(juce::Colours::grey);
+    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    g.drawText("ALGORITHM " + juce::String(algo), area.removeFromTop(14), juce::Justification::centredLeft);
+    auto outBar = area.removeFromBottom(16);
+
+    float minx = 1e9f, maxx = -1e9f;
+    for (int op = 1; op <= 6; ++op) { minx = juce::jmin(minx, xpos[(size_t) op]); maxx = juce::jmax(maxx, xpos[(size_t) op]); }
+    const int boxW = 40, boxH = 26;
+    const int rowGap = (area.getHeight() - boxH) / juce::jmax(1, maxd);
+    auto boxOf = [&] (int op)
+    {
+        const float fx = (maxx > minx) ? (xpos[(size_t) op] - minx) / (maxx - minx) : 0.5f;
+        const int x = area.getX() + juce::roundToInt(fx * (float) (area.getWidth() - boxW));
+        const int y = area.getBottom() - boxH - depth[(size_t) op] * rowGap;
+        return juce::Rectangle<int> { x, y, boxW, boxH };
+    };
+
+    // Connections (modulator bottom -> target top).
+    g.setColour(juce::Colour { 0xff6b7780 });
+    for (int op = 1; op <= 6; ++op)
+        for (int t : modulates[(size_t) op])
+        {
+            auto a = boxOf(op).toFloat(); auto b = boxOf(t).toFloat();
+            g.drawLine(a.getCentreX(), a.getBottom(), b.getCentreX(), b.getY(), 1.6f);
+        }
+    // Carrier -> output bar.
+    g.setColour(kAccent);
+    for (int c : topo.carriers)
+    {
+        auto bx = boxOf(c).toFloat();
+        g.drawLine(bx.getCentreX(), bx.getBottom(), bx.getCentreX(), (float) outBar.getCentreY(), 1.6f);
+    }
+    g.drawLine((float) outBar.getX(), (float) outBar.getCentreY(),
+               (float) outBar.getRight(), (float) outBar.getCentreY(), 1.6f);
+    g.setFont(juce::FontOptions(9.0f));
+    g.drawText("output", outBar, juce::Justification::centredRight);
+
+    // Operator boxes.
+    for (int op = 1; op <= 6; ++op)
+    {
+        auto bx = boxOf(op);
+        const bool carrier = topo.carriers.contains(op);
+        g.setColour(carrier ? kAccent.withAlpha(0.22f) : kMod);
+        g.fillRoundedRectangle(bx.toFloat(), 4.0f);
+        g.setColour(carrier ? kAccent : juce::Colour { 0xff7d8993 });
+        g.drawRoundedRectangle(bx.toFloat(), 4.0f, carrier ? 1.8f : 1.2f);
+        g.setColour(juce::Colours::white);
+        g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+        g.drawText(juce::String(op), bx, juce::Justification::centred);
+
+        if (topo.feedback[(size_t) op])   // mark the feedback operator with an "FB" tag
+        {
+            juce::Rectangle<int> tag { bx.getRight() - 15, bx.getY() - 9, 20, 13 };
+            g.setColour(juce::Colours::orange);
+            g.fillRoundedRectangle(tag.toFloat(), 3.0f);
+            g.setColour(juce::Colours::black);
+            g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
+            g.drawText("FB", tag, juce::Justification::centred);
+        }
+    }
 }
 
 // ===========================================================================
@@ -139,8 +255,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         const int id = patchBox.getSelectedId();
         if (id > 0)
         {
-            if (auto* e = proc.apvts().getParameter(params::id::engine))
-                e->setValueNotifyingHost(0.0f);   // selecting a factory preset
+            setEngineIndex(0);                    // selecting a factory preset
             selectPatch(id - 1);
         }
     };
@@ -150,15 +265,40 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     addAndMakeVisible(prevButton); addAndMakeVisible(nextButton);
 
     userBox.setTextWhenNothingSelected("User patches");
-    userBox.onChange = [this] { const auto n = userBox.getText(); if (n.isNotEmpty()) proc.loadUserPatch(n); };
+    userBox.onChange = [this]
+    {
+        const int id = userBox.getSelectedId();
+        if (id > 0 && id <= (int) userEntries.size())
+        {
+            const auto& e = userEntries[(size_t) (id - 1)];
+            proc.loadUserPatch(e.group, e.name);
+        }
+    };
     addAndMakeVisible(userBox); refreshUserBox();
     saveButton.onClick   = [this] { showSaveDialog(); };
-    deleteButton.onClick = [this] { const auto n = userBox.getText(); if (n.isNotEmpty()) { proc.patchLibrary().remove(n); refreshUserBox(); } };
+    deleteButton.onClick = [this]
+    {
+        const int id = userBox.getSelectedId();
+        if (id > 0 && id <= (int) userEntries.size())
+        {
+            const auto& e = userEntries[(size_t) (id - 1)];
+            proc.patchLibrary().remove(e.group, e.name);
+            refreshUserBox();
+        }
+    };
     addAndMakeVisible(saveButton); addAndMakeVisible(deleteButton);
+    importButton.onClick = [this] { importDx7(); };
+    importButton.setTooltip("Import a DX7 .syx cartridge as named FM user patches");
+    addAndMakeVisible(importButton);
 
-    engineAtt = std::make_unique<Apvts::ButtonAttachment>(s, params::id::engine, engineToggle);
-    engineToggle.setTooltip("Switch synth 1 to the editable Analog engine (Juno tab)");
-    addAndMakeVisible(engineToggle);
+    if (auto* ep = dynamic_cast<juce::AudioParameterChoice*>(s.getParameter(params::id::engine)))
+        engineBox.addItemList(ep->choices, 1);
+    engineBox.setTooltip("Which engine drives synth 1: Factory preset, Analog (Juno tab), or FM (DX7 tab)");
+    engineAtt = std::make_unique<Apvts::ComboBoxAttachment>(s, params::id::engine, engineBox);
+    addAndMakeVisible(engineBox);
+    engineLabel.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    engineLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+    addAndMakeVisible(engineLabel);
 
     panicButton.setColour(juce::TextButton::buttonColourId, juce::Colours::darkred);
     panicButton.onClick = [this] { proc.requestPanic(); };
@@ -200,8 +340,27 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
 
     junoPanel.setCellSize(86, 94);
 
+    // --- DX7 (FM) tab panel -----------------------------------------------
+    fmPanel.addSection("ALGORITHM");
+    fmPanel.addChoice(params::id::fmAlgorithm, "carriers = the ops you hear");
+    fmPanel.addSection("FEEDBACK");
+    fmPanel.addKnob(params::id::fmFeedback, "Amount");
+    for (int op = 1; op <= params::kFmOps; ++op)
+    {
+        fmPanel.addSection("OP " + juce::String(op));
+        fmPanel.addKnob(params::id::fmOp(op, "ratio"),   "Ratio");
+        fmPanel.addKnob(params::id::fmOp(op, "level"),   "Level");
+        fmPanel.addKnob(params::id::fmOp(op, "attack"),  "A");
+        fmPanel.addKnob(params::id::fmOp(op, "decay"),   "D");
+        fmPanel.addKnob(params::id::fmOp(op, "sustain"), "S");
+        fmPanel.addKnob(params::id::fmOp(op, "release"), "R");
+    }
+    fmPanel.setCellSize(86, 94);
+
     // --- global FX rack ---------------------------------------------------
     fxPanel.setCellSize(78, 94);
+    fxPanel.addSection("MASTER");
+    fxPanel.addKnob(params::id::masterVolume, "Volume");   // overall output scaler (0..10)
     fxPanel.addSection("EQ");
     fxPanel.addKnob(params::id::eqLow, "Low");
     fxPanel.addKnob(params::id::eqMid, "Mid");
@@ -214,11 +373,25 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     // --- tabs -------------------------------------------------------------
     junoViewport.setViewedComponent(&junoPanel, false);
     junoViewport.setScrollBarsShown(true, false);
+    fmViewport.setViewedComponent(&fmPanel, false);
+    fmViewport.setScrollBarsShown(true, false);
     tabs.setOutline(0);
     tabs.addTab("Juno",     kPanel, &junoViewport, false);
-    tabs.addTab("DX7",      kPanel, new PlaceholderPanel("DX7 FM operator editor\n(coming in M3c)"), true);
+    tabs.addTab("DX7",      kPanel, &dx7Tab, false);   // algorithm diagram + operator controls
     tabs.addTab("AMYboard", kPanel, new PlaceholderPanel("Hardware control\n(coming in M4)"), true);
     addAndMakeVisible(tabs);
+
+    // Open on the tab matching the loaded engine, and seed lastTab so the first
+    // timer tick doesn't read this as a user click (lastEngine stays -1 so the
+    // initial dimming still applies).
+    {
+        int eng0 = 0;
+        if (auto* e = s.getRawParameterValue(params::id::engine))
+            eng0 = juce::jlimit(0, 2, (int) std::lround(e->load()));
+        const int tab0 = (eng0 == 1) ? 0 : (eng0 == 2) ? 1 : tabs.getCurrentTabIndex();
+        tabs.setCurrentTabIndex(tab0, false);
+        lastTab = tab0;
+    }
 
     setSize(880, 880);
     startTimerHz(15);
@@ -240,11 +413,19 @@ void AmyPlugEditor::buildPatchBox()
 
 void AmyPlugEditor::refreshUserBox()
 {
-    const auto sel = userBox.getText();
     userBox.clear(juce::dontSendNotification);
+    userEntries = proc.patchLibrary().entries();
     int id = 1;
-    for (const auto& name : proc.patchLibrary().names()) userBox.addItem(name, id++);
-    if (sel.isNotEmpty()) userBox.setText(sel, juce::dontSendNotification);
+    juce::String curGroup = "\x01";                  // sentinel != any real group name
+    for (const auto& e : userEntries)
+    {
+        if (e.group != curGroup)                     // new group -> section heading
+        {
+            curGroup = e.group;
+            userBox.addSectionHeading(e.group.isEmpty() ? "My Patches" : e.group);
+        }
+        userBox.addItem(e.name, id++);
+    }
 }
 
 void AmyPlugEditor::selectPatch(int patchNumber)
@@ -275,6 +456,28 @@ void AmyPlugEditor::showSaveDialog()
     }), true);
 }
 
+void AmyPlugEditor::importDx7()
+{
+    fileChooser = std::make_unique<juce::FileChooser>(
+        "Import a DX7 .syx cartridge", juce::File {}, "*.syx;*.SYX");
+    const auto flags = juce::FileBrowserComponent::openMode
+                     | juce::FileBrowserComponent::canSelectFiles;
+    fileChooser->launchAsync(flags, [this] (const juce::FileChooser& fc)
+    {
+        const auto file = fc.getResult();
+        if (file == juce::File {}) return;            // cancelled
+        const int n = proc.importDx7Cartridge(file);
+        refreshUserBox();
+        juce::AlertWindow::showMessageBoxAsync(
+            n > 0 ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon,
+            "DX7 Import",
+            n > 0 ? juce::String(n) + (n == 1 ? " voice" : " voices")
+                        + " imported into your USER patches."
+                  : "No DX7 voices found. Expected a .syx cartridge (32-voice bulk "
+                    "dump or a single-voice dump).");
+    });
+}
+
 void AmyPlugEditor::timerCallback()
 {
     if (auto* raw = proc.apvts().getRawParameterValue(params::id::patchA))
@@ -283,21 +486,49 @@ void AmyPlugEditor::timerCallback()
         if (n != lastPatch) { lastPatch = n; patchBox.setSelectedId(n + 1, juce::dontSendNotification); }
     }
 
-    // Show which engine is live: dim the inactive one. Analog on -> the factory
-    // PATCH box is bypassed; Analog off -> the Juno tab isn't driving any sound.
+    // Keep the FM algorithm diagram in sync with the selected algorithm.
+    if (auto* raw = proc.apvts().getRawParameterValue(params::id::fmAlgorithm))
+    {
+        const int a = juce::jlimit(1, 32, (int) std::lround(raw->load()) + 1);
+        if (a != lastAlgo) { lastAlgo = a; algoDiagram.setAlgorithm(a); }
+    }
+
+    // Engine ↔ tab sync + dim the inactive engines so it's clear what's live.
+    // 0 = Factory (PATCH browser), 1 = Analog (Juno tab), 2 = FM (DX7 tab).
     if (auto* e = proc.apvts().getRawParameterValue(params::id::engine))
     {
-        const bool analog = e->load() >= 0.5f;
-        if (analog != lastAnalog)
+        int eng = juce::jlimit(0, 2, (int) std::lround(e->load()));
+
+        // A user tab click activates that tab's engine (Juno→Analog, DX7→FM).
+        const int curTab = tabs.getCurrentTabIndex();
+        if (curTab != lastTab)
         {
-            lastAnalog = analog;
-            junoPanel.setEnabled(analog);
-            junoPanel.setAlpha(analog ? 1.0f : 0.4f);
+            lastTab = curTab;
+            const int tabEng = (curTab == 0) ? 1 : (curTab == 1) ? 2 : eng;
+            if (tabEng != eng) { setEngineIndex(tabEng); eng = tabEng; }
+        }
+
+        if (eng != lastEngine)
+        {
+            lastEngine = eng;
+            const int wantTab = (eng == 1) ? 0 : (eng == 2) ? 1 : curTab;  // Factory keeps tab
+            if (wantTab != tabs.getCurrentTabIndex())
+            { tabs.setCurrentTabIndex(wantTab, false); lastTab = wantTab; }
+
+            const bool analog = (eng == 1), fm = (eng == 2), factory = (eng == 0);
+            junoPanel.setEnabled(analog); junoPanel.setAlpha(analog ? 1.0f : 0.4f);
+            fmPanel.setEnabled(fm);       fmPanel.setAlpha(fm ? 1.0f : 0.4f);
             for (auto* c : { (juce::Component*) &patchBox, (juce::Component*) &prevButton,
                              (juce::Component*) &nextButton, (juce::Component*) &browserLabel })
-                c->setAlpha(analog ? 0.4f : 1.0f);
+                c->setAlpha(factory ? 1.0f : 0.4f);
         }
     }
+}
+
+void AmyPlugEditor::setEngineIndex(int idx)
+{
+    if (auto* e = proc.apvts().getParameter(params::id::engine))
+        e->setValueNotifyingHost(e->convertTo0to1((float) juce::jlimit(0, 2, idx)));
 }
 
 void AmyPlugEditor::paint(juce::Graphics& g)
@@ -319,6 +550,8 @@ void AmyPlugEditor::resized()
     // Top bar: two rows (patch browser, user + engine + panic).
     auto row1 = r.removeFromTop(26);
     browserLabel.setBounds(row1.removeFromLeft(40));
+    importButton.setBounds(row1.removeFromRight(104));
+    row1.removeFromRight(10);
     nextButton.setBounds(row1.removeFromRight(28));
     prevButton.setBounds(row1.removeFromRight(28));
     row1.removeFromRight(4);
@@ -329,9 +562,11 @@ void AmyPlugEditor::resized()
     userLabel.setBounds(row2.removeFromLeft(40));
     panicButton.setBounds(row2.removeFromRight(72));
     row2.removeFromRight(8);
-    engineToggle.setBounds(row2.removeFromRight(80));
-    deleteButton.setBounds(row2.removeFromRight(64));
-    saveButton.setBounds(row2.removeFromRight(66));
+    engineBox.setBounds(row2.removeFromRight(90));
+    engineLabel.setBounds(row2.removeFromRight(48));
+    row2.removeFromRight(8);
+    deleteButton.setBounds(row2.removeFromRight(60));
+    saveButton.setBounds(row2.removeFromRight(62));
     row2.removeFromRight(6);
     userBox.setBounds(row2);
     r.removeFromTop(10);
@@ -342,8 +577,11 @@ void AmyPlugEditor::resized()
     r.removeFromRight(10);
     tabs.setBounds(r);
 
-    // Size the scrolled Juno panel to the viewport width; it scrolls if taller.
-    const int vw = juce::jmax(200, junoViewport.getMaximumVisibleWidth());
-    junoPanel.setSize(vw, junoPanel.preferredHeight());
+    // Size the scrolled Juno/FM panels to the tab body width (minus insets + a
+    // scrollbar). Using the tab width rather than each viewport keeps the FM panel
+    // correct even before the DX7 tab is first shown.
+    const int contentW = juce::jmax(200, r.getWidth() - 18);
+    junoPanel.setSize(contentW, junoPanel.preferredHeight());
+    fmPanel.setSize(contentW, fmPanel.preferredHeight());
 }
 } // namespace amyplug

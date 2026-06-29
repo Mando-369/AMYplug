@@ -52,6 +52,10 @@ public:
     // User-patch (preset) save/load, used by the editor's browser.
     void saveUserPatch(const juce::String& name);
     bool loadUserPatch(const juce::String& name);
+    bool loadUserPatch(const juce::String& group, const juce::String& name);
+    // Import a DX7 .syx cartridge: every voice becomes a named FM user patch.
+    // Returns the number of voices imported (0 if the file isn't a DX7 dump).
+    int  importDx7Cartridge(const juce::File& file);
     void applyPreset(const PatchModel& preset);   // push preset values to the params
     void         setMode(IAmyBackend::Kind mode);                   // Software/Hardware
     IAmyBackend::Kind currentMode() const { return activeKind; }
@@ -65,7 +69,10 @@ private:
     void cacheParamPointers();           // resolve atomic param pointers once
     void streamMacrosToBackend();        // audio thread: push changed macros to AMY
     void streamAnalogParams();           // audio thread: analog (Juno) engine streaming
+    void streamFmParams();               // audio thread: FM (DX7) engine streaming
+    void streamGlobalFx();               // audio thread: master volume + reverb/chorus/echo/EQ (all engines)
     bool engineIsAnalog() const;
+    bool engineIsFM() const;
 
     juce::AudioProcessorValueTreeState state;
     PatchModel   model;
@@ -94,6 +101,15 @@ private:
     Macro mOscADuty, mOscALevel, mOscBDuty, mOscBLevel, mOscAFreq, mOscBFreq;
     Macro mVcfA, mVcfD, mVcfS, mVcfR;            // VCF envelope (bp1)
     Macro mEqLow, mEqMid, mEqHigh;
+
+    // FM (DX7) engine continuous params. algorithm is structural (rebuild). The
+    // master amp envelope reuses mAttack..mRelease. Per-op arrays index 0..5.
+    std::atomic<float>* pAlgorithm = nullptr;
+    Macro mFmFeedback;
+    Macro mFmRatio[PatchModel::kFmOps], mFmLevel[PatchModel::kFmOps];
+    Macro mFmA[PatchModel::kFmOps], mFmD[PatchModel::kFmOps];
+    Macro mFmS[PatchModel::kFmOps], mFmR[PatchModel::kFmOps];
+
     static constexpr int kMacroSynth = 1;        // M2: macros target synth 1
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmyPlugProcessor)
