@@ -27,7 +27,9 @@ AmyPlugProcessor::AmyPlugProcessor()
     state.addParameterListener(params::id::mode,      this);
     state.addParameterListener(params::id::patchA,    this);
     state.addParameterListener(params::id::numVoices, this);
-    // Structural analog params (change the osc graph) → full rebuild.
+    // Structural changes rebuild the osc graph (a wave/filter-type restructure is
+    // unsafe to stream live — it can race the engine-switch rebuild and hit an
+    // oscillator that isn't set up yet). Continuous params stream live.
     for (auto* id : { params::id::engine, params::id::oscAWave, params::id::oscBWave,
                       params::id::lfoWave, params::id::vcfType })
         state.addParameterListener(id, this);
@@ -250,7 +252,21 @@ void AmyPlugProcessor::streamAnalogParams()
                            active->streamWire(b, (int) std::strlen(b)); }
     };
 
-    // VCF (osc 0): freq=idx0, reso, kbd=idx1, env=idx4, lfo→filter=idx5.
+    // Streams the SAME value to two oscillators (LFO depth hits both OSC A and B).
+    // Must update m.last only once, after both, or the second osc never gets it.
+    auto two = [this] (Macro& m, const char* fa, const char* fb)
+    {
+        if (m.ptr == nullptr) return;
+        const float v = m.ptr->load(std::memory_order_relaxed);
+        if (v != m.last)
+        {
+            m.last = v;
+            char b[64];
+            std::snprintf(b, sizeof b, fa, (double) v); active->streamWire(b, (int) std::strlen(b));
+            std::snprintf(b, sizeof b, fb, (double) v); active->streamWire(b, (int) std::strlen(b));
+        }
+    };
+    // VCF (osc 0): freq=idx0, reso, kbd=idx1, env=idx4, lfo->filter=idx5.
     one(mCutoff,    "i1v0F%g");
     one(mReso,      "i1v0R%g");
     one(mVcfKbd,    "i1v0F,%g");
@@ -258,11 +274,11 @@ void AmyPlugProcessor::streamAnalogParams()
     one(mLfoFilter, "i1v0F,,,,,%g");
     // LFO (osc 1) freq, and its depth onto OSC A/B pitch (idx5) and PWM (idx5).
     one(mLfoFreq,   "i1v1f%g,0");
-    one(mLfoPitch,  "i1v2f,,,,,%g");  one(mLfoPitch, "i1v3f,,,,,%g");
-    one(mLfoPwm,    "i1v2d,,,,,%g");  one(mLfoPwm,   "i1v3d,,,,,%g");
-    // OSC A/B duty (idx0) + level (amp const).
-    one(mOscADuty,  "i1v2d%g");  one(mOscALevel, "i1v2a%g");
-    one(mOscBDuty,  "i1v3d%g");  one(mOscBLevel, "i1v3a%g");
+    two(mLfoPitch,  "i1v2f,,,,,%g", "i1v3f,,,,,%g");
+    two(mLfoPwm,    "i1v2d,,,,,%g", "i1v3d,,,,,%g");
+    // OSC A/B duty (idx0) + level (amp const). Waves are structural (rebuild).
+    one(mOscADuty, "i1v2d%g");  one(mOscALevel, "i1v2a%g");
+    one(mOscBDuty, "i1v3d%g");  one(mOscBLevel, "i1v3a%g");
 
     // Envelopes — re-send the whole breakpoint set if any of its 4 changed.
     auto env = [this] (char letter, Macro& a, Macro& d, Macro& s, Macro& r)

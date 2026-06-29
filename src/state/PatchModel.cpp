@@ -56,7 +56,8 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
     // osc 1 — LFO (note-coef 0 keeps it at lfoFreq regardless of the played note).
     out.emplace_back((pre + "v1w" + juce::String(a.lfoWave) + "f" + F(a.lfoFreq) + ",0Z").toStdString());
 
-    // osc 2 — OSC A. duty = const,,,,,lfoPwm(idx5); freq = ,,,,,lfoPitch(idx5) (keeps note tracking).
+    // osc 2 — OSC A. freq = tune(idx0, octaves), note tracking (idx1 default 1),
+    // lfoPitch(idx5); duty = const,,,,,lfoPwm(idx5).
     out.emplace_back((pre + "v2w" + juce::String(a.aWave)
         + "a" + F(a.aLevel)
         + "d" + F(a.aDuty) + ",,,,," + F(a.lfoToPwm)
@@ -149,6 +150,7 @@ juce::ValueTree PatchModel::toValueTree() const
         const auto& a = s.analog;
         for (auto p : { std::pair<const char*, float>
             { "a_aWave", (float) a.aWave }, { "a_bWave", (float) a.bWave },
+            { "a_aTune", a.aTune }, { "a_bTune", a.bTune },
             { "a_aDuty", a.aDuty }, { "a_bDuty", a.bDuty }, { "a_aLevel", a.aLevel }, { "a_bLevel", a.bLevel },
             { "a_lfoWave", (float) a.lfoWave }, { "a_lfoFreq", a.lfoFreq },
             { "a_lfoToPitch", a.lfoToPitch }, { "a_lfoToPwm", a.lfoToPwm }, { "a_lfoToFilter", a.lfoToFilter },
@@ -195,6 +197,7 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
         s.ampRelease   = (float) sv.getProperty("ampRelease",   0.25);
         auto& a = s.analog;
         a.aWave = (int) sv.getProperty("a_aWave", a.aWave);   a.bWave = (int) sv.getProperty("a_bWave", a.bWave);
+        a.aTune = (float) sv.getProperty("a_aTune", a.aTune); a.bTune = (float) sv.getProperty("a_bTune", a.bTune);
         a.aDuty = (float) sv.getProperty("a_aDuty", a.aDuty); a.bDuty = (float) sv.getProperty("a_bDuty", a.bDuty);
         a.aLevel = (float) sv.getProperty("a_aLevel", a.aLevel); a.bLevel = (float) sv.getProperty("a_bLevel", a.bLevel);
         a.lfoWave = (int) sv.getProperty("a_lfoWave", a.lfoWave); a.lfoFreq = (float) sv.getProperty("a_lfoFreq", a.lfoFreq);
