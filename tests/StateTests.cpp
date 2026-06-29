@@ -85,6 +85,43 @@ TEST_CASE("amp-ADSR macro overrides bp0 only for Juno, not DX7 (pitch-env safety
     REQUIRE(anyContains(dx7.toWireMessages(), "i1F"));
 }
 
+TEST_CASE("Analog engine builds the 4-oscillator subtractive voice", "[state][analog]")
+{
+    PatchModel m;
+    m.synths[0].engine = PatchModel::Engine::Analog;
+    const auto w = m.toWireMessages();
+
+    REQUIRE(anyContains(w, "in4"));        // 4 oscs per voice
+    REQUIRE(anyContains(w, "v0w20"));      // osc0 = SILENT filter/VCA
+    REQUIRE(anyContains(w, "v0w20"));
+    REQUIRE(anyContains(w, "A"));          // amp env (bp0)
+    REQUIRE(anyContains(w, "B"));          // filter env (bp1)
+    REQUIRE(anyContains(w, "c2"));         // chained osc0<-osc2
+    REQUIRE(anyContains(w, "v1w"));        // LFO osc1
+    REQUIRE(anyContains(w, ",0Z"));        // LFO freq has note-coef 0 (won't track notes)
+    REQUIRE(anyContains(w, "v2w"));        // OSC A
+    REQUIRE(anyContains(w, "v3w"));        // OSC B
+    REQUIRE(anyContains(w, "L1"));         // LFO as mod source
+    REQUIRE_FALSE(anyContains(w, "K"));    // analog never loads a factory patch
+}
+
+TEST_CASE("Analog params survive the ValueTree round-trip", "[state][analog]")
+{
+    PatchModel a;
+    a.synths[0].engine = PatchModel::Engine::Analog;
+    a.synths[0].analog.vcfFreq = 1234.0f;
+    a.synths[0].analog.aWave   = 5;
+    a.synths[0].analog.lfoToFilter = 0.42f;
+    a.eqLow = -3.0f;
+
+    PatchModel b; b.fromValueTree(a.toValueTree());
+    REQUIRE(b.synths[0].engine == PatchModel::Engine::Analog);
+    REQUIRE(b.synths[0].analog.vcfFreq == 1234.0f);
+    REQUIRE(b.synths[0].analog.aWave   == 5);
+    REQUIRE(b.synths[0].analog.lfoToFilter == 0.42f);
+    REQUIRE(b.eqLow == -3.0f);
+}
+
 TEST_CASE("amp ADSR encodes as a 6-field bp0 breakpoint string", "[state]")
 {
     PatchModel m;
