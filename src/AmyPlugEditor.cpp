@@ -410,18 +410,13 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fmPanelL.setCellSize(86, 94);
     fmPanelR.setCellSize(86, 94);
 
-    // --- global FX rack (5 stacked sections; keep it short so it fits) ---------
+    // --- global FX rack, top-to-bottom in AMY's actual processing order:
+    //     EQ -> Chorus -> Echo -> Reverb -> Volume -> (fixed) HPF ----------------
     fxPanel.setCellSize(78, 84);
-    fxPanel.addSection("MASTER");
-    fxPanel.addKnob(params::id::masterVolume, "Volume");   // overall output scaler (0..10)
     fxPanel.addSection("EQ");
     fxPanel.addKnob(params::id::eqLow, "Low");
     fxPanel.addKnob(params::id::eqMid, "Mid");
     fxPanel.addKnob(params::id::eqHigh, "High");
-    fxPanel.addSection("REVERB");
-    fxPanel.addKnob(params::id::reverb, "Level");
-    fxPanel.addKnob(params::id::reverbSize, "Size");
-    fxPanel.addKnob(params::id::reverbDamping, "Damp");
     fxPanel.addSection("CHORUS");
     fxPanel.addKnob(params::id::chorus, "Level");
     fxPanel.addKnob(params::id::chorusRate, "Rate");
@@ -431,6 +426,12 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fxPanel.addKnob(params::id::echoTime, "Time");
     fxPanel.addKnob(params::id::echoFeedback, "F.back");
     fxPanel.addKnob(params::id::echoTone, "Tone");
+    fxPanel.addSection("REVERB");
+    fxPanel.addKnob(params::id::reverb, "Level");
+    fxPanel.addKnob(params::id::reverbSize, "Size");
+    fxPanel.addKnob(params::id::reverbDamping, "Damp");
+    fxPanel.addSection("MASTER");
+    fxPanel.addKnob(params::id::masterVolume, "Volume");   // overall output scaler (0..10)
     addAndMakeVisible(fxPanel);
 
     // --- tabs -------------------------------------------------------------
