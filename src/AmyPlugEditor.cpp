@@ -355,58 +355,63 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     panicButton.onClick = [this] { proc.requestPanic(); };
     addAndMakeVisible(panicButton);
 
-    // --- Juno tab panel ---------------------------------------------------
-    junoPanel.addSection("OSC A");
-    junoPanel.addChoice(params::id::oscAWave, "Wave");
-    junoPanel.addKnob(params::id::oscAFreq, "Freq");
-    junoPanel.addKnob(params::id::oscADuty, "Duty");
-    junoPanel.addKnob(params::id::oscALevel, "Level");
-    junoPanel.addSection("OSC B");
-    junoPanel.addChoice(params::id::oscBWave, "Wave");
-    junoPanel.addKnob(params::id::oscBFreq, "Freq");
-    junoPanel.addKnob(params::id::oscBDuty, "Duty");
-    junoPanel.addKnob(params::id::oscBLevel, "Level");
-    junoPanel.addSection("LFO");
-    junoPanel.addChoice(params::id::lfoWave, "Wave");
-    junoPanel.addKnob(params::id::lfoFreq, "Freq");
-    junoPanel.addKnob(params::id::lfoToPitch, "Pitch");
-    junoPanel.addKnob(params::id::lfoToPwm, "PWM");
-    junoPanel.addKnob(params::id::lfoToFilter, "Filter");
-    junoPanel.addSection("VCF");
-    junoPanel.addKnob(params::id::filterCutoff, "Freq");
-    junoPanel.addKnob(params::id::filterReso, "Reso");
-    junoPanel.addKnob(params::id::vcfKbd, "Kbd");
-    junoPanel.addKnob(params::id::vcfEnv, "Env");
-    junoPanel.addChoice(params::id::vcfType, "Type");
-    junoPanel.addSection("VCF ENV");
-    junoPanel.addKnob(params::id::vcfAttack, "A");
-    junoPanel.addKnob(params::id::vcfDecay, "D");
-    junoPanel.addKnob(params::id::vcfSustain, "S");
-    junoPanel.addKnob(params::id::vcfRelease, "R");
-    junoPanel.addSection("AMP ENV");
-    junoPanel.addKnob(params::id::ampAttack, "A");
-    junoPanel.addKnob(params::id::ampDecay, "D");
-    junoPanel.addKnob(params::id::ampSustain, "S");
-    junoPanel.addKnob(params::id::ampRelease, "R");
+    // --- Juno tab: two columns. OSC A|OSC B / LFO|VCF / VCF ENV|AMP ENV --------
+    junoPanelL.addSection("OSC A");
+    junoPanelL.addChoice(params::id::oscAWave, "Wave");
+    junoPanelL.addKnob(params::id::oscAFreq, "Freq");
+    junoPanelL.addKnob(params::id::oscADuty, "Duty");
+    junoPanelL.addKnob(params::id::oscALevel, "Level");
+    junoPanelL.addSection("LFO");
+    junoPanelL.addChoice(params::id::lfoWave, "Wave");
+    junoPanelL.addKnob(params::id::lfoFreq, "Freq");
+    junoPanelL.addKnob(params::id::lfoToPitch, "Pitch");
+    junoPanelL.addKnob(params::id::lfoToPwm, "PWM");
+    junoPanelL.addKnob(params::id::lfoToFilter, "Filter");
+    junoPanelL.addSection("VCF ENV");
+    junoPanelL.addKnob(params::id::vcfAttack, "A");
+    junoPanelL.addKnob(params::id::vcfDecay, "D");
+    junoPanelL.addKnob(params::id::vcfSustain, "S");
+    junoPanelL.addKnob(params::id::vcfRelease, "R");
 
-    junoPanel.setCellSize(86, 94);
+    junoPanelR.addSection("OSC B");
+    junoPanelR.addChoice(params::id::oscBWave, "Wave");
+    junoPanelR.addKnob(params::id::oscBFreq, "Freq");
+    junoPanelR.addKnob(params::id::oscBDuty, "Duty");
+    junoPanelR.addKnob(params::id::oscBLevel, "Level");
+    junoPanelR.addSection("VCF");
+    junoPanelR.addKnob(params::id::filterCutoff, "Freq");
+    junoPanelR.addKnob(params::id::filterReso, "Reso");
+    junoPanelR.addKnob(params::id::vcfKbd, "Kbd");
+    junoPanelR.addKnob(params::id::vcfEnv, "Env");
+    junoPanelR.addChoice(params::id::vcfType, "Type");
+    junoPanelR.addSection("AMP ENV");
+    junoPanelR.addKnob(params::id::ampAttack, "A");
+    junoPanelR.addKnob(params::id::ampDecay, "D");
+    junoPanelR.addKnob(params::id::ampSustain, "S");
+    junoPanelR.addKnob(params::id::ampRelease, "R");
 
-    // --- DX7 (FM) tab panel: per-operator controls (algorithm + feedback live in
-    //     the tab's top row alongside the diagram) ---------------------------
-    for (int op = 1; op <= params::kFmOps; ++op)
+    junoPanelL.setCellSize(86, 94);
+    junoPanelR.setCellSize(86, 94);
+
+    // --- DX7 (FM) operator controls, two columns: OP1|OP2 / OP3|OP4 / OP5|OP6.
+    //     (Algorithm + feedback live in the tab's top row alongside the diagram.) -
+    auto addOp = [] (ControlPanel& panel, int op)
     {
-        fmPanel.addSection("OP " + juce::String(op));
-        fmPanel.addKnob(params::id::fmOp(op, "ratio"),   "Ratio");
-        fmPanel.addKnob(params::id::fmOp(op, "level"),   "Level");
-        fmPanel.addKnob(params::id::fmOp(op, "attack"),  "A");
-        fmPanel.addKnob(params::id::fmOp(op, "decay"),   "D");
-        fmPanel.addKnob(params::id::fmOp(op, "sustain"), "S");
-        fmPanel.addKnob(params::id::fmOp(op, "release"), "R");
-    }
-    fmPanel.setCellSize(86, 94);
+        panel.addSection("OP " + juce::String(op));
+        panel.addKnob(params::id::fmOp(op, "ratio"),   "Ratio");
+        panel.addKnob(params::id::fmOp(op, "level"),   "Level");
+        panel.addKnob(params::id::fmOp(op, "attack"),  "A");
+        panel.addKnob(params::id::fmOp(op, "decay"),   "D");
+        panel.addKnob(params::id::fmOp(op, "sustain"), "S");
+        panel.addKnob(params::id::fmOp(op, "release"), "R");
+    };
+    addOp(fmPanelL, 1); addOp(fmPanelL, 3); addOp(fmPanelL, 5);
+    addOp(fmPanelR, 2); addOp(fmPanelR, 4); addOp(fmPanelR, 6);
+    fmPanelL.setCellSize(86, 94);
+    fmPanelR.setCellSize(86, 94);
 
-    // --- global FX rack ---------------------------------------------------
-    fxPanel.setCellSize(78, 94);
+    // --- global FX rack (5 stacked sections; keep it short so it fits) ---------
+    fxPanel.setCellSize(78, 84);
     fxPanel.addSection("MASTER");
     fxPanel.addKnob(params::id::masterVolume, "Volume");   // overall output scaler (0..10)
     fxPanel.addSection("EQ");
@@ -419,9 +424,9 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     addAndMakeVisible(fxPanel);
 
     // --- tabs -------------------------------------------------------------
-    junoViewport.setViewedComponent(&junoPanel, false);
+    junoViewport.setViewedComponent(&junoCols, false);
     junoViewport.setScrollBarsShown(true, false);
-    fmViewport.setViewedComponent(&fmPanel, false);
+    fmViewport.setViewedComponent(&fmOps, false);
     fmViewport.setScrollBarsShown(true, false);
     tabs.setOutline(0);
     tabs.addTab("Juno",     kPanel, &junoViewport, false);
@@ -441,7 +446,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         lastTab = tab0;
     }
 
-    setSize(880, 880);
+    setSize(1280, 740);
     startTimerHz(15);
 }
 
@@ -564,8 +569,8 @@ void AmyPlugEditor::timerCallback()
             { tabs.setCurrentTabIndex(wantTab, false); lastTab = wantTab; }
 
             const bool analog = (eng == 1), fm = (eng == 2), factory = (eng == 0);
-            junoPanel.setEnabled(analog); junoPanel.setAlpha(analog ? 1.0f : 0.4f);
-            fmPanel.setEnabled(fm);       fmPanel.setAlpha(fm ? 1.0f : 0.4f);
+            junoCols.setEnabled(analog); junoCols.setAlpha(analog ? 1.0f : 0.4f);
+            fmOps.setEnabled(fm);         fmOps.setAlpha(fm ? 1.0f : 0.4f);
             for (auto* c : { (juce::Component*) &patchBox, (juce::Component*) &prevButton,
                              (juce::Component*) &nextButton, (juce::Component*) &browserLabel })
                 c->setAlpha(factory ? 1.0f : 0.4f);
@@ -629,7 +634,10 @@ void AmyPlugEditor::resized()
     // scrollbar). Using the tab width rather than each viewport keeps the FM panel
     // correct even before the DX7 tab is first shown.
     const int contentW = juce::jmax(200, r.getWidth() - 18);
-    junoPanel.setSize(contentW, junoPanel.preferredHeight());
-    fmPanel.setSize(contentW, fmPanel.preferredHeight());
+    // Both tabs use two columns; each container is as tall as its taller column.
+    const int junoH = juce::jmax(junoPanelL.preferredHeight(), junoPanelR.preferredHeight());
+    junoCols.setSize(contentW, junoH);
+    const int opH = juce::jmax(fmPanelL.preferredHeight(), fmPanelR.preferredHeight());
+    fmOps.setSize(contentW, opH);
 }
 } // namespace amyplug

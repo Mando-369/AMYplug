@@ -53,6 +53,11 @@ chord → stop transport → instant silence; save/reload project → identical 
 automate cutoff → smooth, recorded, recalled.
 
 ## M3 — Patch system & editor v1
+**Editor layout ✅ (2026-06-30):** both engine tabs now use a **two-column** section
+layout (DX7: OP1│OP2 / OP3│OP4 / OP5│OP6; Juno: OSC A│OSC B / LFO│VCF / VCF ENV│AMP
+ENV) via a small `TwoColumnPanels` container, and the DX7 tab's top row gathers the
+algorithm diagram + algorithm selector + feedback knob. Window resized to 1280×740.
+
 **M3 refinements ✅ (2026-06-29):**
 - **DX7 release fix.** The ALGO controller osc no longer carries a master amp
   envelope (it gated the whole voice off before the operators released, so note-off

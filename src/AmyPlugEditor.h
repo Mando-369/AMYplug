@@ -53,6 +53,24 @@ private:
     juce::String text;
 };
 
+// Lays two child components side by side (equal halves) — used to pair the FM
+// operator panels (OP1|OP2 / OP3|OP4 / OP5|OP6).
+class TwoColumnPanels : public juce::Component
+{
+public:
+    TwoColumnPanels(juce::Component& l, juce::Component& r) : left(l), right(r)
+    { addAndMakeVisible(left); addAndMakeVisible(right); }
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        left.setBounds(r.removeFromLeft(r.getWidth() / 2));
+        right.setBounds(r);
+    }
+private:
+    juce::Component& left;
+    juce::Component& right;
+};
+
 // Draws the selected FM algorithm's operator graph (modulators stacked above the
 // carriers they feed, feedback marked) so you can see which OP does what.
 class AlgorithmDiagram : public juce::Component
@@ -123,10 +141,14 @@ private:
     std::unique_ptr<Apvts::ComboBoxAttachment> engineAtt;
 
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
-    juce::Viewport   junoViewport;                 // scrolls the Juno panel if tall
-    ControlPanel     junoPanel { proc.apvts() };   // viewed by junoViewport
-    juce::Viewport   fmViewport;                    // scrolls the FM (DX7) panel
-    ControlPanel     fmPanel   { proc.apvts() };    // viewed by fmViewport
+    juce::Viewport   junoViewport;                 // scrolls the Juno columns if tall
+    ControlPanel     junoPanelL { proc.apvts() };  // OSC A, LFO, VCF ENV (left)
+    ControlPanel     junoPanelR { proc.apvts() };  // OSC B, VCF, AMP ENV (right)
+    TwoColumnPanels  junoCols { junoPanelL, junoPanelR };
+    juce::Viewport   fmViewport;                    // scrolls the FM (DX7) operators
+    ControlPanel     fmPanelL { proc.apvts() };     // OP 1, 3, 5 (left column)
+    ControlPanel     fmPanelR { proc.apvts() };     // OP 2, 4, 6 (right column)
+    TwoColumnPanels  fmOps { fmPanelL, fmPanelR };   // viewed by fmViewport
     AlgorithmDiagram algoDiagram;                    // operator graph for the DX7 tab
     Dx7TabComponent  dx7Tab { proc.apvts(), algoDiagram, fmViewport };
     ControlPanel     fxPanel   { proc.apvts() };   // global FX rack (right column)
