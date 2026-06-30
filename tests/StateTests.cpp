@@ -78,6 +78,9 @@ TEST_CASE("Effects emit AMY's full parameter lists and round-trip", "[state]")
     m.reverb = 0.3f; m.reverbSize = 0.7f;  m.reverbDamping = 0.4f;
     m.chorus = 0.5f; m.chorusRate = 2.0f;  m.chorusDepth = 0.6f;
     m.echo   = 0.4f; m.echoTime = 250.0f;  m.echoFeedback = 0.3f; m.echoTone = 0.2f;
+    m.clipDrive = 7.5f;   // host-side saturator: recalled, but NOT an AMY wire param
+    m.bcFreq = 6000.0f; m.bcBits = 8.0f;   // host-side bitcrusher: recalled, not wired
+    m.outputGain = -3.5f;                  // final JUCE-side gain: recalled, not wired
 
     const auto w = m.toWireMessages();
     REQUIRE(anyContains(w, "h0.3000,0.7000,0.4000,3000"));   // reverb level,size,damp,xover
@@ -89,6 +92,10 @@ TEST_CASE("Effects emit AMY's full parameter lists and round-trip", "[state]")
     REQUIRE(b.chorusRate    == 2.0f);
     REQUIRE(b.echoTime      == 250.0f);
     REQUIRE(b.echoFeedback  == 0.3f);
+    REQUIRE(b.clipDrive     == 7.5f);   // round-trips through the saved state
+    REQUIRE(b.bcFreq        == 6000.0f);
+    REQUIRE(b.bcBits        == 8.0f);
+    REQUIRE(b.outputGain    == -3.5f);
 }
 
 TEST_CASE("amp-ADSR macro overrides bp0 only for Juno, not DX7 (pitch-env safety)", "[state]")
@@ -111,18 +118,30 @@ TEST_CASE("Analog engine builds the 4-oscillator subtractive voice", "[state][an
     m.synths[0].engine = PatchModel::Engine::Analog;
     const auto w = m.toWireMessages();
 
+    // Find the single wire message for a given osc (e.g. "v0w", "v2w").
+    auto msgFor = [&] (const char* oscTag) -> std::string {
+        for (const auto& s : w) if (s.find(oscTag) != std::string::npos) return s;
+        return {};
+    };
+    const std::string osc0 = msgFor("v0w20");
+    const std::string osc2 = msgFor("v2w");
+
     REQUIRE(anyContains(w, "in4"));        // 4 oscs per voice
-    REQUIRE(anyContains(w, "v0w20"));      // osc0 = SILENT filter/VCA
-    REQUIRE(anyContains(w, "v0w20"));
-    REQUIRE(anyContains(w, "A"));          // amp env (bp0)
-    REQUIRE(anyContains(w, "B"));          // filter env (bp1)
+    REQUIRE_FALSE(osc0.empty());           // osc0 = SILENT filter/VCA
     REQUIRE(anyContains(w, "c2"));         // chained osc0<-osc2
     REQUIRE(anyContains(w, "v1w"));        // LFO osc1
     REQUIRE(anyContains(w, ",0Z"));        // LFO freq has note-coef 0 (won't track notes)
-    REQUIRE(anyContains(w, "v2w"));        // OSC A
     REQUIRE(anyContains(w, "v3w"));        // OSC B
     REQUIRE(anyContains(w, "L1"));         // LFO as mod source
     REQUIRE_FALSE(anyContains(w, "K"));    // analog never loads a factory patch
+
+    // Release fix: the amp env (bp0 'A') lives on the AUDIO oscs so note-off fades
+    // the tail; osc0 carries only the filter env ('B') + a constant amp (no 'A').
+    REQUIRE(osc2.find("a0.7000,0,0,0.7000,0,0") != std::string::npos); // level on const+eg0
+    REQUIRE(osc2.find('A') != std::string::npos);                      // amp env on the audio osc
+    REQUIRE(osc0.find("a1,0,1,0,0,0") != std::string::npos);           // osc0 constant amp
+    REQUIRE(osc0.find('B') != std::string::npos);                      // filter env stays on osc0
+    REQUIRE(osc0.find('A') == std::string::npos);                      // ...but NO amp env on osc0
 }
 
 TEST_CASE("Analog params survive the ValueTree round-trip", "[state][analog]")

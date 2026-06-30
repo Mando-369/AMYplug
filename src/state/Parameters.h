@@ -16,7 +16,8 @@ namespace amyplug::params
 namespace id
 {
     inline constexpr auto mode          = "mode";          // 0 = Software, 1 = Hardware
-    inline constexpr auto masterVolume  = "master_volume"; // 0..10 (AMY volume)
+    inline constexpr auto masterVolume  = "master_volume"; // 0..10 (AMY "Synth Vol", upstream)
+    inline constexpr auto outputGain    = "output_gain";   // final JUCE-side output gain, dB
     inline constexpr auto patchA        = "patch_a";       // active patch number on synth 1
     inline constexpr auto numVoices     = "num_voices";    // polyphony
     inline constexpr auto filterCutoff  = "filter_cutoff";
@@ -36,6 +37,9 @@ namespace id
     inline constexpr auto echoTime      = "echo_time";       // delay (ms)
     inline constexpr auto echoFeedback  = "echo_feedback";
     inline constexpr auto echoTone      = "echo_tone";       // feedback filter coef
+    inline constexpr auto clipDrive     = "clip_drive";      // WDF saturator drive (THD), dB
+    inline constexpr auto bcFreq        = "bc_freq";         // bitcrusher downsample target (Hz)
+    inline constexpr auto bcBits        = "bc_bits";         // bitcrusher bit depth (2..16)
     inline constexpr auto pitchBendRange= "pitch_bend_range";
 
     // --- Analog (Juno) engine, M3b. filterCutoff/filterReso/ampADSR/masterVolume
@@ -95,8 +99,15 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     // default of 1.0 ran ~20 dB down. 4.0 puts a single voice near -8 dB (healthy);
     // very dense chords can still approach full scale (AMY clips internally there).
     layout.add(std::make_unique<AudioParameterFloat>(
-        ParameterID { id::masterVolume, 1 }, "Master Volume",
+        ParameterID { id::masterVolume, 1 }, "Synth Vol",
         NormalisableRange<float> { 0.0f, 10.0f, 0.001f }, 4.0f));
+
+    // Final output gain — a true JUCE-side gain at the very END of the chain
+    // (after bitcrusher + saturator), since AMY's "Synth Vol" is applied upstream
+    // inside the engine and can't be moved to the end.
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { id::outputGain, 1 }, "Output Gain",
+        NormalisableRange<float> { -60.0f, 12.0f, 0.1f }, 0.0f));
 
     // Built-in banks: Juno 0..127, DX7 128..255, piano 256, amyboard-default 257
     // (patch_commands[258] in AMY's patches.h). Keeping the range to loadable
@@ -132,6 +143,22 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echoTime,      1 }, "Echo Time",      NormalisableRange<float> { 1.0f, 700.0f, 0.0f, 0.5f }, 500.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echoFeedback,  1 }, "Echo Feedback",  NormalisableRange<float> { 0.0f, 0.95f }, 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echoTone,      1 }, "Echo Tone",      NormalisableRange<float> { 0.0f, 1.0f }, 0.0f));
+
+    // Retro bitcrusher (sample-rate + bit-depth reduction). Freq = the crushed
+    // sample rate in Hz (skewed so the low, gritty end is reachable); Bit = the
+    // amplitude resolution. Both default to "clean" (Freq high, 16 bit = bypass).
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { id::bcFreq, 1 }, "Freq",
+        NormalisableRange<float> { 200.0f, 48000.0f, 1.0f, 0.25f }, 48000.0f));
+    layout.add(std::make_unique<AudioParameterInt>(
+        ParameterID { id::bcBits, 1 }, "Bit", 2, 16, 16));
+
+    // Output WDF diode saturator (analog warmth). "Drive" = the diode push (THD)
+    // with built-in gain compensation, so level stays steady as you drive harder.
+    // 0 dB = the diode's character at unity; negative = cleaner, positive = hotter.
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { id::clipDrive, 1 }, "Drive",
+        NormalisableRange<float> { -24.0f, 24.0f, 0.1f }, 0.0f));
 
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::pitchBendRange, 1 }, "Pitch Bend Range", 1, 24, 2));
 

@@ -411,7 +411,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fmPanelR.setCellSize(86, 94);
 
     // --- global FX rack, top-to-bottom in AMY's actual processing order:
-    //     EQ -> Chorus -> Echo -> Reverb -> Volume -> (fixed) HPF ----------------
+    //     EQ -> Chorus -> Echo -> Reverb -> Synth Vol (all inside AMY), then the
+    //     host-side MASTER stage on the output buffer: bitcrusher (Freq, Bit) ->
+    //     WDF saturator (Drive) -> Out Gain. ("Synth Vol" is AMY's volume, applied
+    //     upstream — it can't move to the end, so Out Gain is the true final gain.)
     fxPanel.setCellSize(78, 84);
     fxPanel.addSection("EQ");
     fxPanel.addKnob(params::id::eqLow, "Low");
@@ -431,7 +434,11 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fxPanel.addKnob(params::id::reverbSize, "Size");
     fxPanel.addKnob(params::id::reverbDamping, "Damp");
     fxPanel.addSection("MASTER");
-    fxPanel.addKnob(params::id::masterVolume, "Volume");   // overall output scaler (0..10)
+    fxPanel.addKnob(params::id::bcFreq, "Freq");           // bitcrusher: downsample rate
+    fxPanel.addKnob(params::id::bcBits, "Bit");            // bitcrusher: bit depth
+    fxPanel.addKnob(params::id::clipDrive, "Drive");       // WDF diode saturator (analog warmth)
+    fxPanel.addKnob(params::id::masterVolume, "Synth Vol"); // AMY engine volume (upstream)
+    fxPanel.addKnob(params::id::outputGain, "Out Gain");   // true final gain (end of chain)
     addAndMakeVisible(fxPanel);
 
     // --- tabs -------------------------------------------------------------
@@ -635,8 +642,9 @@ void AmyPlugEditor::resized()
     userBox.setBounds(row2);
     r.removeFromTop(10);
 
-    // Tabs (left) + FX rack (right).
-    auto fx = r.removeFromRight(250);
+    // Tabs (left) + FX rack (right). The rack is wide enough for the 5-knob MASTER
+    // row (Freq, Bit, Drive, Synth Vol, Out Gain).
+    auto fx = r.removeFromRight(330);
     fxPanel.setBounds(fx);
     r.removeFromRight(10);
     tabs.setBounds(r);

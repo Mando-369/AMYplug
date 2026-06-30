@@ -52,6 +52,10 @@ void AmyPlugProcessor::cacheParamPointers()
     pBendRange   = state.getRawParameterValue(params::id::pitchBendRange);
     pPatch       = state.getRawParameterValue(params::id::patchA);
     pEngine      = state.getRawParameterValue(params::id::engine);
+    pClipDrive   = state.getRawParameterValue(params::id::clipDrive);
+    pBcFreq      = state.getRawParameterValue(params::id::bcFreq);
+    pBcBits      = state.getRawParameterValue(params::id::bcBits);
+    pOutputGain  = state.getRawParameterValue(params::id::outputGain);
 
     mVcfKbd.ptr    = state.getRawParameterValue(params::id::vcfKbd);
     mVcfEnv.ptr    = state.getRawParameterValue(params::id::vcfEnv);
@@ -113,6 +117,13 @@ void AmyPlugProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     software->prepare(sampleRate, samplesPerBlock);
     hardware->prepare(sampleRate, samplesPerBlock);
     router.prepare();
+    if (pBcFreq) crush.setFreqHz(pBcFreq->load());
+    if (pBcBits) crush.setBits(pBcBits->load());
+    crush.prepare(sampleRate);
+    if (pClipDrive) clip.setDriveDb(pClipDrive->load());
+    clip.setOutputDb(0.0f);          // ceiling at 0 dBFS (also a safety limiter)
+    clip.prepare(sampleRate);
+    outGainCurrent = pOutputGain ? juce::Decibels::decibelsToGain(pOutputGain->load()) : 1.0f;
     rebuildEngineFromModel();
 }
 
@@ -151,6 +162,27 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
 
     // Render (Software) or emit silence (Hardware).
     active->processBlock(buffer);
+
+    // Master output DSP — bitcrusher (retro grit) -> WDF diode saturator (analog
+    // warmth). The saturator's Drive (THD) carries its own gain compensation, so
+    // level stays steady. Software only (Hardware mode's buffer is silence; the
+    // board colours its own output).
+    if (activeKind == IAmyBackend::Kind::Software && buffer.getNumChannels() > 0)
+    {
+        if (pBcFreq)    crush.setFreqHz(pBcFreq->load(std::memory_order_relaxed));
+        if (pBcBits)    crush.setBits(pBcBits->load(std::memory_order_relaxed));
+        if (pClipDrive) clip.setDriveDb(pClipDrive->load(std::memory_order_relaxed));
+        float* chans[2] = { buffer.getWritePointer(0),
+                            buffer.getNumChannels() > 1 ? buffer.getWritePointer(1) : nullptr };
+        crush.process(chans, buffer.getNumChannels(), buffer.getNumSamples());
+        clip.process(chans, buffer.getNumChannels(), buffer.getNumSamples());
+
+        // Final output gain — the true end of the chain. Ramped per block so
+        // automation doesn't zipper.
+        const float target = pOutputGain ? juce::Decibels::decibelsToGain(pOutputGain->load(std::memory_order_relaxed)) : 1.0f;
+        buffer.applyGainRamp(0, buffer.getNumSamples(), outGainCurrent, target);
+        outGainCurrent = target;
+    }
 
     // Hardware mode: if routing through the host MIDI-out, merge queued messages.
     if (activeKind == IAmyBackend::Kind::Hardware)
@@ -226,6 +258,10 @@ void AmyPlugProcessor::syncModelFromParams()
     model.echoTime      = rd(params::id::echoTime,      500.0f);
     model.echoFeedback  = rd(params::id::echoFeedback,  0.0f);
     model.echoTone      = rd(params::id::echoTone,      0.0f);
+    model.clipDrive     = rd(params::id::clipDrive,     0.0f);
+    model.bcFreq        = rd(params::id::bcFreq,        48000.0f);
+    model.bcBits        = rd(params::id::bcBits,        16.0f);
+    model.outputGain    = rd(params::id::outputGain,    0.0f);
 
     // FM (DX7) engine params. The master amp envelope reuses s.ampAttack..ampRelease.
     auto& fm = s.fm;
@@ -330,27 +366,48 @@ void AmyPlugProcessor::streamAnalogParams()
     one(mLfoFreq,   "i1v1f%g,0");
     two(mLfoPitch,  "i1v2f,,,,,%g", "i1v3f,,,,,%g");
     two(mLfoPwm,    "i1v2d,,,,,%g", "i1v3d,,,,,%g");
-    // OSC A/B freq (idx0 = Hz at A4, keeps note tracking) + duty + level. Waves are
+    // OSC A/B freq (idx0 = Hz at A4, keeps note tracking) + duty. Waves are
     // structural (rebuild).
-    one(mOscAFreq, "i1v2f%g");  one(mOscADuty, "i1v2d%g");  one(mOscALevel, "i1v2a%g");
-    one(mOscBFreq, "i1v3f%g");  one(mOscBDuty, "i1v3d%g");  one(mOscBLevel, "i1v3a%g");
+    one(mOscAFreq, "i1v2f%g");  one(mOscADuty, "i1v2d%g");
+    one(mOscBFreq, "i1v3f%g");  one(mOscBDuty, "i1v3d%g");
 
-    // Envelopes — re-send the whole breakpoint set if any of its 4 changed.
-    auto env = [this] (char letter, Macro& a, Macro& d, Macro& s, Macro& r)
+    // OSC level writes the const AND eg0 coefs (a<L>,0,0,<L>,0,0) so the amp env
+    // keeps shaping it — must match emitAnalog. Send both before updating .last.
+    auto level = [this] (Macro& m, int osc)
+    {
+        if (m.ptr == nullptr) return;
+        const float v = m.ptr->load(std::memory_order_relaxed);
+        if (v != m.last)
+        {
+            m.last = v;
+            char b[64]; std::snprintf(b, sizeof b, "i1v%da%g,0,0,%g,0,0", osc, (double) v, (double) v);
+            active->streamWire(b, (int) std::strlen(b));
+        }
+    };
+    level(mOscALevel, 2);  level(mOscBLevel, 3);
+
+    // Envelopes — re-send the whole breakpoint set (to every target osc) if any of
+    // its 4 changed. The amp env (A) lives on the audio oscs 2/3 (so release shapes
+    // the note-off tail); the filter env (B) on osc 0. See emitAnalog.
+    auto env = [this] (std::initializer_list<int> oscs, char letter,
+                       Macro& a, Macro& d, Macro& s, Macro& r)
     {
         if (! (a.ptr && d.ptr && s.ptr && r.ptr)) return;
         const float av=a.ptr->load(), dv=d.ptr->load(), sv=s.ptr->load(), rv=r.ptr->load();
         if (av!=a.last || dv!=d.last || sv!=s.last || rv!=r.last)
         {
             a.last=av; d.last=dv; s.last=sv; r.last=rv;
-            char b[80]; std::snprintf(b, sizeof b, "i1v0%c%d,1,%d,%.3f,%d,0", letter,
-                (int) std::lround(av*1000.0f), (int) std::lround(dv*1000.0f), (double) sv,
-                (int) std::lround(rv*1000.0f));
-            active->streamWire(b, (int) std::strlen(b));
+            for (int osc : oscs)
+            {
+                char b[80]; std::snprintf(b, sizeof b, "i1v%d%c%d,1,%d,%.3f,%d,0", osc, letter,
+                    (int) std::lround(av*1000.0f), (int) std::lround(dv*1000.0f), (double) sv,
+                    (int) std::lround(rv*1000.0f));
+                active->streamWire(b, (int) std::strlen(b));
+            }
         }
     };
-    env('A', mAttack, mDecay, mSustain, mRelease);  // amp env (bp0)
-    env('B', mVcfA,   mVcfD,  mVcfS,    mVcfR);      // filter env (bp1)
+    env({ 2, 3 }, 'A', mAttack, mDecay, mSustain, mRelease);  // amp env -> audio oscs
+    env({ 0 },    'B', mVcfA,   mVcfD,  mVcfS,    mVcfR);      // filter env -> osc 0
 
     streamGlobalFx();   // master volume + reverb/chorus/echo/EQ
 }
@@ -537,6 +594,9 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     setP(params::id::chorusRate, preset.chorusRate);   setP(params::id::chorusDepth, preset.chorusDepth);
     setP(params::id::echoTime, preset.echoTime);       setP(params::id::echoFeedback, preset.echoFeedback);
     setP(params::id::echoTone, preset.echoTone);
+    setP(params::id::clipDrive, preset.clipDrive);
+    setP(params::id::bcFreq, preset.bcFreq);   setP(params::id::bcBits, preset.bcBits);
+    setP(params::id::outputGain, preset.outputGain);
 
     // FM (DX7) controls.
     const auto& fm = s.fm;

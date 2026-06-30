@@ -3,6 +3,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "engine/IAmyBackend.h"
+#include "dsp/BitCrusher.h"
+#include "dsp/WdfClipper.h"
 #include "midi/NoteRouter.h"
 #include "state/PatchModel.h"
 #include "state/PatchLibrary.h"
@@ -85,6 +87,20 @@ private:
     IAmyBackend::Kind activeKind = IAmyBackend::Kind::Software;
 
     std::atomic<bool> panicRequested { false };
+
+    // Master output DSP — runs on the rendered buffer after the backend, before
+    // the audio leaves the plugin: bitcrusher (retro grit) -> WDF diode saturator
+    // (analog warmth). Both stream from params; the clipper's gain compensation is
+    // internal. Software mode only (Hardware's buffer is silence).
+    BitCrusher        crush;
+    WdfClipper        clip;
+    std::atomic<float>* pBcFreq    = nullptr;
+    std::atomic<float>* pBcBits    = nullptr;
+    std::atomic<float>* pClipDrive = nullptr;
+    // True final output gain (JUCE-side), after the bitcrusher + saturator. AMY's
+    // "Synth Vol" (master_volume -> V) is applied upstream inside the engine.
+    std::atomic<float>* pOutputGain = nullptr;
+    float               outGainCurrent = 1.0f;   // ramp origin (audio thread only)
 
     // Cached APVTS atomics for RT-safe macro streaming from processBlock. The
     // last* values are touched only on the audio thread (change detection).

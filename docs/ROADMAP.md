@@ -53,6 +53,34 @@ chord → stop transport → instant silence; save/reload project → identical 
 automate cutoff → smooth, recorded, recalled.
 
 ## M3 — Patch system & editor v1
+**Bitcrusher ✅ (2026-06-30):** a retro sample-rate + bit-depth reducer on the output
+(`src/dsp/BitCrusher.h`, ported from the FAUST_TX81Z effect — Faust `ba.bitcrusher` by
+J.O. Smith III + `ba.downSample` by R. Michon, fused into one S&H). **Freq** = the
+crushed sample rate in Hz (`bc_freq`, S&H every `int(SR/freq)` samples); **Bit** = the
+amplitude resolution (`bc_bits`, 2..16, quantize `round(x·(2^bits−1))/(2^bits−1)`).
+Both default to clean (16 bit + full rate = true bypass). Runs first in the host-side
+MASTER stage; recalled via state + PatchModel; unit-tested (bypass, level-set,
+sample-hold, silence); auval + pluginval strictness 7 pass.
+
+**Output gain split ✅ (2026-06-30):** AMY's volume (`V`) is applied *inside* the engine,
+so it can't sit at the end of the chain — the old "Master Volume" knob is now **Synth
+Vol** (`master_volume`, unchanged ID/recall), and a true JUCE-side **Out Gain**
+(`output_gain`, dB, block-ramped) was added at the very end, after the bitcrusher +
+saturator. MASTER row reads Freq · Bit · Drive · Synth Vol · Out Gain; FX rack widened
+to 330 px to fit. Recalled via state + PatchModel.
+
+**Output saturation ✅ (2026-06-30):** an analog-warmth stage on the plugin output,
+ported from the Kalos mastering plugin — a Wave Digital Filter antiparallel-diode
+(LED) clipper (`src/dsp/WdfClipper.h`, a self-contained, RT-safe transcription of
+Kalos's Faust `KalosSoftClipper.dsp`; diode WDF model by Dirk Roosenburg). A single
+**Drive** knob (Kalos's "THD", `clip_drive`, ±24 dB) pushes the signal into the diodes
+with built-in **gain compensation** (pre-multiply / post-divide) so the level stays
+steady as you drive harder; 5 Hz DC-block + hard ceiling at 0 dBFS (doubles as a
+safety limiter). Runs in `processBlock` after AMY's chain (Software mode only); Drive
+sits in the FX rack's MASTER section. Recalled via state + PatchModel (host-side DSP,
+not an AMY wire param). Unit-tested (silence, ceiling bound, saturation-vs-crest,
+compensation level-steadiness); auval + pluginval strictness 7 pass.
+
 **Effects deepened ✅ (2026-06-30):** the FX rack exposes AMY's full per-effect
 parameter lists, not just the mix level — Reverb Size/Damping (`h`), Chorus
 Rate/Depth (`k`), Echo Time/Feedback/Tone (`M`); buffer-size params are pinned to
@@ -71,6 +99,13 @@ algorithm diagram + algorithm selector + feedback knob. Window resized to 1280×
   tails were clamped to ~50–250 ms regardless of the Release knobs). It now has a
   constant velocity-sensitive amp (`a1,0,1,0,0,0`, matching `fm.py`) and the
   per-operator A/D/S/R own the voice's release. Regression test in `EngineRenderTests`.
+- **Analog release fix ✅ (2026-06-30).** Same class of bug: the amp env sat on the
+  silent VCA osc0, but AMY frees the sound-producing oscs on note-off the instant
+  they have no release env of their own — so the chained audio was cut dead before
+  osc0's VCA could fade it (release knob did nothing). The amp env now lives on the
+  AUDIO oscs (osc2/osc3, `a<level>,0,0,<level>,0,0` + `A<adsr>`); osc0 keeps only the
+  filter env. Both `emitAnalog` and `streamAnalogParams` updated; regression test
+  (long release rings where short is silent) in `EngineRenderTests`.
 - **Master Volume knob** added to the FX rack (the AMY `0.1*volume` scaler), and
   master volume + reverb/chorus/echo/EQ now stream live in **all** engines via a
   shared `streamGlobalFx()` (previously inconsistent per engine — Analog didn't

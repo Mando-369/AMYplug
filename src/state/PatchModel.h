@@ -107,6 +107,13 @@ public:
     float reverbSize = 0.85f, reverbDamping = 0.5f;
     float chorusRate = 0.5f,  chorusDepth = 0.5f;
     float echoTime = 500.0f,  echoFeedback = 0.0f, echoTone = 0.0f;
+    // Output WDF diode saturator drive (THD), in dB. Host-side DSP (not an AMY
+    // wire param), so it is recalled via state but not part of toWireMessages().
+    float clipDrive = 0.0f;
+    // Retro bitcrusher (host-side DSP): downsample target in Hz + bit depth.
+    float bcFreq = 48000.0f, bcBits = 16.0f;
+    // Final JUCE-side output gain (dB), applied at the very end of the chain.
+    float outputGain = 0.0f;
 
     // --- Rebuild + persistence --------------------------------------------
     // Ordered wire messages that recreate this exact state in a fresh AMY.

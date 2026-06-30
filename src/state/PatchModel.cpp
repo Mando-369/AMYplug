@@ -36,20 +36,30 @@ std::string adsrToBp0(const PatchModel::Synth& s)
 // Build the editable analog (Juno) voice osc-by-osc — the "amyboard default"
 // template: osc0 VCF/VCA, osc1 LFO (note-coef 0 so it stays low-freq), osc2/osc3
 // OSC A/OSC B (note-following), chained osc0<-osc2<-osc3, LFO as mod source (L1).
+//
+// The amp ENVELOPE lives on the AUDIO oscs (osc2/osc3), NOT on the silent osc0
+// "VCA". AMY frees the sound-producing oscs on note-off the instant they have no
+// release envelope of their own, so an amp env parked on osc0 cuts the note dead
+// (the chained audio is already gone before osc0's VCA can fade it). Giving the
+// audio oscs the amp env (a<level>,0,0,<level>,0,0 + A<adsr>, the same const+eg0
+// idiom the FM operators use) makes the release actually shape the tail. osc0
+// keeps only the FILTER env (B). Same lesson as the DX7 release fix.
 void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
 {
     const auto& a = s.analog;
     const juce::String pre = "i" + juce::String(s.channel);
     auto F = [] (float v) { return juce::String(v, 4); };
+    const juce::String ampEnv = adsrBp(a.ampA, a.ampD, a.ampS, a.ampR);
 
     out.emplace_back((pre + "iv" + juce::String(juce::jlimit(1, 16, s.numVoices)) + "in4Z").toStdString());
 
-    // osc 0 — filter + VCA. F = freq,kbd(idx1),,,env(idx4),lfo(idx5); A=amp env, B=filter env.
+    // osc 0 — filter only (+VCA passthrough). F = freq,kbd(idx1),,,env(idx4),lfo(idx5);
+    // constant amp + velocity (a const,note,vel,...); B = filter env. NO amp env here.
     out.emplace_back((pre + "v0w20"
         + "G" + juce::String(a.filterType)
         + "F" + F(a.vcfFreq) + "," + F(a.vcfKbd) + ",,," + F(a.vcfEnv) + "," + F(a.lfoToFilter)
         + "R" + F(a.vcfReso)
-        + "A" + adsrBp(a.ampA, a.ampD, a.ampS, a.ampR)
+        + "a1,0,1,0,0,0"
         + "B" + adsrBp(a.vcfA, a.vcfD, a.vcfS, a.vcfR)
         + "c2L1Z").toStdString());
 
@@ -59,17 +69,20 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
     // note-on), and Sync (lock rate to host tempo). See ROADMAP M5.
     out.emplace_back((pre + "v1w" + juce::String(a.lfoWave) + "f" + F(a.lfoFreq) + ",0Z").toStdString());
 
-    // osc 2 — OSC A. freq = tune(idx0, octaves), note tracking (idx1 default 1),
-    // lfoPitch(idx5); duty = const,,,,,lfoPwm(idx5).
+    // osc 2 — OSC A. amp = level via const+eg0 coef shaped by its own amp env (A);
+    // freq = tune(idx0), note tracking (idx1 default 1), lfoPitch(idx5); duty =
+    // const,,,,,lfoPwm(idx5).
     out.emplace_back((pre + "v2w" + juce::String(a.aWave)
-        + "a" + F(a.aLevel)
+        + "a" + F(a.aLevel) + ",0,0," + F(a.aLevel) + ",0,0"
+        + "A" + ampEnv
         + "d" + F(a.aDuty) + ",,,,," + F(a.lfoToPwm)
         + "f" + F(a.aFreq) + ",,,,," + F(a.lfoToPitch)
         + "c3L1Z").toStdString());
 
     // osc 3 — OSC B.
     out.emplace_back((pre + "v3w" + juce::String(a.bWave)
-        + "a" + F(a.bLevel)
+        + "a" + F(a.bLevel) + ",0,0," + F(a.bLevel) + ",0,0"
+        + "A" + ampEnv
         + "d" + F(a.bDuty) + ",,,,," + F(a.lfoToPwm)
         + "f" + F(a.bFreq) + ",,,,," + F(a.lfoToPitch)
         + "L1Z").toStdString());
@@ -201,6 +214,10 @@ juce::ValueTree PatchModel::toValueTree() const
     root.setProperty("echoTime", echoTime, nullptr);
     root.setProperty("echoFeedback", echoFeedback, nullptr);
     root.setProperty("echoTone", echoTone, nullptr);
+    root.setProperty("clipDrive", clipDrive, nullptr);
+    root.setProperty("bcFreq", bcFreq, nullptr);
+    root.setProperty("bcBits", bcBits, nullptr);
+    root.setProperty("outputGain", outputGain, nullptr);
 
     for (const auto& s : synths)
     {
@@ -267,6 +284,10 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
     echoTime      = (float) tree.getProperty("echoTime",      500.0);
     echoFeedback  = (float) tree.getProperty("echoFeedback",  0.0);
     echoTone      = (float) tree.getProperty("echoTone",      0.0);
+    clipDrive     = (float) tree.getProperty("clipDrive",     0.0);
+    bcFreq        = (float) tree.getProperty("bcFreq",        48000.0);
+    bcBits        = (float) tree.getProperty("bcBits",        16.0);
+    outputGain    = (float) tree.getProperty("outputGain",    0.0);
 
     synths.clear();
     for (int i = 0; i < tree.getNumChildren(); ++i)

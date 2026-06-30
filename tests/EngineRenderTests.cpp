@@ -177,6 +177,50 @@ TEST_CASE("FM operator release controls the note-off tail (regression)", "[engin
     REQUIRE(longTail  > 2e-3);                      // long release: still ringing (~40% of on-level)
 }
 
+TEST_CASE("Analog amp release controls the note-off tail (regression)", "[engine][analog]")
+{
+    // The amp env must live on the AUDIO oscs (osc2/osc3), not the silent VCA osc0,
+    // or note-off cuts the voice dead regardless of the release knob. Build the voice
+    // the way PatchModel::emitAnalog does and prove a long release still rings where
+    // a short release has already gone silent.
+    auto build = [] (const char* relMs)
+    {
+        amy_config_t c = amy_default_config();
+        c.audio = AMY_AUDIO_IS_NONE; c.midi = AMY_MIDI_IS_NONE;
+        c.platform.multicore = 0; c.platform.multithread = 0;
+        amy_start(c);
+        amy_add_message((char*) "i1iv1in4Z");
+        // osc0 filter-only (constant amp + filter env), osc1 LFO, osc2/3 audio with
+        // the amp env (const+eg0 coef shaped by bp0).
+        amy_add_message((char*) "i1v0w20G1F2500,0,,,0,0R0.7000a1,0,1,0,0,0B5,1,600,0.300,400,0c2L1Z");
+        amy_add_message((char*) "i1v1w4f4.0000,0Z");
+        char b[200];
+        std::snprintf(b, sizeof b, "i1v2w3a0.7000,0,0,0.7000,0,0A5,1,100,0.700,%s,0d0.5f440c3L1Z", relMs);
+        amy_add_message(b);
+        std::snprintf(b, sizeof b, "i1v3w1a0.5000,0,0,0.5000,0,0A5,1,100,0.700,%s,0d0.5f440L1Z", relMs);
+        amy_add_message(b);
+        amy_add_message((char*) "i1n60l1Z");
+    };
+
+    build("50");                                   // short release
+    renderStats(60);
+    amy_add_message((char*) "i1n60l0Z");
+    renderStats(40);                               // ~0.23 s after note-off
+    const double shortTail = renderStats(20).rms;
+    amy_stop();
+
+    build("3000");                                 // long release
+    renderStats(60);
+    amy_add_message((char*) "i1n60l0Z");
+    renderStats(40);                               // same point after note-off
+    const double longTail = renderStats(20).rms;
+    amy_stop();
+
+    INFO("shortTail=" << shortTail << "  longTail=" << longTail);
+    REQUIRE(shortTail < 1e-3);                      // short release: already silent
+    REQUIRE(longTail  > 2e-3);                      // long release: still ringing
+}
+
 TEST_CASE("RESET_ALL_NOTES silences a held note (panic / transport-stop path)", "[engine]")
 {
     amy_config_t c = amy_default_config();

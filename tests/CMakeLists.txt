@@ -11,6 +11,8 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(amyplug_tests
     WireMessageTests.cpp
+    WdfClipperTests.cpp
+    BitCrusherTests.cpp
     ${CMAKE_SOURCE_DIR}/src/engine/AmyWire.cpp)
 
 target_include_directories(amyplug_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
