@@ -38,6 +38,8 @@ public:
         int   aWave = 3,   bWave = 1;      // amy::Wave (SawUp, Pulse)
         float aFreq = 440.0f, bFreq = 440.0f; // Hz at A4 (note 69); the osc tracks
                                              // the keyboard from there. 440 = normal.
+        int   aCoarse = 0, bCoarse = 0;    // pitch offset, semitones (±24)
+        int   aFine = 0,   bFine = 0;      // pitch offset, cents (±100)
         float aDuty = 0.5f, bDuty = 0.5f;
         float aLevel = 0.7f, bLevel = 0.5f;
         // LFO (osc 1) — fixed low frequency (note-coef 0), modulates the others.
@@ -114,6 +116,13 @@ public:
     float bcFreq = 48000.0f, bcBits = 16.0f;
     // Final JUCE-side output gain (dB), applied at the very end of the chain.
     float outputGain = 0.0f;
+    // Performance / voicing (all engines). glide = AMY portamento (ms, emitted as
+    // i<ch>m). voiceMode (0 Poly/1 Mono/2 Legato) + unison are realised in NoteRouter
+    // (not AMY wire), but recalled here so user patches capture them.
+    float glide = 0.0f;
+    int   voiceMode = 0;
+    int   unisonVoices = 1;
+    float unisonDetune = 12.0f;   // cents
 
     // --- Rebuild + persistence --------------------------------------------
     // Ordered wire messages that recreate this exact state in a fresh AMY.

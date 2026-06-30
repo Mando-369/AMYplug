@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR MIT
 #include "PatchModel.h"
 #include "../engine/AmyWire.h"
+#include <cmath>
 
 namespace amyplug
 {
@@ -50,6 +51,10 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
     const juce::String pre = "i" + juce::String(s.channel);
     auto F = [] (float v) { return juce::String(v, 4); };
     const juce::String ampEnv = adsrBp(a.ampA, a.ampD, a.ampS, a.ampR);
+    // Fold Coarse (semitones) + Fine (cents) into the osc freq const: a pitch offset
+    // of (coarse + fine/100) semitones scales the base frequency by 2^(semis/12).
+    auto tuned = [] (float baseHz, int coarse, int fine)
+    { return baseHz * std::pow(2.0f, ((float) coarse + (float) fine / 100.0f) / 12.0f); };
 
     out.emplace_back((pre + "iv" + juce::String(juce::jlimit(1, 16, s.numVoices)) + "in4Z").toStdString());
 
@@ -76,7 +81,7 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
         + "a" + F(a.aLevel) + ",0,0," + F(a.aLevel) + ",0,0"
         + "A" + ampEnv
         + "d" + F(a.aDuty) + ",,,,," + F(a.lfoToPwm)
-        + "f" + F(a.aFreq) + ",,,,," + F(a.lfoToPitch)
+        + "f" + F(tuned(a.aFreq, a.aCoarse, a.aFine)) + ",,,,," + F(a.lfoToPitch)
         + "c3L1Z").toStdString());
 
     // osc 3 — OSC B.
@@ -84,7 +89,7 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
         + "a" + F(a.bLevel) + ",0,0," + F(a.bLevel) + ",0,0"
         + "A" + ampEnv
         + "d" + F(a.bDuty) + ",,,,," + F(a.lfoToPwm)
-        + "f" + F(a.bFreq) + ",,,,," + F(a.lfoToPitch)
+        + "f" + F(tuned(a.bFreq, a.bCoarse, a.bFine)) + ",,,,," + F(a.lfoToPitch)
         + "L1Z").toStdString());
 }
 
@@ -183,6 +188,10 @@ std::vector<std::string> PatchModel::toWireMessages() const
     //    expose are pinned to AMY's defaults (xover 3000, chorus maxdelay 320,
     //    echo maxdelay 743).
     auto F = [] (float v) { return juce::String(v, 4); };
+    // Portamento (glide) — AMY-native, broadcast to every synth (all engines). i<ch>m<ms>.
+    for (const auto& s : synths)
+    { WireBuilder w; w.synth(s.channel).raw(("m" + juce::String(juce::roundToInt(glide))).toStdString().c_str());
+      out.emplace_back(w.str()); }
     { WireBuilder w; w.volume(masterVolume); out.emplace_back(w.str()); }
     { WireBuilder w; w.raw("h").raw((F(reverb) + "," + F(reverbSize) + "," + F(reverbDamping) + ",3000").toStdString().c_str());
       out.emplace_back(w.str()); }
@@ -218,6 +227,10 @@ juce::ValueTree PatchModel::toValueTree() const
     root.setProperty("bcFreq", bcFreq, nullptr);
     root.setProperty("bcBits", bcBits, nullptr);
     root.setProperty("outputGain", outputGain, nullptr);
+    root.setProperty("glide", glide, nullptr);
+    root.setProperty("voiceMode", voiceMode, nullptr);
+    root.setProperty("unisonVoices", unisonVoices, nullptr);
+    root.setProperty("unisonDetune", unisonDetune, nullptr);
 
     for (const auto& s : synths)
     {
@@ -236,6 +249,8 @@ juce::ValueTree PatchModel::toValueTree() const
         for (auto p : { std::pair<const char*, float>
             { "a_aWave", (float) a.aWave }, { "a_bWave", (float) a.bWave },
             { "a_aFreq", a.aFreq }, { "a_bFreq", a.bFreq },
+            { "a_aCoarse", (float) a.aCoarse }, { "a_bCoarse", (float) a.bCoarse },
+            { "a_aFine", (float) a.aFine }, { "a_bFine", (float) a.bFine },
             { "a_aDuty", a.aDuty }, { "a_bDuty", a.bDuty }, { "a_aLevel", a.aLevel }, { "a_bLevel", a.bLevel },
             { "a_lfoWave", (float) a.lfoWave }, { "a_lfoFreq", a.lfoFreq },
             { "a_lfoToPitch", a.lfoToPitch }, { "a_lfoToPwm", a.lfoToPwm }, { "a_lfoToFilter", a.lfoToFilter },
@@ -288,6 +303,10 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
     bcFreq        = (float) tree.getProperty("bcFreq",        48000.0);
     bcBits        = (float) tree.getProperty("bcBits",        16.0);
     outputGain    = (float) tree.getProperty("outputGain",    0.0);
+    glide         = (float) tree.getProperty("glide",         0.0);
+    voiceMode     = (int)   tree.getProperty("voiceMode",     0);
+    unisonVoices  = (int)   tree.getProperty("unisonVoices",  1);
+    unisonDetune  = (float) tree.getProperty("unisonDetune",  12.0);
 
     synths.clear();
     for (int i = 0; i < tree.getNumChildren(); ++i)
@@ -308,6 +327,8 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
         auto& a = s.analog;
         a.aWave = (int) sv.getProperty("a_aWave", a.aWave);   a.bWave = (int) sv.getProperty("a_bWave", a.bWave);
         a.aFreq = (float) sv.getProperty("a_aFreq", a.aFreq); a.bFreq = (float) sv.getProperty("a_bFreq", a.bFreq);
+        a.aCoarse = (int) sv.getProperty("a_aCoarse", a.aCoarse); a.bCoarse = (int) sv.getProperty("a_bCoarse", a.bCoarse);
+        a.aFine = (int) sv.getProperty("a_aFine", a.aFine); a.bFine = (int) sv.getProperty("a_bFine", a.bFine);
         a.aDuty = (float) sv.getProperty("a_aDuty", a.aDuty); a.bDuty = (float) sv.getProperty("a_bDuty", a.bDuty);
         a.aLevel = (float) sv.getProperty("a_aLevel", a.aLevel); a.bLevel = (float) sv.getProperty("a_bLevel", a.bLevel);
         a.lfoWave = (int) sv.getProperty("a_lfoWave", a.lfoWave); a.lfoFreq = (float) sv.getProperty("a_lfoFreq", a.lfoFreq);

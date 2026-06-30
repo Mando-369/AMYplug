@@ -33,7 +33,8 @@ AmyPlugProcessor::AmyPlugProcessor()
     // oscillator that isn't set up yet). Continuous params stream live.
     for (auto* id : { params::id::engine, params::id::oscAWave, params::id::oscBWave,
                       params::id::lfoWave, params::id::vcfType,
-                      params::id::fmAlgorithm })   // FM: routing change → rebuild
+                      params::id::fmAlgorithm,    // FM: routing change → rebuild
+                      params::id::voiceMode })    // Mono/Legato rebuild the synth to 1 voice
         state.addParameterListener(id, this);
 }
 
@@ -52,6 +53,7 @@ void AmyPlugProcessor::cacheParamPointers()
     pBendRange   = state.getRawParameterValue(params::id::pitchBendRange);
     pPatch       = state.getRawParameterValue(params::id::patchA);
     pEngine      = state.getRawParameterValue(params::id::engine);
+    pVoiceMode   = state.getRawParameterValue(params::id::voiceMode);
     pClipDrive   = state.getRawParameterValue(params::id::clipDrive);
     pBcFreq      = state.getRawParameterValue(params::id::bcFreq);
     pBcBits      = state.getRawParameterValue(params::id::bcBits);
@@ -69,6 +71,11 @@ void AmyPlugProcessor::cacheParamPointers()
     mOscBLevel.ptr = state.getRawParameterValue(params::id::oscBLevel);
     mOscAFreq.ptr  = state.getRawParameterValue(params::id::oscAFreq);
     mOscBFreq.ptr  = state.getRawParameterValue(params::id::oscBFreq);
+    mOscACoarse.ptr = state.getRawParameterValue(params::id::oscACoarse);
+    mOscAFine.ptr   = state.getRawParameterValue(params::id::oscAFine);
+    mOscBCoarse.ptr = state.getRawParameterValue(params::id::oscBCoarse);
+    mOscBFine.ptr   = state.getRawParameterValue(params::id::oscBFine);
+    mGlide.ptr      = state.getRawParameterValue(params::id::glide);
     mVcfA.ptr      = state.getRawParameterValue(params::id::vcfAttack);
     mVcfD.ptr      = state.getRawParameterValue(params::id::vcfDecay);
     mVcfS.ptr      = state.getRawParameterValue(params::id::vcfSustain);
@@ -124,6 +131,8 @@ void AmyPlugProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     clip.setOutputDb(0.0f);          // ceiling at 0 dBFS (also a safety limiter)
     clip.prepare(sampleRate);
     outGainCurrent = pOutputGain ? juce::Decibels::decibelsToGain(pOutputGain->load()) : 1.0f;
+    const double blockSec = (sampleRate > 0.0 ? (double) samplesPerBlock / sampleRate : 0.01);
+    fxSmoothCoef = (float) juce::jlimit(0.02, 1.0, 1.0 - std::exp(-blockSec / 0.025));   // ~25 ms
     rebuildEngineFromModel();
 }
 
@@ -155,6 +164,7 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     // Keep the pitch-bend range current, then translate incoming MIDI into backend
     // note/CC events (deterministic offs).
     if (pBendRange != nullptr) router.setPitchBendRangeSemitones(pBendRange->load());
+    if (pVoiceMode != nullptr) router.setVoiceMode((int) std::lround(pVoiceMode->load()));
     router.process(midi, *active);
 
     // Stream any changed automatable macros to AMY (RT-safe, no allocation).
@@ -216,6 +226,9 @@ void AmyPlugProcessor::syncModelFromParams()
     auto& s = model.synths[0];                       // M2: single synth (channel 1)
     if (auto* p = state.getRawParameterValue(params::id::patchA))    s.patchNumber = (int) p->load();
     if (auto* p = state.getRawParameterValue(params::id::numVoices)) s.numVoices   = (int) p->load();
+    // Mono/Legato are monophonic: rebuild the synth to a single voice so AMY steals
+    // it on every new note (otherwise a held + new note would both sound).
+    if (pVoiceMode && (int) std::lround(pVoiceMode->load()) != 0) s.numVoices = 1;
     if (mCutoff.ptr)  s.filterCutoff   = mCutoff.ptr->load();
     if (mReso.ptr)    s.filterReso     = mReso.ptr->load();
     if (mAttack.ptr)  s.ampAttack      = mAttack.ptr->load();
@@ -237,6 +250,8 @@ void AmyPlugProcessor::syncModelFromParams()
         if (auto* p = state.getRawParameterValue(id)) return p->load(); return def; };
     a.aWave = (int) rd(params::id::oscAWave, 3);  a.bWave = (int) rd(params::id::oscBWave, 1);
     a.aFreq = rd(params::id::oscAFreq, 440.0f);  a.bFreq = rd(params::id::oscBFreq, 440.0f);
+    a.aCoarse = (int) rd(params::id::oscACoarse, 0); a.bCoarse = (int) rd(params::id::oscBCoarse, 0);
+    a.aFine   = (int) rd(params::id::oscAFine, 0);   a.bFine   = (int) rd(params::id::oscBFine, 0);
     a.vcfFreq = s.filterCutoff; a.vcfReso = s.filterReso;     // reused params
     a.aDuty = rd(params::id::oscADuty, 0.5f);  a.bDuty = rd(params::id::oscBDuty, 0.5f);
     a.aLevel = rd(params::id::oscALevel, 0.7f); a.bLevel = rd(params::id::oscBLevel, 0.5f);
@@ -262,6 +277,10 @@ void AmyPlugProcessor::syncModelFromParams()
     model.bcFreq        = rd(params::id::bcFreq,        48000.0f);
     model.bcBits        = rd(params::id::bcBits,        16.0f);
     model.outputGain    = rd(params::id::outputGain,    0.0f);
+    model.glide         = rd(params::id::glide,         0.0f);
+    model.voiceMode     = (int) rd(params::id::voiceMode,    0.0f);
+    model.unisonVoices  = (int) rd(params::id::unisonVoices, 1.0f);
+    model.unisonDetune  = rd(params::id::unisonDetune,  12.0f);
 
     // FM (DX7) engine params. The master amp envelope reuses s.ampAttack..ampRelease.
     auto& fm = s.fm;
@@ -366,10 +385,23 @@ void AmyPlugProcessor::streamAnalogParams()
     one(mLfoFreq,   "i1v1f%g,0");
     two(mLfoPitch,  "i1v2f,,,,,%g", "i1v3f,,,,,%g");
     two(mLfoPwm,    "i1v2d,,,,,%g", "i1v3d,,,,,%g");
-    // OSC A/B freq (idx0 = Hz at A4, keeps note tracking) + duty. Waves are
-    // structural (rebuild).
-    one(mOscAFreq, "i1v2f%g");  one(mOscADuty, "i1v2d%g");
-    one(mOscBFreq, "i1v3f%g");  one(mOscBDuty, "i1v3d%g");
+    // OSC A/B freq (idx0 = Hz at A4, keeps note tracking) + duty. The base Freq plus
+    // Coarse (semitones) + Fine (cents) fold into one tuned constant; re-send when any
+    // of the three changes. Waves are structural (rebuild).
+    auto tunedFreq = [this] (Macro& f, Macro& coarse, Macro& fine, const char* fmt)
+    {
+        if (! (f.ptr && coarse.ptr && fine.ptr)) return;
+        const float fv=f.ptr->load(), cv=coarse.ptr->load(), nv=fine.ptr->load();
+        if (fv!=f.last || cv!=coarse.last || nv!=fine.last)
+        {
+            f.last=fv; coarse.last=cv; fine.last=nv;
+            const float hz = fv * std::pow(2.0f, (cv + nv / 100.0f) / 12.0f);
+            char b[48]; std::snprintf(b, sizeof b, fmt, (double) hz);
+            active->streamWire(b, (int) std::strlen(b));
+        }
+    };
+    tunedFreq(mOscAFreq, mOscACoarse, mOscAFine, "i1v2f%g");  one(mOscADuty, "i1v2d%g");
+    tunedFreq(mOscBFreq, mOscBCoarse, mOscBFine, "i1v3f%g");  one(mOscBDuty, "i1v3d%g");
 
     // OSC level writes the const AND eg0 coefs (a<L>,0,0,<L>,0,0) so the amp env
     // keeps shaping it — must match emitAnalog. Send both before updating .last.
@@ -479,15 +511,33 @@ void AmyPlugProcessor::streamGlobalFx()
                            active->streamWire(b, (int) std::strlen(b)); }
     };
     one(mVolume, "V%g");
+    one(mGlide, "i1m%g");   // portamento (ms) broadcast to synth 1 — all engines
 
     // Each effect re-sends its full AMY parameter list when any of its params change.
     // Buffer-size params we don't expose are pinned to AMY's defaults.
+    //
+    // Each member is SMOOTHED toward its target (one-pole, ~25 ms) instead of
+    // snapping: a fast Echo Time move re-lengths the delay line and a fast EQ move
+    // recomputes the biquad coefficients, both of which crackle on an abrupt jump.
+    // Gliding the streamed value spreads the change into small per-block steps. We
+    // keep re-sending the whole list until every member has settled on its target.
     auto group = [this] (std::initializer_list<Macro*> ms, auto build)
     {
-        bool changed = false;
-        for (auto* m : ms) if (m->ptr && m->ptr->load(std::memory_order_relaxed) != m->last) changed = true;
-        if (! changed) return;
-        for (auto* m : ms) if (m->ptr) m->last = m->ptr->load(std::memory_order_relaxed);
+        bool moving = false;
+        for (auto* m : ms)
+        {
+            if (m->ptr == nullptr) continue;
+            const float target = m->ptr->load(std::memory_order_relaxed);
+            if (std::isnan(m->last)) { m->last = target; moving = true; continue; } // first call: send once
+            const float eps = 1.0e-5f * (1.0f + std::fabs(target));
+            if (std::fabs(target - m->last) > eps)
+            {
+                m->last += (target - m->last) * fxSmoothCoef;
+                if (std::fabs(target - m->last) <= eps) m->last = target;           // settle exactly
+                moving = true;
+            }
+        }
+        if (! moving) return;
         char b[80]; build(b);
         active->streamWire(b, (int) std::strlen(b));
     };
@@ -579,6 +629,8 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     const auto& a = s.analog;
     setP(params::id::oscAWave, (float) a.aWave);   setP(params::id::oscBWave, (float) a.bWave);
     setP(params::id::oscAFreq, a.aFreq);           setP(params::id::oscBFreq, a.bFreq);
+    setP(params::id::oscACoarse, (float) a.aCoarse); setP(params::id::oscBCoarse, (float) a.bCoarse);
+    setP(params::id::oscAFine, (float) a.aFine);     setP(params::id::oscBFine, (float) a.bFine);
     setP(params::id::oscADuty, a.aDuty);           setP(params::id::oscBDuty, a.bDuty);
     setP(params::id::oscALevel, a.aLevel);         setP(params::id::oscBLevel, a.bLevel);
     setP(params::id::lfoWave, (float) a.lfoWave);  setP(params::id::lfoFreq, a.lfoFreq);
@@ -597,6 +649,10 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     setP(params::id::clipDrive, preset.clipDrive);
     setP(params::id::bcFreq, preset.bcFreq);   setP(params::id::bcBits, preset.bcBits);
     setP(params::id::outputGain, preset.outputGain);
+    setP(params::id::glide, preset.glide);
+    setP(params::id::voiceMode, (float) preset.voiceMode);
+    setP(params::id::unisonVoices, (float) preset.unisonVoices);
+    setP(params::id::unisonDetune, preset.unisonDetune);
 
     // FM (DX7) controls.
     const auto& fm = s.fm;

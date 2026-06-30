@@ -27,6 +27,8 @@ public:
     static constexpr int kNumChannels = 16;
     static constexpr int kNumNotes    = 128;
 
+    NoteRouter() { sounding.fill(-1); }   // -1 = nothing sounding (0 is a valid note)
+
     void prepare() { allNotesOff(nullptr); }
 
     // Process one block of incoming MIDI, dispatching to `backend`.
@@ -47,11 +49,21 @@ public:
         bendOctaveScale = juce::jlimit(1.0f, 24.0f, semitones) / 12.0f;
     }
 
+    // 0 = Poly, 1 = Mono (retrigger), 2 = Legato (glide, no retrigger). In Mono/
+    // Legato only the most-recent held note sounds (last-note priority); releasing
+    // it resumes the next-newest held note. (The synth is rebuilt to 1 voice so AMY
+    // is truly monophonic — see AmyPlugProcessor::syncModelFromParams.)
+    void setVoiceMode(int mode) { voiceMode = juce::jlimit(0, 2, mode); }
+
     bool anyActive() const { return activeCount > 0; }
 
 private:
     void noteOn (int ch, int note, float vel, IAmyBackend& b);
     void noteOff(int ch, int note, IAmyBackend& b);
+    void monoOn (int ch, int note, float vel, IAmyBackend& b);
+    void monoOff(int ch, int note, IAmyBackend& b);
+    void monoSound(int ch, int note, float vel, IAmyBackend& b);   // make `note` the sounding one
+    void stackRemove(int ch, int note);
 
     // active[ch][note] == is this note currently sounding?
     std::array<std::bitset<kNumNotes>, kNumChannels> active {};
@@ -60,5 +72,12 @@ private:
     int   activeCount = 0;
     bool  wasPlaying  = false;
     float bendOctaveScale = 2.0f / 12.0f;   // ±2 semitones default
+
+    // Mono/Legato note-priority state (per channel).
+    int voiceMode = 0;
+    std::array<std::array<uint8_t, kNumNotes>, kNumChannels> heldStack {}; // order of held notes
+    std::array<int, kNumChannels>  heldCount {};                            // depth of heldStack
+    std::array<float, kNumNotes>   heldVel {};   // velocity per note (to resume)
+    std::array<int, kNumChannels>  sounding {};  // currently sounding note, -1 = none
 };
 } // namespace amyplug

@@ -260,3 +260,32 @@ TEST_CASE("amp ADSR encodes as a 6-field bp0 breakpoint string", "[state]")
     // "i1A10,1,200,0.500,400,0Z" — ms are integers, sustain is fixed 3-dp.
     REQUIRE(it->find("10,1,200,0.500,400,0") != std::string::npos);
 }
+
+TEST_CASE("Analog Coarse/Fine tune the osc; Glide emits portamento; perf recalls", "[state][analog]")
+{
+    PatchModel m;
+    m.synths[0].engine = PatchModel::Engine::Analog;
+    m.synths[0].analog.aFreq = 440.0f;
+    m.synths[0].analog.aCoarse = 12;     // +1 octave -> 880 Hz on OSC A
+    m.synths[0].analog.bCoarse = -12;    // -1 octave -> 220 Hz on OSC B
+    m.glide = 200.0f;
+    m.voiceMode = 2; m.unisonVoices = 3; m.unisonDetune = 18.0f;
+    const auto w = m.toWireMessages();
+
+    auto oscHas = [&] (const char* osc, const char* freq) {
+        for (const auto& s : w)
+            if (s.find(osc) != std::string::npos && s.find(freq) != std::string::npos) return true;
+        return false;
+    };
+    REQUIRE(oscHas("v2w", "f880"));      // OSC A folds +12 semis: 440 * 2^(12/12)
+    REQUIRE(oscHas("v3w", "f220"));      // OSC B folds -12 semis
+    REQUIRE(anyContains(w, "i1m200"));   // portamento (glide) broadcast
+
+    PatchModel b; b.fromValueTree(m.toValueTree());
+    REQUIRE(b.synths[0].analog.aCoarse == 12);
+    REQUIRE(b.synths[0].analog.bCoarse == -12);
+    REQUIRE(b.glide        == 200.0f);
+    REQUIRE(b.voiceMode    == 2);
+    REQUIRE(b.unisonVoices == 3);
+    REQUIRE(b.unisonDetune == 18.0f);
+}

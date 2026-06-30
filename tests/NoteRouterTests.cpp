@@ -110,3 +110,61 @@ TEST_CASE("Notes on independent channels are tracked separately", "[router]")
     REQUIRE_FALSE(r.anyActive());
     REQUIRE(b.totalNetOn() == 0);
 }
+
+TEST_CASE("Mono mode: last-note priority with retrigger", "[router][mono]")
+{
+    NoteRouter r; MockBackend b; r.setVoiceMode(1);    // Mono
+    r.process(noteOnBuf(1, 60, 100), b);               // 60 sounds
+    r.process(noteOnBuf(1, 64, 100), b);               // 64 steals; 60 still held
+    r.process(noteOffBuf(1, 64), b);                   // release 64 -> resume 60
+    r.process(noteOffBuf(1, 60), b);                   // release 60 -> silence
+
+    // Mono retriggers: each change is off(old) + on(new). Full sequence:
+    // on60, off60, on64, off64, on60, off60.
+    REQUIRE(b.notes.size() == 6);
+    REQUIRE((b.notes[0].on  && b.notes[0].note == 60));
+    REQUIRE((!b.notes[1].on && b.notes[1].note == 60));   // retrigger: 60 released
+    REQUIRE((b.notes[2].on  && b.notes[2].note == 64));
+    REQUIRE((b.notes[4].on  && b.notes[4].note == 60));   // 60 resumes on release of 64
+    REQUIRE(b.totalNetOn() == 0);
+    REQUIRE_FALSE(r.anyActive());
+}
+
+TEST_CASE("Mono mode: releasing a held (non-top) note keeps the top sounding", "[router][mono]")
+{
+    NoteRouter r; MockBackend b; r.setVoiceMode(1);
+    r.process(noteOnBuf(1, 60, 100), b);
+    r.process(noteOnBuf(1, 67, 100), b);               // 67 sounds, 60 held silently
+    const auto n = b.notes.size();
+    r.process(noteOffBuf(1, 60), b);                   // release the silent held note
+    REQUIRE(b.notes.size() == n);                      // -> no new note events
+    r.process(noteOffBuf(1, 67), b);                   // release the sounding note -> silence
+    REQUIRE(b.totalNetOn() == 0);
+    REQUIRE_FALSE(r.anyActive());
+}
+
+TEST_CASE("Legato mode: overlapping notes do not retrigger", "[router][legato]")
+{
+    NoteRouter r; MockBackend b; r.setVoiceMode(2);    // Legato
+    r.process(noteOnBuf(1, 60, 100), b);
+    r.process(noteOnBuf(1, 64, 100), b);               // slur: no note-off between them
+    REQUIRE(b.notes.size() == 2);
+    REQUIRE((b.notes[0].on && b.notes[0].note == 60));
+    REQUIRE((b.notes[1].on && b.notes[1].note == 64)); // straight to 64, no off60 (AMY glides/reuses)
+
+    r.process(noteOffBuf(1, 64), b);                   // resume 60 (still no retrigger off)
+    r.process(noteOffBuf(1, 60), b);                   // final release frees the voice
+    REQUIRE_FALSE(r.anyActive());                      // nothing left sounding -> no hang
+    REQUIRE_FALSE(b.notes.back().on);                  // last event is a note-off
+}
+
+TEST_CASE("Mono mode still flushes on panic / transport stop (no hang)", "[router][mono]")
+{
+    NoteRouter r; MockBackend b; r.setVoiceMode(2);    // Legato (the no-off-on-overlap case)
+    r.process(noteOnBuf(1, 60, 100), b);
+    r.process(noteOnBuf(1, 62, 100), b);
+    r.process(noteOnBuf(1, 64, 100), b);
+    r.allNotesOff(&b);                                 // panic
+    REQUIRE_FALSE(r.anyActive());
+    REQUIRE(b.allNotesOffCount == 1);
+}

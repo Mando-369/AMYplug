@@ -101,6 +101,9 @@ private:
     // "Synth Vol" (master_volume -> V) is applied upstream inside the engine.
     std::atomic<float>* pOutputGain = nullptr;
     float               outGainCurrent = 1.0f;   // ramp origin (audio thread only)
+    // Per-block one-pole coefficient (~25 ms) for smoothing streamed bus-FX values
+    // so fast knob moves (Echo Time, EQ gains) don't crackle. Set in prepareToPlay.
+    float               fxSmoothCoef = 1.0f;
 
     // Cached APVTS atomics for RT-safe macro streaming from processBlock. The
     // last* values are touched only on the audio thread (change detection).
@@ -110,11 +113,14 @@ private:
     std::atomic<float>* pBendRange = nullptr;    // pitch-bend range (semitones)
     std::atomic<float>* pPatch     = nullptr;    // current patch number (for engine-aware macros)
     std::atomic<float>* pEngine    = nullptr;    // 0 = Factory, 1 = Analog
+    std::atomic<float>* pVoiceMode = nullptr;    // 0 Poly, 1 Mono, 2 Legato
 
     // Analog-engine continuous params (streamed osc-level on change). vcfFreq/reso
     // reuse mCutoff/mReso; the amp envelope reuses mAttack..mRelease.
     Macro mVcfKbd, mVcfEnv, mLfoFreq, mLfoPitch, mLfoPwm, mLfoFilter;
     Macro mOscADuty, mOscALevel, mOscBDuty, mOscBLevel, mOscAFreq, mOscBFreq;
+    Macro mOscACoarse, mOscAFine, mOscBCoarse, mOscBFine;   // OSC A/B pitch offset
+    Macro mGlide;                                           // portamento (i<ch>m), all engines
     Macro mVcfA, mVcfD, mVcfS, mVcfR;            // VCF envelope (bp1)
     Macro mEqLow, mEqMid, mEqHigh;
     // Deeper effect params (streamed as full h/k/M lists in streamGlobalFx).

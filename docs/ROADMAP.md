@@ -53,6 +53,28 @@ chord → stop transport → instant silence; save/reload project → identical 
 automate cutoff → smooth, recorded, recalled.
 
 ## M3 — Patch system & editor v1
+**Voicing & performance ✅ (2026-06-30):**
+- **OSC A/B Coarse + Fine** (analog): ±24 semitones / ±100 cents per oscillator, folded
+  into the osc freq const (`baseHz·2^((coarse+fine/100)/12)`) at emit + stream time.
+- **Glide** (all engines): AMY-native portamento broadcast as `i<ch>m<ms>` (the
+  synth-layer `m` is `grab_midi_notes`=`i1im`; `i1m500` routes to the main parser's
+  portamento). New Glide knob, recalled.
+- **Voice Mode: Poly / Mono / Legato** in `NoteRouter` — per-channel held-note stack
+  with last-note priority. Mono retriggers (off→on); Legato slurs (AMY does **not**
+  retrigger on an overlapping note-on to a reused voice — confirmed offline). Mono/Legato
+  rebuild the synth to 1 voice so AMY is truly monophonic. Regression tests in
+  `NoteRouterTests` (priority, retrigger vs slur, panic-flush).
+- **Unison** params exist + recall, but are **deferred** in the audio path: AMY keys
+  voices by the **rounded** note (`patches.c:928`) and ignores explicit voice targeting
+  (`r`) when a synth is set, so subtle single-synth detune collides on one voice. Real
+  unison needs one synth per voice (detune via float pitch) — next step.
+
+**Bus-FX smoothing ✅ (2026-06-30):** fast knob moves on Echo Time (re-lengths the
+delay line) and the EQ gains (recompute biquad coefs) crackled because the streamed
+wire value jumped. `streamGlobalFx` now glides each bus-FX member toward its target
+(one-pole, ~25 ms, coef from the host block rate) and keeps re-sending the full
+`h/k/M/x` list until it settles, so the change spreads into small per-block steps.
+
 **Bitcrusher ✅ (2026-06-30):** a retro sample-rate + bit-depth reducer on the output
 (`src/dsp/BitCrusher.h`, ported from the FAUST_TX81Z effect — Faust `ba.bitcrusher` by
 J.O. Smith III + `ba.downSample` by R. Michon, fused into one S&H). **Freq** = the

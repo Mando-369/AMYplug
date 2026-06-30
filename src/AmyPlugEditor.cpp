@@ -359,6 +359,8 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     junoPanelL.addSection("OSC A");
     junoPanelL.addChoice(params::id::oscAWave, "Wave");
     junoPanelL.addKnob(params::id::oscAFreq, "Freq");
+    junoPanelL.addKnob(params::id::oscACoarse, "Coarse");
+    junoPanelL.addKnob(params::id::oscAFine, "Fine");
     junoPanelL.addKnob(params::id::oscADuty, "Duty");
     junoPanelL.addKnob(params::id::oscALevel, "Level");
     junoPanelL.addSection("VCF");
@@ -377,6 +379,8 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     junoPanelR.addSection("OSC B");
     junoPanelR.addChoice(params::id::oscBWave, "Wave");
     junoPanelR.addKnob(params::id::oscBFreq, "Freq");
+    junoPanelR.addKnob(params::id::oscBCoarse, "Coarse");
+    junoPanelR.addKnob(params::id::oscBFine, "Fine");
     junoPanelR.addKnob(params::id::oscBDuty, "Duty");
     junoPanelR.addKnob(params::id::oscBLevel, "Level");
     junoPanelR.addSection("VCF ENV");
@@ -415,7 +419,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     //     host-side MASTER stage on the output buffer: bitcrusher (Freq, Bit) ->
     //     WDF saturator (Drive) -> Out Gain. ("Synth Vol" is AMY's volume, applied
     //     upstream — it can't move to the end, so Out Gain is the true final gain.)
-    fxPanel.setCellSize(78, 84);
+    fxPanel.setCellSize(78, 74);
+    fxPanel.addSection("VOICE");
+    fxPanel.addChoice(params::id::voiceMode, "Mode");      // Poly / Mono / Legato
+    fxPanel.addKnob(params::id::glide, "Glide");           // portamento (ms)
     fxPanel.addSection("EQ");
     fxPanel.addKnob(params::id::eqLow, "Low");
     fxPanel.addKnob(params::id::eqMid, "Mid");

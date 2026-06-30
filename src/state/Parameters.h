@@ -41,16 +41,26 @@ namespace id
     inline constexpr auto bcFreq        = "bc_freq";         // bitcrusher downsample target (Hz)
     inline constexpr auto bcBits        = "bc_bits";         // bitcrusher bit depth (2..16)
     inline constexpr auto pitchBendRange= "pitch_bend_range";
+    // Performance / voicing (all engines). Glide is AMY-native portamento (i<synth>m);
+    // voice mode + unison are handled in NoteRouter.
+    inline constexpr auto glide         = "glide";          // portamento, ms
+    inline constexpr auto voiceMode     = "voice_mode";     // 0 Poly, 1 Mono, 2 Legato
+    inline constexpr auto unisonVoices  = "unison_voices";  // stacked detuned voices per note
+    inline constexpr auto unisonDetune  = "unison_detune";  // spread, cents
 
     // --- Analog (Juno) engine, M3b. filterCutoff/filterReso/ampADSR/masterVolume
     //     above are reused as VCF freq/reso, amp env and level. ---
     inline constexpr auto engine        = "engine";        // 0 = Factory preset, 1 = Analog
     inline constexpr auto oscAWave      = "osc_a_wave";
     inline constexpr auto oscAFreq      = "osc_a_freq";
+    inline constexpr auto oscACoarse    = "osc_a_coarse";   // ±24 semitones
+    inline constexpr auto oscAFine      = "osc_a_fine";     // ±100 cents
     inline constexpr auto oscADuty      = "osc_a_duty";
     inline constexpr auto oscALevel     = "osc_a_level";
     inline constexpr auto oscBWave      = "osc_b_wave";
     inline constexpr auto oscBFreq      = "osc_b_freq";
+    inline constexpr auto oscBCoarse    = "osc_b_coarse";
+    inline constexpr auto oscBFine      = "osc_b_fine";
     inline constexpr auto oscBDuty      = "osc_b_duty";
     inline constexpr auto oscBLevel     = "osc_b_level";
     inline constexpr auto lfoWave       = "lfo_wave";
@@ -162,6 +172,15 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::pitchBendRange, 1 }, "Pitch Bend Range", 1, 24, 2));
 
+    // Performance / voicing (all engines).
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::glide, 1 }, "Glide",
+        NormalisableRange<float> { 0.0f, 2000.0f, 1.0f, 0.4f }, 0.0f));   // portamento, ms
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::voiceMode, 1 }, "Voice Mode",
+        StringArray { "Poly", "Mono", "Legato" }, 0));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::unisonVoices, 1 }, "Unison", 1, 4, 1));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::unisonDetune, 1 }, "Detune",
+        NormalisableRange<float> { 0.0f, 50.0f, 0.1f }, 12.0f));          // cents
+
     // --- Analog (Juno) engine -------------------------------------------------
     const StringArray waveNames { "Sine", "Pulse", "Saw Down", "Saw Up", "Triangle", "Noise" };
     const StringArray filtNames { "Off", "LPF", "BPF", "HPF", "LPF24" };
@@ -176,10 +195,14 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     auto oscFreq = [] { return NormalisableRange<float> { 20.0f, 2000.0f, 0.0f, 0.3f }; };
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::oscAWave, 1 }, "Osc A Wave", waveNames, 3));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscAFreq, 1 }, "Osc A Freq", oscFreq(), 440.0f));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::oscACoarse, 1 }, "Osc A Coarse", -24, 24, 0));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::oscAFine, 1 }, "Osc A Fine", -100, 100, 0));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscADuty, 1 }, "Osc A Duty", unit(), 0.5f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscALevel, 1 }, "Osc A Level", unit(), 0.7f));
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::oscBWave, 1 }, "Osc B Wave", waveNames, 1));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscBFreq, 1 }, "Osc B Freq", oscFreq(), 440.0f));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::oscBCoarse, 1 }, "Osc B Coarse", -24, 24, 0));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::oscBFine, 1 }, "Osc B Fine", -100, 100, 0));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscBDuty, 1 }, "Osc B Duty", unit(), 0.5f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscBLevel, 1 }, "Osc B Level", unit(), 0.5f));
 
