@@ -72,6 +72,13 @@ void AmyPlugProcessor::cacheParamPointers()
     mEqLow.ptr     = state.getRawParameterValue(params::id::eqLow);
     mEqMid.ptr     = state.getRawParameterValue(params::id::eqMid);
     mEqHigh.ptr    = state.getRawParameterValue(params::id::eqHigh);
+    mReverbSize.ptr  = state.getRawParameterValue(params::id::reverbSize);
+    mReverbDamp.ptr  = state.getRawParameterValue(params::id::reverbDamping);
+    mChorusRate.ptr  = state.getRawParameterValue(params::id::chorusRate);
+    mChorusDepth.ptr = state.getRawParameterValue(params::id::chorusDepth);
+    mEchoTime.ptr    = state.getRawParameterValue(params::id::echoTime);
+    mEchoFb.ptr      = state.getRawParameterValue(params::id::echoFeedback);
+    mEchoTone.ptr    = state.getRawParameterValue(params::id::echoTone);
 
     pAlgorithm     = state.getRawParameterValue(params::id::fmAlgorithm);
     mFmFeedback.ptr = state.getRawParameterValue(params::id::fmFeedback);
@@ -212,6 +219,13 @@ void AmyPlugProcessor::syncModelFromParams()
     if (mEqLow.ptr)  model.eqLow  = mEqLow.ptr->load();
     if (mEqMid.ptr)  model.eqMid  = mEqMid.ptr->load();
     if (mEqHigh.ptr) model.eqHigh = mEqHigh.ptr->load();
+    model.reverbSize    = rd(params::id::reverbSize,    0.85f);
+    model.reverbDamping = rd(params::id::reverbDamping, 0.5f);
+    model.chorusRate    = rd(params::id::chorusRate,    0.5f);
+    model.chorusDepth   = rd(params::id::chorusDepth,   0.5f);
+    model.echoTime      = rd(params::id::echoTime,      500.0f);
+    model.echoFeedback  = rd(params::id::echoFeedback,  0.0f);
+    model.echoTone      = rd(params::id::echoTone,      0.0f);
 
     // FM (DX7) engine params. The master amp envelope reuses s.ampAttack..ampRelease.
     auto& fm = s.fm;
@@ -408,19 +422,26 @@ void AmyPlugProcessor::streamGlobalFx()
                            active->streamWire(b, (int) std::strlen(b)); }
     };
     one(mVolume, "V%g");
-    one(mReverb, "h%g");
-    one(mChorus, "k%g");
-    one(mEcho,   "M%g");
-    if (mEqLow.ptr && mEqMid.ptr && mEqHigh.ptr)
+
+    // Each effect re-sends its full AMY parameter list when any of its params change.
+    // Buffer-size params we don't expose are pinned to AMY's defaults.
+    auto group = [this] (std::initializer_list<Macro*> ms, auto build)
     {
-        const float l = mEqLow.ptr->load(), md = mEqMid.ptr->load(), h = mEqHigh.ptr->load();
-        if (l != mEqLow.last || md != mEqMid.last || h != mEqHigh.last)
-        {
-            mEqLow.last = l; mEqMid.last = md; mEqHigh.last = h;
-            char b[48]; std::snprintf(b, sizeof b, "x%g,%g,%g", (double) l, (double) md, (double) h);
-            active->streamWire(b, (int) std::strlen(b));
-        }
-    }
+        bool changed = false;
+        for (auto* m : ms) if (m->ptr && m->ptr->load(std::memory_order_relaxed) != m->last) changed = true;
+        if (! changed) return;
+        for (auto* m : ms) if (m->ptr) m->last = m->ptr->load(std::memory_order_relaxed);
+        char b[80]; build(b);
+        active->streamWire(b, (int) std::strlen(b));
+    };
+    group({ &mReverb, &mReverbSize, &mReverbDamp }, [this] (char* b) {
+        std::snprintf(b, 80, "h%g,%g,%g,3000", (double) mReverb.last, (double) mReverbSize.last, (double) mReverbDamp.last); });
+    group({ &mChorus, &mChorusRate, &mChorusDepth }, [this] (char* b) {
+        std::snprintf(b, 80, "k%g,320,%g,%g", (double) mChorus.last, (double) mChorusRate.last, (double) mChorusDepth.last); });
+    group({ &mEcho, &mEchoTime, &mEchoFb, &mEchoTone }, [this] (char* b) {
+        std::snprintf(b, 80, "M%g,%g,743,%g,%g", (double) mEcho.last, (double) mEchoTime.last, (double) mEchoFb.last, (double) mEchoTone.last); });
+    group({ &mEqLow, &mEqMid, &mEqHigh }, [this] (char* b) {
+        std::snprintf(b, 80, "x%g,%g,%g", (double) mEqLow.last, (double) mEqMid.last, (double) mEqHigh.last); });
 }
 
 void AmyPlugProcessor::handleAsyncUpdate()
@@ -512,6 +533,10 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     setP(params::id::vcfSustain, a.vcfS); setP(params::id::vcfRelease, a.vcfR);
     setP(params::id::eqLow, preset.eqLow); setP(params::id::eqMid, preset.eqMid);
     setP(params::id::eqHigh, preset.eqHigh);
+    setP(params::id::reverbSize, preset.reverbSize);   setP(params::id::reverbDamping, preset.reverbDamping);
+    setP(params::id::chorusRate, preset.chorusRate);   setP(params::id::chorusDepth, preset.chorusDepth);
+    setP(params::id::echoTime, preset.echoTime);       setP(params::id::echoFeedback, preset.echoFeedback);
+    setP(params::id::echoTone, preset.echoTone);
 
     // FM (DX7) controls.
     const auto& fm = s.fm;

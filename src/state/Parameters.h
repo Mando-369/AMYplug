@@ -28,6 +28,14 @@ namespace id
     inline constexpr auto reverb        = "reverb_level";
     inline constexpr auto chorus        = "chorus_level";
     inline constexpr auto echo          = "echo_level";
+    // Deeper per-effect controls (the rest of AMY's h/k/M parameter lists).
+    inline constexpr auto reverbSize    = "reverb_size";     // liveness (decay/size)
+    inline constexpr auto reverbDamping = "reverb_damping";
+    inline constexpr auto chorusRate    = "chorus_rate";     // LFO freq (Hz)
+    inline constexpr auto chorusDepth   = "chorus_depth";
+    inline constexpr auto echoTime      = "echo_time";       // delay (ms)
+    inline constexpr auto echoFeedback  = "echo_feedback";
+    inline constexpr auto echoTone      = "echo_tone";       // feedback filter coef
     inline constexpr auto pitchBendRange= "pitch_bend_range";
 
     // --- Analog (Juno) engine, M3b. filterCutoff/filterReso/ampADSR/masterVolume
@@ -116,6 +124,14 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::reverb, 1 }, "Reverb", NormalisableRange<float> { 0.0f, 1.0f }, 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::chorus, 1 }, "Chorus", NormalisableRange<float> { 0.0f, 1.0f }, 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echo,   1 }, "Echo",   NormalisableRange<float> { 0.0f, 1.0f }, 0.0f));
+    // Deeper effect controls (AMY defaults: reverb 0.85/0.5, chorus 0.5/0.5, echo 500ms/0/0).
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::reverbSize,    1 }, "Reverb Size",    NormalisableRange<float> { 0.0f, 1.0f }, 0.85f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::reverbDamping, 1 }, "Reverb Damping", NormalisableRange<float> { 0.0f, 1.0f }, 0.5f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::chorusRate,    1 }, "Chorus Rate",    NormalisableRange<float> { 0.1f, 10.0f, 0.0f, 0.4f }, 0.5f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::chorusDepth,   1 }, "Chorus Depth",   NormalisableRange<float> { 0.0f, 1.0f }, 0.5f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echoTime,      1 }, "Echo Time",      NormalisableRange<float> { 1.0f, 700.0f, 0.0f, 0.5f }, 500.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echoFeedback,  1 }, "Echo Feedback",  NormalisableRange<float> { 0.0f, 0.95f }, 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echoTone,      1 }, "Echo Tone",      NormalisableRange<float> { 0.0f, 1.0f }, 0.0f));
 
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::pitchBendRange, 1 }, "Pitch Bend Range", 1, 24, 2));
 

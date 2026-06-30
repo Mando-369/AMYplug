@@ -72,6 +72,25 @@ TEST_CASE("toWireMessages rebuilds in order: reset, patch, macros, FX", "[state]
     REQUIRE(anyContains(w, "V"));        // global volume
 }
 
+TEST_CASE("Effects emit AMY's full parameter lists and round-trip", "[state]")
+{
+    PatchModel m;
+    m.reverb = 0.3f; m.reverbSize = 0.7f;  m.reverbDamping = 0.4f;
+    m.chorus = 0.5f; m.chorusRate = 2.0f;  m.chorusDepth = 0.6f;
+    m.echo   = 0.4f; m.echoTime = 250.0f;  m.echoFeedback = 0.3f; m.echoTone = 0.2f;
+
+    const auto w = m.toWireMessages();
+    REQUIRE(anyContains(w, "h0.3000,0.7000,0.4000,3000"));   // reverb level,size,damp,xover
+    REQUIRE(anyContains(w, "k0.5000,320,2.0000,0.6000"));    // chorus level,maxdelay,rate,depth
+    REQUIRE(anyContains(w, "M0.4000,250.0000,743,0.3000,0.2000")); // echo level,time,maxdelay,fb,tone
+
+    PatchModel b; b.fromValueTree(m.toValueTree());
+    REQUIRE(b.reverbSize    == 0.7f);
+    REQUIRE(b.chorusRate    == 2.0f);
+    REQUIRE(b.echoTime      == 250.0f);
+    REQUIRE(b.echoFeedback  == 0.3f);
+}
+
 TEST_CASE("amp-ADSR macro overrides bp0 only for Juno, not DX7 (pitch-env safety)", "[state]")
 {
     // bp0/eg0 is the amp envelope on Juno (0..127) but the carrier PITCH envelope on

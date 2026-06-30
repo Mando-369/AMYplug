@@ -101,8 +101,12 @@ public:
     // Global effects + mix (mirrors Parameters.h). AMY's volume is unity at 10
     // (it scales by 0.1*volume), so 4.0 ~= -8 dB on a single voice.
     float masterVolume = 4.0f;
-    float reverb = 0.0f, chorus = 0.0f, echo = 0.0f;
+    float reverb = 0.0f, chorus = 0.0f, echo = 0.0f;   // effect mix levels
     float eqLow = 0.0f, eqMid = 0.0f, eqHigh = 0.0f;   // dB, AMY 3-band EQ ('x')
+    // Deeper effect params (the rest of AMY's h/k/M lists). Defaults mirror AMY.
+    float reverbSize = 0.85f, reverbDamping = 0.5f;
+    float chorusRate = 0.5f,  chorusDepth = 0.5f;
+    float echoTime = 500.0f,  echoFeedback = 0.0f, echoTone = 0.0f;
 
     // --- Rebuild + persistence --------------------------------------------
     // Ordered wire messages that recreate this exact state in a fresh AMY.

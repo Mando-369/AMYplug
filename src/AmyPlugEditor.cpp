@@ -418,9 +418,19 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fxPanel.addKnob(params::id::eqLow, "Low");
     fxPanel.addKnob(params::id::eqMid, "Mid");
     fxPanel.addKnob(params::id::eqHigh, "High");
-    fxPanel.addSection("CHORUS"); fxPanel.addKnob(params::id::chorus, "Level");
-    fxPanel.addSection("REVERB"); fxPanel.addKnob(params::id::reverb, "Level");
-    fxPanel.addSection("ECHO");   fxPanel.addKnob(params::id::echo, "Level");
+    fxPanel.addSection("REVERB");
+    fxPanel.addKnob(params::id::reverb, "Level");
+    fxPanel.addKnob(params::id::reverbSize, "Size");
+    fxPanel.addKnob(params::id::reverbDamping, "Damp");
+    fxPanel.addSection("CHORUS");
+    fxPanel.addKnob(params::id::chorus, "Level");
+    fxPanel.addKnob(params::id::chorusRate, "Rate");
+    fxPanel.addKnob(params::id::chorusDepth, "Depth");
+    fxPanel.addSection("ECHO");
+    fxPanel.addKnob(params::id::echo, "Level");
+    fxPanel.addKnob(params::id::echoTime, "Time");
+    fxPanel.addKnob(params::id::echoFeedback, "F.back");
+    fxPanel.addKnob(params::id::echoTone, "Tone");
     addAndMakeVisible(fxPanel);
 
     // --- tabs -------------------------------------------------------------

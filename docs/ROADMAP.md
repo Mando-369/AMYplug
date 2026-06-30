@@ -53,6 +53,13 @@ chord → stop transport → instant silence; save/reload project → identical 
 automate cutoff → smooth, recorded, recalled.
 
 ## M3 — Patch system & editor v1
+**Effects deepened ✅ (2026-06-30):** the FX rack exposes AMY's full per-effect
+parameter lists, not just the mix level — Reverb Size/Damping (`h`), Chorus
+Rate/Depth (`k`), Echo Time/Feedback/Tone (`M`); buffer-size params are pinned to
+AMY's defaults. Wired through Parameters + PatchModel + `streamGlobalFx` (full lists)
++ serialization + UI; verified AMY engages them (echo+feedback tail) and a wire/
+round-trip unit test.
+
 **Editor layout ✅ (2026-06-30):** both engine tabs now use a **two-column** section
 layout (DX7: OP1│OP2 / OP3│OP4 / OP5│OP6; Juno: OSC A│OSC B / LFO│VCF / VCF ENV│AMP
 ENV) via a small `TwoColumnPanels` container, and the DX7 tab's top row gathers the

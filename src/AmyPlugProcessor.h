@@ -101,6 +101,10 @@ private:
     Macro mOscADuty, mOscALevel, mOscBDuty, mOscBLevel, mOscAFreq, mOscBFreq;
     Macro mVcfA, mVcfD, mVcfS, mVcfR;            // VCF envelope (bp1)
     Macro mEqLow, mEqMid, mEqHigh;
+    // Deeper effect params (streamed as full h/k/M lists in streamGlobalFx).
+    Macro mReverbSize, mReverbDamp;
+    Macro mChorusRate, mChorusDepth;
+    Macro mEchoTime, mEchoFb, mEchoTone;
 
     // FM (DX7) engine continuous params. algorithm is structural (rebuild). The
     // master amp envelope reuses mAttack..mRelease. Per-op arrays index 0..5.

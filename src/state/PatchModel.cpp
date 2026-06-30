@@ -164,11 +164,19 @@ std::vector<std::string> PatchModel::toWireMessages() const
             { WireBuilder w; w.synth(s.channel).bp0(adsrToBp0(s).c_str()); out.emplace_back(w.str()); }
     }
 
-    // 3. Global mix + effects (bus 0).
+    // 3. Global mix + effects (bus 0). The effects take AMY's full parameter lists:
+    //    reverb h<level,size,damp,xover>, chorus k<level,maxdelay,rate,depth>,
+    //    echo M<level,time,maxdelay,feedback,tone>. Buffer-size params we don't
+    //    expose are pinned to AMY's defaults (xover 3000, chorus maxdelay 320,
+    //    echo maxdelay 743).
+    auto F = [] (float v) { return juce::String(v, 4); };
     { WireBuilder w; w.volume(masterVolume); out.emplace_back(w.str()); }
-    { WireBuilder w; w.reverb(reverb);       out.emplace_back(w.str()); }
-    { WireBuilder w; w.chorus(chorus);       out.emplace_back(w.str()); }
-    { WireBuilder w; w.echo(echo);           out.emplace_back(w.str()); }
+    { WireBuilder w; w.raw("h").raw((F(reverb) + "," + F(reverbSize) + "," + F(reverbDamping) + ",3000").toStdString().c_str());
+      out.emplace_back(w.str()); }
+    { WireBuilder w; w.raw("k").raw((F(chorus) + ",320," + F(chorusRate) + "," + F(chorusDepth)).toStdString().c_str());
+      out.emplace_back(w.str()); }
+    { WireBuilder w; w.raw("M").raw((F(echo) + "," + F(echoTime) + ",743," + F(echoFeedback) + "," + F(echoTone)).toStdString().c_str());
+      out.emplace_back(w.str()); }
     { WireBuilder w; w.raw("x")
         .raw((juce::String(eqLow,2) + "," + juce::String(eqMid,2) + "," + juce::String(eqHigh,2)).toStdString().c_str());
       out.emplace_back(w.str()); }
@@ -186,6 +194,13 @@ juce::ValueTree PatchModel::toValueTree() const
     root.setProperty("eqLow",  eqLow,  nullptr);
     root.setProperty("eqMid",  eqMid,  nullptr);
     root.setProperty("eqHigh", eqHigh, nullptr);
+    root.setProperty("reverbSize", reverbSize, nullptr);
+    root.setProperty("reverbDamping", reverbDamping, nullptr);
+    root.setProperty("chorusRate", chorusRate, nullptr);
+    root.setProperty("chorusDepth", chorusDepth, nullptr);
+    root.setProperty("echoTime", echoTime, nullptr);
+    root.setProperty("echoFeedback", echoFeedback, nullptr);
+    root.setProperty("echoTone", echoTone, nullptr);
 
     for (const auto& s : synths)
     {
@@ -245,6 +260,13 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
     eqLow  = (float) tree.getProperty("eqLow",  0.0);
     eqMid  = (float) tree.getProperty("eqMid",  0.0);
     eqHigh = (float) tree.getProperty("eqHigh", 0.0);
+    reverbSize    = (float) tree.getProperty("reverbSize",    0.85);
+    reverbDamping = (float) tree.getProperty("reverbDamping", 0.5);
+    chorusRate    = (float) tree.getProperty("chorusRate",    0.5);
+    chorusDepth   = (float) tree.getProperty("chorusDepth",   0.5);
+    echoTime      = (float) tree.getProperty("echoTime",      500.0);
+    echoFeedback  = (float) tree.getProperty("echoFeedback",  0.0);
+    echoTone      = (float) tree.getProperty("echoTone",      0.0);
 
     synths.clear();
     for (int i = 0; i < tree.getNumChildren(); ++i)
