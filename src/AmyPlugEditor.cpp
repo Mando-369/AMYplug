@@ -423,6 +423,8 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fxPanel.addSection("VOICE");
     fxPanel.addChoice(params::id::voiceMode, "Mode");      // Poly / Mono / Legato
     fxPanel.addKnob(params::id::glide, "Glide");           // portamento (ms)
+    fxPanel.addKnob(params::id::unisonVoices, "Unison");   // stacked detuned copies (analog)
+    fxPanel.addKnob(params::id::unisonDetune, "Detune");   // unison spread, cents
     fxPanel.addSection("EQ");
     fxPanel.addKnob(params::id::eqLow, "Low");
     fxPanel.addKnob(params::id::eqMid, "Mid");

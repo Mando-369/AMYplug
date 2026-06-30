@@ -269,7 +269,7 @@ TEST_CASE("Analog Coarse/Fine tune the osc; Glide emits portamento; perf recalls
     m.synths[0].analog.aCoarse = 12;     // +1 octave -> 880 Hz on OSC A
     m.synths[0].analog.bCoarse = -12;    // -1 octave -> 220 Hz on OSC B
     m.glide = 200.0f;
-    m.voiceMode = 2; m.unisonVoices = 3; m.unisonDetune = 18.0f;
+    m.voiceMode = 2; m.unisonVoices = 1; m.unisonDetune = 18.0f;  // unison 1 = no detune on freq check
     const auto w = m.toWireMessages();
 
     auto oscHas = [&] (const char* osc, const char* freq) {
@@ -286,6 +286,33 @@ TEST_CASE("Analog Coarse/Fine tune the osc; Glide emits portamento; perf recalls
     REQUIRE(b.synths[0].analog.bCoarse == -12);
     REQUIRE(b.glide        == 200.0f);
     REQUIRE(b.voiceMode    == 2);
-    REQUIRE(b.unisonVoices == 3);
+    REQUIRE(b.unisonVoices == 1);
     REQUIRE(b.unisonDetune == 18.0f);
+}
+
+TEST_CASE("Analog unison stacks detuned osc copies (chained)", "[state][analog][unison]")
+{
+    PatchModel m;
+    m.synths[0].engine = PatchModel::Engine::Analog;
+    m.unisonVoices = 2; m.unisonDetune = 25.0f;     // 2 copies, ±25 cents
+    const auto w = m.toWireMessages();
+
+    auto oscHas = [&] (const char* osc, const char* freq) {
+        for (const auto& s : w)
+            if (s.find(osc) != std::string::npos && s.find(freq) != std::string::npos) return true;
+        return false;
+    };
+    REQUIRE(anyContains(w, "in6"));      // 2 (VCF+LFO) + 2*2 audio oscs
+    REQUIRE(oscHas("v2w", "f433"));      // copy 0 OSC A: 440 * 2^(-25/1200) ~= 433.7
+    REQUIRE(oscHas("v4w", "f446"));      // copy 1 OSC A: 440 * 2^(+25/1200) ~= 446.4
+    REQUIRE(anyContains(w, "v5w"));      // last audio osc (copy 1 OSC B)
+    REQUIRE(anyContains(w, "c5"));       // chain reaches osc5 (osc0<-osc2<-...<-osc5)
+
+    // Unison 1 (default) keeps the original 4-osc voice.
+    PatchModel m1; m1.synths[0].engine = PatchModel::Engine::Analog;
+    REQUIRE(anyContains(m1.toWireMessages(), "in4"));
+
+    PatchModel b; b.fromValueTree(m.toValueTree());
+    REQUIRE(b.unisonVoices == 2);
+    REQUIRE(b.unisonDetune == 25.0f);
 }

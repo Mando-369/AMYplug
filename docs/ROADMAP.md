@@ -64,10 +64,13 @@ automate cutoff → smooth, recorded, recalled.
   retrigger on an overlapping note-on to a reused voice — confirmed offline). Mono/Legato
   rebuild the synth to 1 voice so AMY is truly monophonic. Regression tests in
   `NoteRouterTests` (priority, retrigger vs slur, panic-flush).
-- **Unison** params exist + recall, but are **deferred** in the audio path: AMY keys
-  voices by the **rounded** note (`patches.c:928`) and ignores explicit voice targeting
-  (`r`) when a synth is set, so subtle single-synth detune collides on one voice. Real
-  unison needs one synth per voice (detune via float pitch) — next step.
+- **Unison (analog) ✅ (2026-06-30):** since AMY keys voices by the **rounded** note
+  (`patches.c:928`) and ignores `r` voice-targeting when a synth is set (`:957`),
+  note-fanning can't do subtle detune. Instead the analog voice stacks **U detuned
+  copies of the OSC A+OSC B pair** as extra audio oscs, chained into the VCF
+  (osc0←osc2←…←oscLast) — exactly how AMY's factory "unison" patches fatten a voice.
+  `Unison` (1–4) + `Detune` (cents) in the VOICE rack section; both structural
+  (rebuild). Analog engine only; FM/factory unison would need per-synth stacking.
 
 **Bus-FX smoothing ✅ (2026-06-30):** fast knob moves on Echo Time (re-lengths the
 delay line) and the EQ gains (recompute biquad coefs) crackled because the streamed

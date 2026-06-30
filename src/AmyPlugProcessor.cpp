@@ -34,7 +34,9 @@ AmyPlugProcessor::AmyPlugProcessor()
     for (auto* id : { params::id::engine, params::id::oscAWave, params::id::oscBWave,
                       params::id::lfoWave, params::id::vcfType,
                       params::id::fmAlgorithm,    // FM: routing change → rebuild
-                      params::id::voiceMode })    // Mono/Legato rebuild the synth to 1 voice
+                      params::id::voiceMode,      // Mono/Legato rebuild the synth to 1 voice
+                      params::id::unisonVoices,   // unison restructures the analog osc stack
+                      params::id::unisonDetune }) // detune re-tunes the stacked copies
         state.addParameterListener(id, this);
 }
 

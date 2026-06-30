@@ -45,7 +45,15 @@ std::string adsrToBp0(const PatchModel::Synth& s)
 // audio oscs the amp env (a<level>,0,0,<level>,0,0 + A<adsr>, the same const+eg0
 // idiom the FM operators use) makes the release actually shape the tail. osc0
 // keeps only the FILTER env (B). Same lesson as the DX7 release fix.
-void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
+// The unison detune offset (in cents) for copy k of U, spread symmetric about 0.
+float unisonOffsetCents(int k, int U, float detune)
+{
+    if (U <= 1) return 0.0f;
+    return -detune + 2.0f * detune * (float) k / (float) (U - 1);
+}
+
+void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s,
+                int unisonVoices, float unisonDetune)
 {
     const auto& a = s.analog;
     const juce::String pre = "i" + juce::String(s.channel);
@@ -56,10 +64,20 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
     auto tuned = [] (float baseHz, int coarse, int fine)
     { return baseHz * std::pow(2.0f, ((float) coarse + (float) fine / 100.0f) / 12.0f); };
 
-    out.emplace_back((pre + "iv" + juce::String(juce::jlimit(1, 16, s.numVoices)) + "in4Z").toStdString());
+    // Unison: U detuned copies of the OSC A+OSC B pair, stacked as extra audio oscs
+    // and chained into the VCF (osc0<-osc2<-osc3<-...<-oscLast). This is how AMY's
+    // own factory "unison" patches fatten a voice. Subtle detune works here (unlike
+    // note-fanning) because every copy is its own oscillator, not its own note.
+    const int U        = juce::jlimit(1, 4, unisonVoices);
+    const int numAudio = 2 * U;                       // OSC A + OSC B per copy
+    const int oscs     = 2 + numAudio;                // + osc0 (VCF) and osc1 (LFO)
+
+    out.emplace_back((pre + "iv" + juce::String(juce::jlimit(1, 16, s.numVoices))
+        + "in" + juce::String(oscs) + "Z").toStdString());
 
     // osc 0 — filter only (+VCA passthrough). F = freq,kbd(idx1),,,env(idx4),lfo(idx5);
     // constant amp + velocity (a const,note,vel,...); B = filter env. NO amp env here.
+    // Chains osc2 (the first audio osc); the audio oscs chain in a line below.
     out.emplace_back((pre + "v0w20"
         + "G" + juce::String(a.filterType)
         + "F" + F(a.vcfFreq) + "," + F(a.vcfKbd) + ",,," + F(a.vcfEnv) + "," + F(a.lfoToFilter)
@@ -69,28 +87,35 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s)
         + "c2L1Z").toStdString());
 
     // osc 1 — LFO (note-coef 0 keeps it at lfoFreq regardless of the played note).
-    // NOTE: this LFO is per-voice (each voice has its own osc 1), i.e. "Poly" mode.
-    // TODO (M5 LFO modes): add Free (one shared global LFO), Key (retrigger on
-    // note-on), and Sync (lock rate to host tempo). See ROADMAP M5.
+    // TODO (M5 LFO modes): Free / Key / Sync. See ROADMAP M5.
     out.emplace_back((pre + "v1w" + juce::String(a.lfoWave) + "f" + F(a.lfoFreq) + ",0Z").toStdString());
 
-    // osc 2 — OSC A. amp = level via const+eg0 coef shaped by its own amp env (A);
-    // freq = tune(idx0), note tracking (idx1 default 1), lfoPitch(idx5); duty =
-    // const,,,,,lfoPwm(idx5).
-    out.emplace_back((pre + "v2w" + juce::String(a.aWave)
-        + "a" + F(a.aLevel) + ",0,0," + F(a.aLevel) + ",0,0"
-        + "A" + ampEnv
-        + "d" + F(a.aDuty) + ",,,,," + F(a.lfoToPwm)
-        + "f" + F(tuned(a.aFreq, a.aCoarse, a.aFine)) + ",,,,," + F(a.lfoToPitch)
-        + "c3L1Z").toStdString());
+    // Audio oscs (2..oscs-1): U copies of OSC A then OSC B, each detuned, chained.
+    // amp = level via const+eg0 coef shaped by the amp env (A); freq folds tune +
+    // unison detune; duty/freq carry the LFO mod-depth (idx5).
+    for (int i = 0; i < numAudio; ++i)
+    {
+        const int   osc    = 2 + i;
+        const int   copy   = i / 2;
+        const bool  isA    = (i % 2 == 0);
+        const float offCt  = unisonOffsetCents(copy, U, unisonDetune);
+        const int   wave   = isA ? a.aWave  : a.bWave;
+        const float level  = isA ? a.aLevel : a.bLevel;
+        const float duty   = isA ? a.aDuty  : a.bDuty;
+        const float baseHz = tuned(isA ? a.aFreq   : a.bFreq,
+                                   isA ? a.aCoarse : a.bCoarse,
+                                   isA ? a.aFine   : a.bFine);
+        const float freq   = baseHz * std::pow(2.0f, offCt / 1200.0f);
 
-    // osc 3 — OSC B.
-    out.emplace_back((pre + "v3w" + juce::String(a.bWave)
-        + "a" + F(a.bLevel) + ",0,0," + F(a.bLevel) + ",0,0"
-        + "A" + ampEnv
-        + "d" + F(a.bDuty) + ",,,,," + F(a.lfoToPwm)
-        + "f" + F(tuned(a.bFreq, a.bCoarse, a.bFine)) + ",,,,," + F(a.lfoToPitch)
-        + "L1Z").toStdString());
+        juce::String line = pre + "v" + juce::String(osc) + "w" + juce::String(wave)
+            + "a" + F(level) + ",0,0," + F(level) + ",0,0"
+            + "A" + ampEnv
+            + "d" + F(duty) + ",,,,," + F(a.lfoToPwm)
+            + "f" + F(freq) + ",,,,," + F(a.lfoToPitch);
+        if (i < numAudio - 1) line += "c" + juce::String(osc + 1);   // chain the next
+        line += "L1Z";
+        out.emplace_back(line.toStdString());
+    }
 }
 
 // Build the editable FM (DX7) voice osc-by-osc — AMY's ALGO engine. osc0 is the
@@ -159,7 +184,7 @@ std::vector<std::string> PatchModel::toWireMessages() const
     {
         if (s.engine == Engine::Analog)
         {
-            emitAnalog(out, s);
+            emitAnalog(out, s, unisonVoices, unisonDetune);
             continue;
         }
         if (s.engine == Engine::FM)
