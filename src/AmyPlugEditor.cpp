@@ -355,35 +355,35 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     panicButton.onClick = [this] { proc.requestPanic(); };
     addAndMakeVisible(panicButton);
 
-    // --- Juno tab: two columns. OSC A|OSC B / LFO|VCF / VCF ENV|AMP ENV --------
+    // --- Juno tab: two columns. OSC A|OSC B / VCF|VCF ENV / LFO|AMP ENV --------
     junoPanelL.addSection("OSC A");
     junoPanelL.addChoice(params::id::oscAWave, "Wave");
     junoPanelL.addKnob(params::id::oscAFreq, "Freq");
     junoPanelL.addKnob(params::id::oscADuty, "Duty");
     junoPanelL.addKnob(params::id::oscALevel, "Level");
+    junoPanelL.addSection("VCF");
+    junoPanelL.addKnob(params::id::filterCutoff, "Freq");
+    junoPanelL.addKnob(params::id::filterReso, "Reso");
+    junoPanelL.addKnob(params::id::vcfKbd, "Kbd");
+    junoPanelL.addKnob(params::id::vcfEnv, "Env");
+    junoPanelL.addChoice(params::id::vcfType, "Type");
     junoPanelL.addSection("LFO");
     junoPanelL.addChoice(params::id::lfoWave, "Wave");
     junoPanelL.addKnob(params::id::lfoFreq, "Freq");
     junoPanelL.addKnob(params::id::lfoToPitch, "Pitch");
     junoPanelL.addKnob(params::id::lfoToPwm, "PWM");
     junoPanelL.addKnob(params::id::lfoToFilter, "Filter");
-    junoPanelL.addSection("VCF ENV");
-    junoPanelL.addKnob(params::id::vcfAttack, "A");
-    junoPanelL.addKnob(params::id::vcfDecay, "D");
-    junoPanelL.addKnob(params::id::vcfSustain, "S");
-    junoPanelL.addKnob(params::id::vcfRelease, "R");
 
     junoPanelR.addSection("OSC B");
     junoPanelR.addChoice(params::id::oscBWave, "Wave");
     junoPanelR.addKnob(params::id::oscBFreq, "Freq");
     junoPanelR.addKnob(params::id::oscBDuty, "Duty");
     junoPanelR.addKnob(params::id::oscBLevel, "Level");
-    junoPanelR.addSection("VCF");
-    junoPanelR.addKnob(params::id::filterCutoff, "Freq");
-    junoPanelR.addKnob(params::id::filterReso, "Reso");
-    junoPanelR.addKnob(params::id::vcfKbd, "Kbd");
-    junoPanelR.addKnob(params::id::vcfEnv, "Env");
-    junoPanelR.addChoice(params::id::vcfType, "Type");
+    junoPanelR.addSection("VCF ENV");
+    junoPanelR.addKnob(params::id::vcfAttack, "A");
+    junoPanelR.addKnob(params::id::vcfDecay, "D");
+    junoPanelR.addKnob(params::id::vcfSustain, "S");
+    junoPanelR.addKnob(params::id::vcfRelease, "R");
     junoPanelR.addSection("AMP ENV");
     junoPanelR.addKnob(params::id::ampAttack, "A");
     junoPanelR.addKnob(params::id::ampDecay, "D");
