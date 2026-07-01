@@ -152,7 +152,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::chorusDepth,   1 }, "Chorus Depth",   NormalisableRange<float> { 0.0f, 1.0f }, 0.5f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echoTime,      1 }, "Echo Time",      NormalisableRange<float> { 1.0f, 700.0f, 0.0f, 0.5f }, 500.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echoFeedback,  1 }, "Echo Feedback",  NormalisableRange<float> { 0.0f, 0.95f }, 0.0f));
-    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echoTone,      1 }, "Echo Tone",      NormalisableRange<float> { 0.0f, 1.0f }, 0.0f));
+    // Echo feedback-path tone = AMY's bipolar filter_coef: >0 low-pass (darker
+    // repeats), <0 high-pass (brighter/thinner), 0 flat. AMY clamps >0.99.
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::echoTone,      1 }, "Echo Tone",      NormalisableRange<float> { -0.95f, 0.95f }, 0.0f));
 
     // Retro bitcrusher (sample-rate + bit-depth reduction). Freq = the crushed
     // sample rate in Hz (skewed so the low, gritty end is reachable); Bit = the

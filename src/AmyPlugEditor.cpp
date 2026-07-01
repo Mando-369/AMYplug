@@ -393,6 +393,13 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     junoPanelR.addKnob(params::id::ampDecay, "D");
     junoPanelR.addKnob(params::id::ampSustain, "S");
     junoPanelR.addKnob(params::id::ampRelease, "R");
+    // Voicing lives with the synth, not the FX rack. Mode + Glide are global (they
+    // also affect DX7); Unison + Detune are analog-only.
+    junoPanelR.addSection("VOICE");
+    junoPanelR.addChoice(params::id::voiceMode, "Mode");   // Poly / Mono / Legato
+    junoPanelR.addKnob(params::id::glide, "Glide");        // portamento (ms)
+    junoPanelR.addKnob(params::id::unisonVoices, "Unison"); // stacked detuned copies
+    junoPanelR.addKnob(params::id::unisonDetune, "Detune"); // unison spread, cents
 
     junoPanelL.setCellSize(86, 94);
     junoPanelR.setCellSize(86, 94);
@@ -419,12 +426,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     //     host-side MASTER stage on the output buffer: bitcrusher (Freq, Bit) ->
     //     WDF saturator (Drive) -> Out Gain. ("Synth Vol" is AMY's volume, applied
     //     upstream — it can't move to the end, so Out Gain is the true final gain.)
-    fxPanel.setCellSize(78, 74);
-    fxPanel.addSection("VOICE");
-    fxPanel.addChoice(params::id::voiceMode, "Mode");      // Poly / Mono / Legato
-    fxPanel.addKnob(params::id::glide, "Glide");           // portamento (ms)
-    fxPanel.addKnob(params::id::unisonVoices, "Unison");   // stacked detuned copies (analog)
-    fxPanel.addKnob(params::id::unisonDetune, "Detune");   // unison spread, cents
+    fxPanel.setCellSize(78, 84);
     fxPanel.addSection("EQ");
     fxPanel.addKnob(params::id::eqLow, "Low");
     fxPanel.addKnob(params::id::eqMid, "Mid");
