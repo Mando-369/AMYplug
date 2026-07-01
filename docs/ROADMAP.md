@@ -53,6 +53,18 @@ chord → stop transport → instant silence; save/reload project → identical 
 automate cutoff → smooth, recorded, recalled.
 
 ## M3 — Patch system & editor v1
+**Voicing fixes ✅ (2026-07-01):**
+- **Amp-env hang with Unison.** Per-osc analog edits (amp env, level, tune, duty, LFO
+  depth) streamed only to oscs 2/3, so with Unison>1 the extra copies kept their
+  rebuild-time envelope — a shortened release left them ringing until a rebuild
+  (which is why it "reset" on a Unison/Detune change). `streamAnalogParams` now loops
+  every unison copy. Confirmed offline (stale copies ring at 0.0255 vs 0.0 fixed).
+- **Glide gated to Mono/Legato.** AMY portamento glides a *reused* voice, so in Poly
+  (fresh voice per note) it does nothing and could sweep each note in from a stale
+  pitch. `toWireMessages` + `streamGlobalFx` now force portamento 0 in Poly.
+- Note: AMY doesn't hard-retrigger a reused voice, so Mono and Legato both slur an
+  overlapping legato line (Mono still re-attacks across a gap).
+
 **Voicing & performance ✅ (2026-06-30):**
 - **OSC A/B Coarse + Fine** (analog): ±24 semitones / ±100 cents per oscillator, folded
   into the osc freq const (`baseHz·2^((coarse+fine/100)/12)`) at emit + stream time.

@@ -121,6 +121,8 @@ private:
     Macro mOscADuty, mOscALevel, mOscBDuty, mOscBLevel, mOscAFreq, mOscBFreq;
     Macro mOscACoarse, mOscAFine, mOscBCoarse, mOscBFine;   // OSC A/B pitch offset
     Macro mGlide;                                           // portamento (i<ch>m), all engines
+    Macro mUnisonDetune;                                    // unison spread (cents)
+    std::atomic<float>* pUnisonVoices = nullptr;            // stacked analog osc copies
     Macro mVcfA, mVcfD, mVcfS, mVcfR;            // VCF envelope (bp1)
     Macro mEqLow, mEqMid, mEqHigh;
     // Deeper effect params (streamed as full h/k/M lists in streamGlobalFx).

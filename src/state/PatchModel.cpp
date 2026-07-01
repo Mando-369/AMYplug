@@ -213,9 +213,11 @@ std::vector<std::string> PatchModel::toWireMessages() const
     //    expose are pinned to AMY's defaults (xover 3000, chorus maxdelay 320,
     //    echo maxdelay 743).
     auto F = [] (float v) { return juce::String(v, 4); };
-    // Portamento (glide) — AMY-native, broadcast to every synth (all engines). i<ch>m<ms>.
+    // Portamento (glide) — AMY-native, broadcast to every synth. Only bites in
+    // Mono/Legato (voiceMode != 0): AMY glides a reused voice, so Poly can't glide.
+    const int glideMs = (voiceMode != 0) ? juce::roundToInt(glide) : 0;
     for (const auto& s : synths)
-    { WireBuilder w; w.synth(s.channel).raw(("m" + juce::String(juce::roundToInt(glide))).toStdString().c_str());
+    { WireBuilder w; w.synth(s.channel).raw(("m" + juce::String(glideMs)).toStdString().c_str());
       out.emplace_back(w.str()); }
     { WireBuilder w; w.volume(masterVolume); out.emplace_back(w.str()); }
     { WireBuilder w; w.raw("h").raw((F(reverb) + "," + F(reverbSize) + "," + F(reverbDamping) + ",3000").toStdString().c_str());

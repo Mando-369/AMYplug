@@ -78,6 +78,8 @@ void AmyPlugProcessor::cacheParamPointers()
     mOscBCoarse.ptr = state.getRawParameterValue(params::id::oscBCoarse);
     mOscBFine.ptr   = state.getRawParameterValue(params::id::oscBFine);
     mGlide.ptr      = state.getRawParameterValue(params::id::glide);
+    mUnisonDetune.ptr = state.getRawParameterValue(params::id::unisonDetune);
+    pUnisonVoices     = state.getRawParameterValue(params::id::unisonVoices);
     mVcfA.ptr      = state.getRawParameterValue(params::id::vcfAttack);
     mVcfD.ptr      = state.getRawParameterValue(params::id::vcfDecay);
     mVcfS.ptr      = state.getRawParameterValue(params::id::vcfSustain);
@@ -363,66 +365,81 @@ void AmyPlugProcessor::streamAnalogParams()
                            active->streamWire(b, (int) std::strlen(b)); }
     };
 
-    // Streams the SAME value to two oscillators (LFO depth hits both OSC A and B).
-    // Must update m.last only once, after both, or the second osc never gets it.
-    auto two = [this] (Macro& m, const char* fa, const char* fb)
-    {
-        if (m.ptr == nullptr) return;
-        const float v = m.ptr->load(std::memory_order_relaxed);
-        if (v != m.last)
-        {
-            m.last = v;
-            char b[64];
-            std::snprintf(b, sizeof b, fa, (double) v); active->streamWire(b, (int) std::strlen(b));
-            std::snprintf(b, sizeof b, fb, (double) v); active->streamWire(b, (int) std::strlen(b));
-        }
-    };
     // VCF (osc 0): freq=idx0, reso, kbd=idx1, env=idx4, lfo->filter=idx5.
     one(mCutoff,    "i1v0F%g");
     one(mReso,      "i1v0R%g");
     one(mVcfKbd,    "i1v0F,%g");
     one(mVcfEnv,    "i1v0F,,,,%g");
     one(mLfoFilter, "i1v0F,,,,,%g");
-    // LFO (osc 1) freq, and its depth onto OSC A/B pitch (idx5) and PWM (idx5).
-    one(mLfoFreq,   "i1v1f%g,0");
-    two(mLfoPitch,  "i1v2f,,,,,%g", "i1v3f,,,,,%g");
-    two(mLfoPwm,    "i1v2d,,,,,%g", "i1v3d,,,,,%g");
-    // OSC A/B freq (idx0 = Hz at A4, keeps note tracking) + duty. The base Freq plus
-    // Coarse (semitones) + Fine (cents) fold into one tuned constant; re-send when any
-    // of the three changes. Waves are structural (rebuild).
-    auto tunedFreq = [this] (Macro& f, Macro& coarse, Macro& fine, const char* fmt)
-    {
-        if (! (f.ptr && coarse.ptr && fine.ptr)) return;
-        const float fv=f.ptr->load(), cv=coarse.ptr->load(), nv=fine.ptr->load();
-        if (fv!=f.last || cv!=coarse.last || nv!=fine.last)
-        {
-            f.last=fv; coarse.last=cv; fine.last=nv;
-            const float hz = fv * std::pow(2.0f, (cv + nv / 100.0f) / 12.0f);
-            char b[48]; std::snprintf(b, sizeof b, fmt, (double) hz);
-            active->streamWire(b, (int) std::strlen(b));
-        }
-    };
-    tunedFreq(mOscAFreq, mOscACoarse, mOscAFine, "i1v2f%g");  one(mOscADuty, "i1v2d%g");
-    tunedFreq(mOscBFreq, mOscBCoarse, mOscBFine, "i1v3f%g");  one(mOscBDuty, "i1v3d%g");
+    // Unison stacks U detuned copies of the OSC A+B pair (emitAnalog): OSC A copies
+    // live on oscs 2,4,6,…, OSC B on 3,5,7,…. EVERY per-osc edit must reach ALL
+    // copies, or a changed level/env/tune only lands on copy 0 and the rest keep
+    // their stale (rebuild-time) values — which reads as "the amp env doesn't apply
+    // and the note hangs until a rebuild".
+    const int   U   = pUnisonVoices ? juce::jlimit(1, 4, (int) std::lround(pUnisonVoices->load())) : 1;
+    const float det = mUnisonDetune.ptr ? mUnisonDetune.ptr->load(std::memory_order_relaxed) : 0.0f;
+    const bool  detuneChanged = mUnisonDetune.ptr && det != mUnisonDetune.last;
+    auto offCents = [] (int k, int u, float d) { return u <= 1 ? 0.0f : -d + 2.0f * d * (float) k / (float) (u - 1); };
+    auto aOsc = [] (int k) { return 2 + 2 * k; };        // OSC A copy k
+    auto bOsc = [] (int k) { return 2 + 2 * k + 1; };    // OSC B copy k
 
-    // OSC level writes the const AND eg0 coefs (a<L>,0,0,<L>,0,0) so the amp env
-    // keeps shaping it — must match emitAnalog. Send both before updating .last.
-    auto level = [this] (Macro& m, int osc)
+    // LFO osc1 freq, and its mod depth onto every copy's pitch (idx5) / PWM (idx5).
+    one(mLfoFreq, "i1v1f%g,0");
+    auto lfoDepth = [&] (Macro& m, char letter)   // letter 'f' (pitch) or 'd' (pwm)
     {
         if (m.ptr == nullptr) return;
         const float v = m.ptr->load(std::memory_order_relaxed);
-        if (v != m.last)
+        if (v == m.last) return;
+        m.last = v;
+        for (int k = 0; k < U; ++k) for (int osc : { aOsc(k), bOsc(k) })
+        { char b[48]; std::snprintf(b, sizeof b, "i1v%d%c,,,,,%g", osc, letter, (double) v);
+          active->streamWire(b, (int) std::strlen(b)); }
+    };
+    lfoDepth(mLfoPitch, 'f');
+    lfoDepth(mLfoPwm,   'd');
+
+    // OSC A/B pitch: base Freq * 2^((coarse + fine/100)/12), then the per-copy unison
+    // detune. Re-send all copies if Freq/Coarse/Fine OR the unison detune changed.
+    auto pitch = [&] (Macro& f, Macro& c, Macro& n, bool isA)
+    {
+        if (! (f.ptr && c.ptr && n.ptr)) return;
+        const float fv=f.ptr->load(), cv=c.ptr->load(), nv=n.ptr->load();
+        if (! (fv!=f.last || cv!=c.last || nv!=n.last || detuneChanged)) return;
+        f.last=fv; c.last=cv; n.last=nv;
+        const float base = fv * std::pow(2.0f, (cv + nv / 100.0f) / 12.0f);
+        for (int k = 0; k < U; ++k)
         {
-            m.last = v;
-            char b[64]; std::snprintf(b, sizeof b, "i1v%da%g,0,0,%g,0,0", osc, (double) v, (double) v);
+            const float hz = base * std::pow(2.0f, offCents(k, U, det) / 1200.0f);
+            char b[48]; std::snprintf(b, sizeof b, "i1v%df%g", isA ? aOsc(k) : bOsc(k), (double) hz);
             active->streamWire(b, (int) std::strlen(b));
         }
     };
-    level(mOscALevel, 2);  level(mOscBLevel, 3);
+    pitch(mOscAFreq, mOscACoarse, mOscAFine, true);
+    pitch(mOscBFreq, mOscBCoarse, mOscBFine, false);
+    if (mUnisonDetune.ptr) mUnisonDetune.last = det;   // consume after both pitch() calls
 
-    // Envelopes — re-send the whole breakpoint set (to every target osc) if any of
-    // its 4 changed. The amp env (A) lives on the audio oscs 2/3 (so release shapes
-    // the note-off tail); the filter env (B) on osc 0. See emitAnalog.
+    // OSC duty / level to every copy. Level writes const AND eg0 (a<L>,0,0,<L>,0,0)
+    // so the amp env keeps shaping it (must match emitAnalog).
+    auto perCopy = [&] (Macro& m, bool isA, const char* fmt, bool twice)
+    {
+        if (m.ptr == nullptr) return;
+        const float v = m.ptr->load(std::memory_order_relaxed);
+        if (v == m.last) return;
+        m.last = v;
+        for (int k = 0; k < U; ++k)
+        {
+            char b[64];
+            if (twice) std::snprintf(b, sizeof b, fmt, isA ? aOsc(k) : bOsc(k), (double) v, (double) v);
+            else       std::snprintf(b, sizeof b, fmt, isA ? aOsc(k) : bOsc(k), (double) v);
+            active->streamWire(b, (int) std::strlen(b));
+        }
+    };
+    perCopy(mOscADuty,  true,  "i1v%dd%g", false);
+    perCopy(mOscBDuty,  false, "i1v%dd%g", false);
+    perCopy(mOscALevel, true,  "i1v%da%g,0,0,%g,0,0", true);
+    perCopy(mOscBLevel, false, "i1v%da%g,0,0,%g,0,0", true);
+
+    // Amp env (bp0 'A') to every audio osc; filter env (bp1 'B') to osc 0.
     auto env = [this] (std::initializer_list<int> oscs, char letter,
                        Macro& a, Macro& d, Macro& s, Macro& r)
     {
@@ -440,8 +457,23 @@ void AmyPlugProcessor::streamAnalogParams()
             }
         }
     };
-    env({ 2, 3 }, 'A', mAttack, mDecay, mSustain, mRelease);  // amp env -> audio oscs
-    env({ 0 },    'B', mVcfA,   mVcfD,  mVcfS,    mVcfR);      // filter env -> osc 0
+    // Amp env -> every audio osc (2 .. 2U+1).
+    if (mAttack.ptr && mDecay.ptr && mSustain.ptr && mRelease.ptr)
+    {
+        const float av=mAttack.ptr->load(), dv=mDecay.ptr->load(), sv=mSustain.ptr->load(), rv=mRelease.ptr->load();
+        if (av!=mAttack.last || dv!=mDecay.last || sv!=mSustain.last || rv!=mRelease.last)
+        {
+            mAttack.last=av; mDecay.last=dv; mSustain.last=sv; mRelease.last=rv;
+            for (int osc = 2; osc < 2 + 2 * U; ++osc)
+            {
+                char b[80]; std::snprintf(b, sizeof b, "i1v%dA%d,1,%d,%.3f,%d,0", osc,
+                    (int) std::lround(av*1000.0f), (int) std::lround(dv*1000.0f), (double) sv,
+                    (int) std::lround(rv*1000.0f));
+                active->streamWire(b, (int) std::strlen(b));
+            }
+        }
+    }
+    env({ 0 }, 'B', mVcfA, mVcfD, mVcfS, mVcfR);      // filter env -> osc 0
 
     streamGlobalFx();   // master volume + reverb/chorus/echo/EQ
 }
@@ -513,7 +545,20 @@ void AmyPlugProcessor::streamGlobalFx()
                            active->streamWire(b, (int) std::strlen(b)); }
     };
     one(mVolume, "V%g");
-    one(mGlide, "i1m%g");   // portamento (ms) broadcast to synth 1 — all engines
+    // Glide (portamento) only bites in Mono/Legato: AMY glides a REUSED voice, so in
+    // Poly (a fresh voice per note) it does nothing useful and can sweep each note in
+    // from a stale pitch. Force 0 in Poly.
+    if (mGlide.ptr != nullptr)
+    {
+        const bool mono = pVoiceMode && (int) std::lround(pVoiceMode->load(std::memory_order_relaxed)) != 0;
+        const float g = mono ? mGlide.ptr->load(std::memory_order_relaxed) : 0.0f;
+        if (g != mGlide.last)
+        {
+            mGlide.last = g;
+            char b[32]; std::snprintf(b, sizeof b, "i1m%g", (double) g);
+            active->streamWire(b, (int) std::strlen(b));
+        }
+    }
 
     // Each effect re-sends its full AMY parameter list when any of its params change.
     // Buffer-size params we don't expose are pinned to AMY's defaults.
