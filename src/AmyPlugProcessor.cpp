@@ -136,8 +136,12 @@ void AmyPlugProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     clip.setOutputDb(0.0f);          // ceiling at 0 dBFS (also a safety limiter)
     clip.prepare(sampleRate);
     outGainCurrent = pOutputGain ? juce::Decibels::decibelsToGain(pOutputGain->load()) : 1.0f;
+    // Bus-FX smoothing ~100 ms. Long enough (and per-block step CAPPED at 0.12) that
+    // dropping a strong effect — Chorus/EQ especially — to 0 doesn't pop, at any host
+    // block size. AMY applies the mix level / EQ coefs per block with no internal
+    // ramp, so a coarse step on a loud wet signal clicks.
     const double blockSec = (sampleRate > 0.0 ? (double) samplesPerBlock / sampleRate : 0.01);
-    fxSmoothCoef = (float) juce::jlimit(0.02, 1.0, 1.0 - std::exp(-blockSec / 0.025));   // ~25 ms
+    fxSmoothCoef = (float) juce::jlimit(0.02, 0.12, 1.0 - std::exp(-blockSec / 0.1));
     rebuildEngineFromModel();
 }
 
