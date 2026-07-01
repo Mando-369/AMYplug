@@ -35,9 +35,10 @@ AmyPlugProcessor::AmyPlugProcessor()
                       params::id::lfoWave, params::id::vcfType,
                       params::id::fmAlgorithm,    // FM: routing change → rebuild
                       params::id::voiceMode,      // Mono/Legato rebuild the synth to 1 voice
-                      params::id::unisonVoices,   // unison restructures the analog osc stack
-                      params::id::unisonDetune }) // detune re-tunes the stacked copies
+                      params::id::unisonVoices }) // unison count changes the osc count → rebuild
         state.addParameterListener(id, this);
+    // NOTE: unisonDetune is deliberately NOT structural — it only re-tunes existing
+    // oscillators, which streamAnalogParams does live (no rebuild → no dropout).
 }
 
 void AmyPlugProcessor::cacheParamPointers()

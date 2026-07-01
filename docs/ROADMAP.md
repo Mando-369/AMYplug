@@ -64,6 +64,10 @@ automate cutoff → smooth, recorded, recalled.
   pitch. `toWireMessages` + `streamGlobalFx` now force portamento 0 in Poly.
 - Note: AMY doesn't hard-retrigger a reused voice, so Mono and Legato both slur an
   overlapping legato line (Mono still re-attacks across a gap).
+- **Detune dropout fixed:** `unisonDetune` is no longer structural — it only re-tunes
+  existing oscillators, which streams live (no rebuild → no dropout on a sweep).
+  `unisonVoices` (the osc *count*) still rebuilds, so changing the count still blips;
+  eliminating that would mean pre-allocating max copies (CPU cost when unused).
 
 **Voicing & performance ✅ (2026-06-30):**
 - **OSC A/B Coarse + Fine** (analog): ±24 semitones / ±100 cents per oscillator, folded
