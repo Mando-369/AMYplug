@@ -451,13 +451,11 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     panicButton.onClick = [this] { proc.requestPanic(); };
     addAndMakeVisible(panicButton);
 
-    // Engine-busy banner (hidden until another instance owns the global AMY engine).
-    engineBusyLabel.setText(juce::String::fromUTF8("\xE2\x9A\xA0  Engine in use by another instance"),
-                            juce::dontSendNotification);
-    engineBusyLabel.setColour(juce::Label::textColourId, juce::Colours::orange);
-    engineBusyLabel.setJustificationType(juce::Justification::centredRight);
-    engineBusyLabel.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-    addChildComponent(engineBusyLabel);
+    // Always-on engine status readout (text + colour set each tick in timerCallback).
+    engineStatusLabel.setJustificationType(juce::Justification::centredRight);
+    engineStatusLabel.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+    addAndMakeVisible(engineStatusLabel);
+    // The take-over button appears only when another instance holds the engine.
     takeoverButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xffc06000));
     takeoverButton.onClick = [this] { proc.takeOverSoftwareEngine(); };
     addChildComponent(takeoverButton);
@@ -672,15 +670,49 @@ void AmyPlugEditor::importDx7()
 
 void AmyPlugEditor::timerCallback()
 {
-    // Show the "take over" banner only when we're in Software mode but don't own the
-    // shared global AMY engine (another instance does).
-    const bool busy = (proc.currentMode() == IAmyBackend::Kind::Software)
-                      && ! proc.ownsSoftwareEngine();
-    if (busy != lastBusy)
+    // Always-on readout of what's actually making sound, and the take-over button only
+    // when another instance holds the single global AMY engine.
     {
-        lastBusy = busy;
-        engineBusyLabel.setVisible(busy);
-        takeoverButton.setVisible(busy);
+        const bool hardware = (proc.currentMode() == IAmyBackend::Kind::Hardware);
+        const bool owns     = proc.ownsSoftwareEngine();
+        const bool busy     = ! hardware && ! owns;
+
+        static constexpr const char* kEngineName[] = { "Factory", "Analog", "FM" };
+        juce::String text;
+        juce::Colour colour;
+        if (hardware)
+        {
+            auto* hw = proc.hardwareBackend();
+            const juce::String dev = (hw && hw->isConnected()) ? hw->connectedName()
+                                                               : juce::String("no device");
+            text   = juce::String::fromUTF8("\xE2\x97\x8F HARDWARE \xC2\xB7 ") + dev;
+            colour = juce::Colour(0xff35a0d0);   // cyan-ish
+        }
+        else if (busy)
+        {
+            text   = juce::String::fromUTF8("\xE2\x97\x8B SILENT \xC2\xB7 engine in use by another instance");
+            colour = juce::Colours::orange;
+        }
+        else
+        {
+            int eng = 0;
+            if (auto* e = proc.apvts().getRawParameterValue(params::id::engine))
+                eng = juce::jlimit(0, 2, (int) std::lround(e->load()));
+            text   = juce::String::fromUTF8("\xE2\x97\x8F SOFTWARE \xC2\xB7 ") + kEngineName[eng];
+            colour = juce::Colour(0xff4caf50);   // green
+        }
+
+        if (text != lastStatusText)
+        {
+            lastStatusText = text;
+            engineStatusLabel.setText(text, juce::dontSendNotification);
+            engineStatusLabel.setColour(juce::Label::textColourId, colour);
+        }
+        if (busy != lastBusy)
+        {
+            lastBusy = busy;
+            takeoverButton.setVisible(busy);
+        }
     }
 
     if (auto* raw = proc.apvts().getRawParameterValue(params::id::patchA))
@@ -747,13 +779,14 @@ void AmyPlugEditor::paint(juce::Graphics& g)
 
 void AmyPlugEditor::resized()
 {
-    // Engine-busy banner lives in the title band (right of the "AMYplug" title).
+    // Engine status readout (+ optional take-over button) in the title band, right
+    // of the "AMYplug" title.
     {
         auto band = getLocalBounds().removeFromTop(46).reduced(12, 10);
-        band.removeFromLeft(320);   // clear the title text
+        band.removeFromLeft(300);   // clear the title text
         takeoverButton.setBounds(band.removeFromRight(140));
         band.removeFromRight(10);
-        engineBusyLabel.setBounds(band);
+        engineStatusLabel.setBounds(band);
     }
 
     auto r = getLocalBounds().reduced(12);
