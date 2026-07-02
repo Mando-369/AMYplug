@@ -228,6 +228,16 @@ HardwareBackend* AmyPlugProcessor::hardwareBackend()
     return dynamic_cast<HardwareBackend*>(hardware.get());
 }
 
+void AmyPlugProcessor::requestPanic()
+{
+    panicRequested.store(true);   // handled next processBlock (Software path)
+    // In Hardware mode processBlock may not be running (transport stopped), so also
+    // flush the board directly from here (the button/message thread). enqueue is
+    // thread-safe; the sender thread delivers the all-notes-off/all-sound-off.
+    if (activeKind == IAmyBackend::Kind::Hardware)
+        if (auto* hw = hardwareBackend()) hw->allNotesOff();
+}
+
 void AmyPlugProcessor::sendPatchToHardware()
 {
     syncModelFromParams();                              // capture live params

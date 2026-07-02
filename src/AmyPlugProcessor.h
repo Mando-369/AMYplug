@@ -51,7 +51,7 @@ public:
     juce::AudioProcessorValueTreeState& apvts() { return state; }
     PatchModel&  patch()        { return model; }
     PatchLibrary& patchLibrary() { return patchLib; }
-    void         requestPanic() { panicRequested.store(true); }     // RT-checked
+    void         requestPanic();     // flushes all notes (RT flag + immediate HW send)
 
     // User-patch (preset) save/load, used by the editor's browser.
     void saveUserPatch(const juce::String& name);

@@ -76,8 +76,17 @@ void HardwareBackend::noteOff(int synth, int midiNote)
 
 void HardwareBackend::allNotesOff()
 {
+    // Both CC123 (all-notes-off, honours release) and CC120 (all-sound-off, kills
+    // immediately) on every channel — a stuck board note must die no matter what.
     for (int ch = 1; ch <= 16; ++ch)
+    {
         enqueue(juce::MidiMessage::allNotesOff(ch));
+        enqueue(juce::MidiMessage::allSoundOff(ch));
+    }
+    // ...and AMY's own reset-all-notes as wire SysEx: the board's AMY honours this
+    // directly even if its MIDI layer ignores CC 120/123.
+    WireBuilder w; w.reset(amy::Reset::AllNotes);
+    sendWire(w.str(), w.size());
 }
 
 void HardwareBackend::pitchBend(float semitonesNormalized)
@@ -94,8 +103,10 @@ void HardwareBackend::sustainPedal(int synth, bool down)
 
 void HardwareBackend::rebuildFrom(const PatchModel& model)
 {
-    // Off-thread: re-send the whole patch (reset + osc graph + mix) as wire SysEx so
-    // the board matches the project. Notes still flow as plain MIDI.
+    // Off-thread. First kill any notes still ringing on the board from a previous
+    // session/patch (the board holds them across plugin reloads — that's the "noise
+    // on load"). Then re-send the whole patch (reset + osc graph + mix) as wire SysEx.
+    allNotesOff();
     for (const auto& msg : model.toWireMessages())
         sendWire(msg.c_str(), (int) msg.size());
 }
