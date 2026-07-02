@@ -58,7 +58,7 @@ private:
     void refreshDevices();
 
     AmyPlugProcessor& proc;
-    juce::Label      title  { {}, "AMYboard — Hardware Control" };
+    juce::Label      title  { {}, "AMYboard - Hardware Control" };
     juce::Label      devLabel { {}, "MIDI Out" }, modeLabel { {}, "Mode" };
     juce::Label      status;
     juce::ComboBox   deviceBox, modeBox;

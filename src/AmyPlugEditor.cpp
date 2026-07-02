@@ -137,13 +137,28 @@ HardwarePanel::HardwarePanel(AmyPlugProcessor& p) : proc(p)
     addAndMakeVisible(status);
     addAndMakeVisible(deviceBox);
     addAndMakeVisible(modeBox);
+    // The attachment does NOT populate the box — add the choices manually first
+    // (same as ControlPanel::addChoice), else it shows "(no choices)".
+    if (auto* mp = dynamic_cast<juce::AudioParameterChoice*>(proc.apvts().getParameter(params::id::mode)))
+        modeBox.addItemList(mp->choices, 1);
     modeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts(), params::id::mode, modeBox);   // fills Software/Hardware
+        proc.apvts(), params::id::mode, modeBox);
     for (auto* b : { &refreshBtn, &connectBtn, &disconnectBtn, &sendBtn }) addAndMakeVisible(*b);
 
+    auto setMode = [this] (float hardware)   // 0 = Software, 1 = Hardware
+    { if (auto* p = proc.apvts().getParameter(params::id::mode)) p->setValueNotifyingHost(hardware); };
+
     refreshBtn.onClick    = [this] { refreshDevices(); };
-    connectBtn.onClick    = [this] { if (auto* hw = proc.hardwareBackend()) hw->openOutput(deviceBox.getText()); };
-    disconnectBtn.onClick = [this] { if (auto* hw = proc.hardwareBackend()) hw->closeOutput(); };
+    // Connecting a board switches the engine to Hardware (plugin goes silent, the
+    // board makes the sound) and pushes the current patch; disconnecting reverts.
+    connectBtn.onClick    = [this, setMode] {
+        if (auto* hw = proc.hardwareBackend())
+            if (hw->openOutput(deviceBox.getText())) { setMode(1.0f); proc.sendPatchToHardware(); }
+    };
+    disconnectBtn.onClick = [this, setMode] {
+        if (auto* hw = proc.hardwareBackend()) hw->closeOutput();
+        setMode(0.0f);
+    };
     sendBtn.onClick       = [this] { proc.sendPatchToHardware(); };
 
     refreshDevices();
@@ -169,8 +184,15 @@ void HardwarePanel::timerCallback()
 {
     auto* hw = proc.hardwareBackend();
     const bool conn = hw && hw->isConnected();
-    status.setText(conn ? ("Connected: " + hw->connectedName()) : "Not connected", juce::dontSendNotification);
-    status.setColour(juce::Label::textColourId, conn ? juce::Colours::lightgreen : juce::Colours::orange);
+    const bool hwMode = proc.currentMode() == IAmyBackend::Kind::Hardware;
+    juce::String s;
+    if (hwMode) s = conn ? ("HARDWARE - board is sounding (" + hw->connectedName() + "); plugin is silent")
+                         : "HARDWARE - but no board connected (silent!)";
+    else        s = conn ? ("SOFTWARE - plugin is sounding; board connected but idle")
+                         : "SOFTWARE - plugin is sounding";
+    status.setText("Mode: " + s, juce::dontSendNotification);
+    status.setColour(juce::Label::textColourId,
+                     hwMode ? (conn ? juce::Colours::lightgreen : juce::Colours::red) : juce::Colours::lightgrey);
     connectBtn.setEnabled(! conn && deviceBox.getNumItems() > 0);
     disconnectBtn.setEnabled(conn);
     sendBtn.setEnabled(conn);
@@ -181,9 +203,10 @@ void HardwarePanel::paint(juce::Graphics& g)
     g.fillAll(juce::Colour { 0xff20262b });
     g.setColour(juce::Colours::grey);
     g.setFont(juce::FontOptions(12.0f));
-    g.drawFittedText("Notes, CC, pitch-bend and every patch edit are sent to the board over MIDI/SysEx.\n"
-                     "Pick the AMYboard's MIDI port, Connect, switch Mode to Hardware, then Send Patch.",
-                     getLocalBounds().removeFromBottom(56).reduced(20, 8), juce::Justification::topLeft, 3);
+    g.drawFittedText("Connect the AMYboard's MIDI port to play the sound ON THE BOARD - the plugin goes\n"
+                     "silent and pushes the current patch. Disconnect to return to the plugin's own sound.\n"
+                     "(The Mode selector above is the same Software/Hardware switch.)",
+                     getLocalBounds().removeFromBottom(64).reduced(20, 8), juce::Justification::topLeft, 3);
 }
 
 void HardwarePanel::resized()
