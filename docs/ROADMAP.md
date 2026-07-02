@@ -226,6 +226,14 @@ Original tasks:
 session onto the board.
 
 ## M5 — Depth & polish
+- **Replace AMY's bus effects with host-side DSP (reverb/chorus/echo/EQ).** AMY's
+  effects are limited: (a) the echo has a **single** feedback filter coefficient, so
+  it can only be LPF *or* HPF — no independent "Dark + Thin" repeats; (b) cutting any
+  effect level to exactly **0 pops** — AMY bypasses the effect on the final `→0` step
+  with no internal ramp, so our streaming/smoothing can't prevent it. Own the effects
+  (like the WDF clipper + bitcrusher) for better quality and control: a stereo echo
+  with separate Dark(LPF)+Thin(HPF) feedback filters (+ ping-pong / tempo sync), a
+  proper reverb, and click-free level automation. Leaves AMY doing synthesis only.
 - Full modulation editor (CtrlCoefs, dual EGs, mod routings, LFOs).
 - **LFO modes** (M3b ships per-voice/free only; add a mode selector):
   - **Free** — global, free-running (one shared LFO, not retriggered).

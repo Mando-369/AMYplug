@@ -136,12 +136,13 @@ void AmyPlugProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     clip.setOutputDb(0.0f);          // ceiling at 0 dBFS (also a safety limiter)
     clip.prepare(sampleRate);
     outGainCurrent = pOutputGain ? juce::Decibels::decibelsToGain(pOutputGain->load()) : 1.0f;
-    // Bus-FX smoothing ~100 ms. Long enough (and per-block step CAPPED at 0.12) that
-    // dropping a strong effect — Chorus/EQ especially — to 0 doesn't pop, at any host
-    // block size. AMY applies the mix level / EQ coefs per block with no internal
-    // ramp, so a coarse step on a loud wet signal clicks.
+    // Bus-FX smoothing ~25 ms — stops fast Echo Time / EQ moves from crackling. It
+    // does NOT stop the pop when a level hits exactly 0: AMY bypasses the effect on
+    // the final ->0 step (no internal ramp), so the click is unavoidable from here.
+    // See ROADMAP: replacing AMY's bus effects with host-side DSP fixes both that and
+    // the echo's single-filter limitation.
     const double blockSec = (sampleRate > 0.0 ? (double) samplesPerBlock / sampleRate : 0.01);
-    fxSmoothCoef = (float) juce::jlimit(0.02, 0.12, 1.0 - std::exp(-blockSec / 0.1));
+    fxSmoothCoef = (float) juce::jlimit(0.02, 1.0, 1.0 - std::exp(-blockSec / 0.025));
     rebuildEngineFromModel();
 }
 
