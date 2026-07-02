@@ -218,10 +218,16 @@ Original tasks:
 **DoD:** can pick a preset, tweak, save as user patch, reload with the project.
 
 ## M4 — Hardware mode
-1. `HardwareBackend` device selection UI; confirm AMYboard USB enumeration
-   (MIDI vs serial — see HARDWARE_MODE.md) on real hardware.
-2. Notes + SysEx wire messages reach the board; `zI` ping detects it.
-3. `rebuildFrom()` re-sends full state on load/mode-switch; All-Notes-Off safety.
+**Core done 🔧 (2026-07-02, pending real-board test):** the **AMYboard tab** now picks a
+MIDI-out device, Connect/Disconnect, a Software/Hardware **Mode** toggle, and **Send Patch
+to Board**. `HardwareBackend` sends notes/CC/pitch-bend as MIDI and every patch edit as
+wire **SysEx** (`F0 00 03 45 … F7`); `rebuildFrom` now re-sends the whole patch on load /
+mode-switch / button. All outgoing MIDI is **enqueued and flushed by a dedicated sender
+thread** (`HardwareBackend : juce::Thread`), so the audio thread never touches the blocking
+MIDI driver; with no device open it falls back to the host MIDI-out (`collectHostMidi`).
+Builds + auval + pluginval strictness 7 pass. **Still open:** verify against a real board;
+`zI` ping **reply** detection (needs a MIDI-in — the "auto-detect" scope); pitch-bend-range
+RPN. See HARDWARE_MODE.md.
 **DoD:** flip to Hardware mode, play the physical AMYboard from the DAW, recall a
 session onto the board.
 

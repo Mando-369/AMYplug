@@ -14,6 +14,8 @@
 
 namespace amyplug
 {
+class HardwareBackend;
+
 class AmyPlugProcessor final : public juce::AudioProcessor,
                                private juce::AudioProcessorValueTreeState::Listener,
                                private juce::AsyncUpdater
@@ -62,6 +64,8 @@ public:
     void         setMode(IAmyBackend::Kind mode);                   // Software/Hardware
     IAmyBackend::Kind currentMode() const { return activeKind; }
     IAmyBackend* backend() { return active; }                       // for device UI
+    HardwareBackend* hardwareBackend();                             // AMYboard device config
+    void         sendPatchToHardware();                             // push current patch as SysEx
 
 private:
     void parameterChanged(const juce::String& id, float newValue) override;

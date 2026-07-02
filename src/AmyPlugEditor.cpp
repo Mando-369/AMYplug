@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR MIT
 #include "AmyPlugEditor.h"
+#include "engine/HardwareBackend.h"
 #include "state/Parameters.h"
 #include "state/FmAlgorithms.h"
 #include "BuiltinPatchNames.h"
@@ -121,6 +122,86 @@ void PlaceholderPanel::paint(juce::Graphics& g)
     g.setColour(juce::Colours::grey);
     g.setFont(juce::FontOptions(15.0f));
     g.drawFittedText(text, getLocalBounds().reduced(20), juce::Justification::centred, 3);
+}
+
+// ===========================================================================
+// HardwarePanel — the AMYboard tab
+// ===========================================================================
+HardwarePanel::HardwarePanel(AmyPlugProcessor& p) : proc(p)
+{
+    title.setFont(juce::FontOptions(18.0f, juce::Font::bold));
+    title.setColour(juce::Label::textColourId, juce::Colours::white);
+    addAndMakeVisible(title);
+    for (auto* l : { &devLabel, &modeLabel })
+    { l->setColour(juce::Label::textColourId, juce::Colours::lightgrey); addAndMakeVisible(*l); }
+    addAndMakeVisible(status);
+    addAndMakeVisible(deviceBox);
+    addAndMakeVisible(modeBox);
+    modeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        proc.apvts(), params::id::mode, modeBox);   // fills Software/Hardware
+    for (auto* b : { &refreshBtn, &connectBtn, &disconnectBtn, &sendBtn }) addAndMakeVisible(*b);
+
+    refreshBtn.onClick    = [this] { refreshDevices(); };
+    connectBtn.onClick    = [this] { if (auto* hw = proc.hardwareBackend()) hw->openOutput(deviceBox.getText()); };
+    disconnectBtn.onClick = [this] { if (auto* hw = proc.hardwareBackend()) hw->closeOutput(); };
+    sendBtn.onClick       = [this] { proc.sendPatchToHardware(); };
+
+    refreshDevices();
+    startTimerHz(3);   // status + button enablement
+}
+
+void HardwarePanel::refreshDevices()
+{
+    const auto keep = deviceBox.getText();
+    deviceBox.clear(juce::dontSendNotification);
+    if (auto* hw = proc.hardwareBackend())
+    {
+        int id = 1;
+        for (const auto& n : hw->availableOutputs()) deviceBox.addItem(n, id++);
+    }
+    // Re-select the previously chosen port if it's still present, else the first.
+    for (int i = 0; i < deviceBox.getNumItems(); ++i)
+        if (deviceBox.getItemText(i) == keep) { deviceBox.setSelectedId(deviceBox.getItemId(i), juce::dontSendNotification); return; }
+    if (deviceBox.getNumItems() > 0) deviceBox.setSelectedId(1, juce::dontSendNotification);
+}
+
+void HardwarePanel::timerCallback()
+{
+    auto* hw = proc.hardwareBackend();
+    const bool conn = hw && hw->isConnected();
+    status.setText(conn ? ("Connected: " + hw->connectedName()) : "Not connected", juce::dontSendNotification);
+    status.setColour(juce::Label::textColourId, conn ? juce::Colours::lightgreen : juce::Colours::orange);
+    connectBtn.setEnabled(! conn && deviceBox.getNumItems() > 0);
+    disconnectBtn.setEnabled(conn);
+    sendBtn.setEnabled(conn);
+}
+
+void HardwarePanel::paint(juce::Graphics& g)
+{
+    g.fillAll(juce::Colour { 0xff20262b });
+    g.setColour(juce::Colours::grey);
+    g.setFont(juce::FontOptions(12.0f));
+    g.drawFittedText("Notes, CC, pitch-bend and every patch edit are sent to the board over MIDI/SysEx.\n"
+                     "Pick the AMYboard's MIDI port, Connect, switch Mode to Hardware, then Send Patch.",
+                     getLocalBounds().removeFromBottom(56).reduced(20, 8), juce::Justification::topLeft, 3);
+}
+
+void HardwarePanel::resized()
+{
+    auto r = getLocalBounds().reduced(20);
+    title.setBounds(r.removeFromTop(30));
+    r.removeFromTop(18);
+    { auto line = r.removeFromTop(28); devLabel.setBounds(line.removeFromLeft(70));
+      refreshBtn.setBounds(line.removeFromRight(90)); line.removeFromRight(8);
+      deviceBox.setBounds(line.removeFromLeft(280)); r.removeFromTop(12); }
+    { auto line = r.removeFromTop(28); line.removeFromLeft(70);
+      connectBtn.setBounds(line.removeFromLeft(120)); line.removeFromLeft(12);
+      disconnectBtn.setBounds(line.removeFromLeft(120)); r.removeFromTop(12); }
+    { auto line = r.removeFromTop(28); modeLabel.setBounds(line.removeFromLeft(70));
+      modeBox.setBounds(line.removeFromLeft(160)); r.removeFromTop(12); }
+    { auto line = r.removeFromTop(28); line.removeFromLeft(70);
+      sendBtn.setBounds(line.removeFromLeft(200)); r.removeFromTop(18); }
+    status.setBounds(r.removeFromTop(26));
 }
 
 // ===========================================================================
@@ -460,7 +541,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     tabs.setOutline(0);
     tabs.addTab("Juno",     kPanel, &junoViewport, false);
     tabs.addTab("DX7",      kPanel, &dx7Tab, false);   // algorithm diagram + operator controls
-    tabs.addTab("AMYboard", kPanel, new PlaceholderPanel("Hardware control\n(coming in M4)"), true);
+    tabs.addTab("AMYboard", kPanel, &hwPanel, false);   // MIDI-out select + connect + send patch
     addAndMakeVisible(tabs);
 
     // Open on the tab matching the loaded engine, and seed lastTab so the first

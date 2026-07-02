@@ -5,7 +5,7 @@
 
 namespace amyplug
 {
-HardwareBackend::HardwareBackend()  = default;
+HardwareBackend::HardwareBackend() : juce::Thread("AMYboard MIDI out") {}
 HardwareBackend::~HardwareBackend() { closeOutput(); }
 
 void HardwareBackend::prepare(double, int) {}
@@ -16,77 +16,78 @@ void HardwareBackend::processBlock(juce::AudioBuffer<float>& audio)
     audio.clear(); // hardware makes the sound; the plugin emits silence
 }
 
-void HardwareBackend::sendWire(const char* msg, int len)
+// --- outgoing queue (RT-safe) ----------------------------------------------
+void HardwareBackend::enqueue(const juce::MidiMessage& m)
 {
-    auto sysex = wrapSysex(msg, len);
-    if (output != nullptr)
+    const juce::ScopedLock sl(midiLock);
+    sendQueue.addEvent(m, 0);
+    notify();   // wake the sender thread (harmless if no device is open)
+}
+
+void HardwareBackend::run()
+{
+    // Drain the queue to the open device off the audio thread. sendMessageNow can
+    // block on the OS MIDI driver, which is exactly what we keep off the RT thread.
+    while (! threadShouldExit())
     {
-        output->sendMessageNow(juce::MidiMessage::createSysExMessage(
-            sysex.data() + 1, (int) sysex.size() - 2)); // JUCE adds F0/F7 itself
-    }
-    else
-    {
-        const juce::ScopedLock sl(midiLock);
-        pendingHostMidi.addEvent(juce::MidiMessage::createSysExMessage(
-            sysex.data() + 1, (int) sysex.size() - 2), 0);
+        juce::MidiBuffer batch;
+        {
+            const juce::ScopedLock sl(midiLock);
+            if (output != nullptr) { batch.swapWith(sendQueue); }
+        }
+        if (output != nullptr)
+            for (const auto meta : batch)
+                output->sendMessageNow(meta.getMessage());
+        wait(2);   // also woken by notify() on enqueue
     }
 }
 
-void HardwareBackend::streamWire(const char* msg, int len)
+// --- wire / note events (called from audio + message threads) ---------------
+void HardwareBackend::sendWire(const char* msg, int len)
 {
-    sendWire(msg, len);   // same SysEx path; queued for the host MIDI-out
+    auto sysex = wrapSysex(msg, len);   // F0 00 03 45 <ascii> F7
+    enqueue(juce::MidiMessage::createSysExMessage(sysex.data() + 1, (int) sysex.size() - 2));
 }
+
+void HardwareBackend::streamWire(const char* msg, int len) { sendWire(msg, len); }
 
 void HardwareBackend::noteOn(int synth, int midiNote, float velocity)
 {
-    const int ch = juce::jlimit(1, 16, synth); // AMY synth 1..16 == MIDI channel
-    auto m = juce::MidiMessage::noteOn(ch, midiNote, velocity);
-    if (output) output->sendMessageNow(m);
-    else { const juce::ScopedLock sl(midiLock); pendingHostMidi.addEvent(m, 0); }
+    enqueue(juce::MidiMessage::noteOn(juce::jlimit(1, 16, synth), midiNote, velocity));
 }
 
 void HardwareBackend::noteOff(int synth, int midiNote)
 {
-    const int ch = juce::jlimit(1, 16, synth);
-    auto m = juce::MidiMessage::noteOff(ch, midiNote);
-    if (output) output->sendMessageNow(m);
-    else { const juce::ScopedLock sl(midiLock); pendingHostMidi.addEvent(m, 0); }
+    enqueue(juce::MidiMessage::noteOff(juce::jlimit(1, 16, synth), midiNote));
 }
 
 void HardwareBackend::allNotesOff()
 {
     for (int ch = 1; ch <= 16; ++ch)
-    {
-        auto m = juce::MidiMessage::allNotesOff(ch);
-        if (output) output->sendMessageNow(m);
-        else { const juce::ScopedLock sl(midiLock); pendingHostMidi.addEvent(m, 0); }
-    }
+        enqueue(juce::MidiMessage::allNotesOff(ch));
 }
 
 void HardwareBackend::pitchBend(float semitonesNormalized)
 {
     // Map normalized [-1,1] to 14-bit. Bend range handling is a TODO (RPN).
     const int value = juce::jlimit(0, 16383, (int) std::lround((semitonesNormalized * 0.5f + 0.5f) * 16383.0f));
-    auto m = juce::MidiMessage::pitchWheel(1, value);
-    if (output) output->sendMessageNow(m);
-    else { const juce::ScopedLock sl(midiLock); pendingHostMidi.addEvent(m, 0); }
+    enqueue(juce::MidiMessage::pitchWheel(1, value));
 }
 
 void HardwareBackend::sustainPedal(int synth, bool down)
 {
-    const int ch = juce::jlimit(1, 16, synth);
-    auto m = juce::MidiMessage::controllerEvent(ch, 64, down ? 127 : 0);
-    if (output) output->sendMessageNow(m);
-    else { const juce::ScopedLock sl(midiLock); pendingHostMidi.addEvent(m, 0); }
+    enqueue(juce::MidiMessage::controllerEvent(juce::jlimit(1, 16, synth), 64, down ? 127 : 0));
 }
 
 void HardwareBackend::rebuildFrom(const PatchModel& model)
 {
-    // Off-thread. Re-send the whole patch so the board matches the project.
-    //   for (auto& msg : model.toWireMessages()) sendWire(msg.c_str(), msg.size());
-    juce::ignoreUnused(model);
+    // Off-thread: re-send the whole patch (reset + osc graph + mix) as wire SysEx so
+    // the board matches the project. Notes still flow as plain MIDI.
+    for (const auto& msg : model.toWireMessages())
+        sendWire(msg.c_str(), (int) msg.size());
 }
 
+// --- device management (message thread) ------------------------------------
 juce::StringArray HardwareBackend::availableOutputs() const
 {
     juce::StringArray names;
@@ -97,30 +98,48 @@ juce::StringArray HardwareBackend::availableOutputs() const
 
 bool HardwareBackend::openOutput(const juce::String& identifier)
 {
+    closeOutput();
     for (auto& d : juce::MidiOutput::getAvailableDevices())
         if (d.identifier == identifier || d.name == identifier)
         {
-            output = juce::MidiOutput::openDevice(d.identifier);
-            return output != nullptr;
+            auto dev = juce::MidiOutput::openDevice(d.identifier);
+            if (dev == nullptr) return false;
+            {
+                const juce::ScopedLock sl(midiLock);
+                output = std::move(dev);
+                connected = d.name;
+            }
+            startThread(juce::Thread::Priority::high);
+            return true;
         }
     return false;
 }
 
-void HardwareBackend::closeOutput() { output.reset(); }
+void HardwareBackend::closeOutput()
+{
+    signalThreadShouldExit();
+    notify();
+    stopThread(500);
+    const juce::ScopedLock sl(midiLock);
+    output.reset();
+    connected = {};
+    sendQueue.clear();
+}
 
 bool HardwareBackend::pingBoard()
 {
     // Send `zI`; a live board replies F0 00 03 45 'O' 'K' F7 on its MIDI-in->out.
-    // Requires a MidiInput callback to observe the reply — wired in M3.
+    // Observing the reply needs a MidiInput (the "auto-detect" scope) — TODO.
     WireBuilder w; w.raw("zI");
     sendWire(w.str(), w.size());
-    return false; // TODO: return true once the OK reply is observed
+    return false;
 }
 
 void HardwareBackend::collectHostMidi(juce::MidiBuffer& out, int numSamples)
 {
     const juce::ScopedLock sl(midiLock);
-    out.addEvents(pendingHostMidi, 0, numSamples, 0);
-    pendingHostMidi.clear();
+    if (output != nullptr) return;   // a device is open -> the sender thread delivers it
+    out.addEvents(sendQueue, 0, numSamples, 0);
+    sendQueue.clear();
 }
 } // namespace amyplug

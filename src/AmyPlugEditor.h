@@ -43,6 +43,32 @@ private:
     static constexpr int kTitleH = 20, kGap = 8;
 };
 
+// The AMYboard (Hardware) tab: pick the board's MIDI-out, connect, toggle
+// Software/Hardware mode, and push the current patch to the board as SysEx.
+class HardwarePanel : public juce::Component,
+                      private juce::Timer
+{
+public:
+    explicit HardwarePanel(AmyPlugProcessor& p);
+    void resized() override;
+    void paint(juce::Graphics&) override;
+
+private:
+    void timerCallback() override;
+    void refreshDevices();
+
+    AmyPlugProcessor& proc;
+    juce::Label      title  { {}, "AMYboard — Hardware Control" };
+    juce::Label      devLabel { {}, "MIDI Out" }, modeLabel { {}, "Mode" };
+    juce::Label      status;
+    juce::ComboBox   deviceBox, modeBox;
+    juce::TextButton refreshBtn    { "Refresh" };
+    juce::TextButton connectBtn    { "Connect" };
+    juce::TextButton disconnectBtn { "Disconnect" };
+    juce::TextButton sendBtn       { "Send Patch to Board" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> modeAtt;
+};
+
 // Centered message for not-yet-built tabs.
 class PlaceholderPanel : public juce::Component
 {
@@ -152,6 +178,7 @@ private:
     AlgorithmDiagram algoDiagram;                    // operator graph for the DX7 tab
     Dx7TabComponent  dx7Tab { proc.apvts(), algoDiagram, fmViewport };
     ControlPanel     fxPanel   { proc.apvts() };   // global FX rack (right column)
+    HardwarePanel    hwPanel   { proc };            // AMYboard tab
 
     void setEngineIndex(int idx);   // 0 Factory, 1 Analog, 2 FM
 

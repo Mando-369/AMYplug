@@ -214,6 +214,17 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         midi.clear(); // don't pass notes through in Software mode
 }
 
+HardwareBackend* AmyPlugProcessor::hardwareBackend()
+{
+    return dynamic_cast<HardwareBackend*>(hardware.get());
+}
+
+void AmyPlugProcessor::sendPatchToHardware()
+{
+    syncModelFromParams();                              // capture live params
+    if (auto* hw = hardwareBackend()) hw->rebuildFrom(model);
+}
+
 void AmyPlugProcessor::setMode(IAmyBackend::Kind mode)
 {
     if (mode == activeKind) return;
