@@ -63,6 +63,11 @@ public:
     void applyPreset(const PatchModel& preset);   // push preset values to the params
     void         setMode(IAmyBackend::Kind mode);                   // Software/Hardware
     IAmyBackend::Kind currentMode() const { return activeKind; }
+    // Single-owner arbitration for AMY's global engine. In Software mode a second
+    // instance can't render until it owns the engine; the editor shows a banner +
+    // a "take over" button when this instance is the odd one out. See EngineOwnership.h.
+    bool         ownsSoftwareEngine() const;
+    void         takeOverSoftwareEngine();                          // user hand-over
     IAmyBackend* backend() { return active; }                       // for device UI
     HardwareBackend* hardwareBackend();                             // AMYboard device config
     void         sendPatchToHardware();                             // push current patch as SysEx
@@ -91,6 +96,7 @@ private:
     IAmyBackend::Kind activeKind = IAmyBackend::Kind::Software;
     double lastSampleRate = 44100.0;   // remembered so setMode can (re)prepare software
     int    lastBlockSize  = 512;
+    bool   wasSoftwareOwner = false;   // audio-thread edge detect: silent -> owning
 
     std::atomic<bool> panicRequested { false };
 

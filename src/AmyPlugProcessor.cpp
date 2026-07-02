@@ -3,6 +3,7 @@
 #include "AmyPlugEditor.h"
 #include "engine/SoftwareBackend.h"
 #include "engine/HardwareBackend.h"
+#include "engine/EngineOwnership.h"
 #include "engine/AmyWire.h"
 #include "state/Dx7Import.h"
 #include <cstdio>
@@ -123,7 +124,11 @@ bool AmyPlugProcessor::engineIsFM() const
         && (int) std::lround(pEngine->load(std::memory_order_relaxed)) == 2;   // 2 = FM
 }
 
-AmyPlugProcessor::~AmyPlugProcessor() = default;
+AmyPlugProcessor::~AmyPlugProcessor()
+{
+    // Free the global engine token so a still-loaded silent instance can grab it.
+    engineown::releaseSoftware(this);
+}
 
 void AmyPlugProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
@@ -134,7 +139,10 @@ void AmyPlugProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     // instance shared by every plugin instance, so a hardware instance holding it
     // would collide with a real Software instance (you'd hear its engine in parallel).
     if (activeKind == IAmyBackend::Kind::Software)
+    {
         software->prepare(sampleRate, samplesPerBlock);
+        engineown::claimSoftwareIfFree(this);   // grab the engine early if it's free
+    }
     else
         software->release();
     router.prepare();
@@ -170,6 +178,33 @@ bool AmyPlugProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    // Single-owner arbitration: AMY is one global engine. Only the owning instance
+    // may render/stream. A non-owner (e.g. a duplicated track) stays fully silent and
+    // touches nothing global — no notes, no wires, no render — so it can't corrupt the
+    // owner or double-pull the sample clock. When the engine is free (owner gone) the
+    // first block to run here claims it and rebuilds AMY from this instance's model.
+    if (activeKind == IAmyBackend::Kind::Software)
+    {
+        const bool own = engineown::claimSoftwareIfFree(this);
+        if (! own)
+        {
+            wasSoftwareOwner = false;
+            buffer.clear();
+            midi.clear();
+            return;   // another instance owns the engine — silence
+        }
+        if (! wasSoftwareOwner)
+        {
+            // Just acquired it: AMY may hold the previous owner's state. Rebuild from
+            // our model (async, off the audio thread) and emit one silent block.
+            wasSoftwareOwner = true;
+            triggerAsyncUpdate();
+            buffer.clear();
+            midi.clear();
+            return;
+        }
+    }
 
     // Honour a pending Panic from the UI before anything else.
     if (panicRequested.exchange(false))
@@ -262,15 +297,33 @@ void AmyPlugProcessor::setMode(IAmyBackend::Kind mode)
         active = hardware.get();
         activeKind = mode;
         software->release();                    // drop the shared global AMY engine
+        engineown::releaseSoftware(this);       // ...and free it for other instances
+        wasSoftwareOwner = false;
     }
     else
     {
         software->prepare(lastSampleRate, lastBlockSize);   // re-acquire the engine
+        engineown::claimSoftwareIfFree(this);               // grab the global token if free
         active = software.get();
         activeKind = mode;
     }
     suspendProcessing(false);
     rebuildEngineFromModel();                   // bring the new backend up to date
+}
+
+bool AmyPlugProcessor::ownsSoftwareEngine() const
+{
+    return engineown::ownsSoftware(this);
+}
+
+void AmyPlugProcessor::takeOverSoftwareEngine()
+{
+    // User pressed "Use Engine Here": seize the global engine from whoever holds it,
+    // then rebuild AMY from this instance's model (the previous owner falls silent on
+    // its next block). Message thread — the rebuild is dispatched async.
+    if (activeKind != IAmyBackend::Kind::Software) return;
+    engineown::forceClaimSoftware(this);
+    triggerAsyncUpdate();
 }
 
 void AmyPlugProcessor::rebuildEngineFromModel()

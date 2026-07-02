@@ -153,6 +153,11 @@ private:
     // Global top bar.
     juce::ComboBox   patchBox, userBox;
     juce::TextButton panicButton  { "PANIC" };
+    // Shown only when this instance is in Software mode but another instance owns the
+    // single global AMY engine (e.g. a duplicated track). See EngineOwnership.h.
+    juce::Label      engineBusyLabel;
+    juce::TextButton takeoverButton { "USE ENGINE HERE" };
+    bool             lastBusy = false;
     juce::TextButton prevButton   { "<" };
     juce::TextButton nextButton   { ">" };
     juce::TextButton saveButton   { "Save..." };

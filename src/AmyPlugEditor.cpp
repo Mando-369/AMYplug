@@ -451,6 +451,17 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     panicButton.onClick = [this] { proc.requestPanic(); };
     addAndMakeVisible(panicButton);
 
+    // Engine-busy banner (hidden until another instance owns the global AMY engine).
+    engineBusyLabel.setText(juce::String::fromUTF8("\xE2\x9A\xA0  Engine in use by another instance"),
+                            juce::dontSendNotification);
+    engineBusyLabel.setColour(juce::Label::textColourId, juce::Colours::orange);
+    engineBusyLabel.setJustificationType(juce::Justification::centredRight);
+    engineBusyLabel.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+    addChildComponent(engineBusyLabel);
+    takeoverButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xffc06000));
+    takeoverButton.onClick = [this] { proc.takeOverSoftwareEngine(); };
+    addChildComponent(takeoverButton);
+
     // --- Juno tab: two columns. OSC A|OSC B / VCF|VCF ENV / LFO|AMP ENV --------
     junoPanelL.addSection("OSC A");
     junoPanelL.addChoice(params::id::oscAWave, "Wave");
@@ -661,6 +672,17 @@ void AmyPlugEditor::importDx7()
 
 void AmyPlugEditor::timerCallback()
 {
+    // Show the "take over" banner only when we're in Software mode but don't own the
+    // shared global AMY engine (another instance does).
+    const bool busy = (proc.currentMode() == IAmyBackend::Kind::Software)
+                      && ! proc.ownsSoftwareEngine();
+    if (busy != lastBusy)
+    {
+        lastBusy = busy;
+        engineBusyLabel.setVisible(busy);
+        takeoverButton.setVisible(busy);
+    }
+
     if (auto* raw = proc.apvts().getRawParameterValue(params::id::patchA))
     {
         const int n = juce::jlimit(0, kBuiltinPatchCount - 1, (int) std::lround(raw->load()));
@@ -725,6 +747,15 @@ void AmyPlugEditor::paint(juce::Graphics& g)
 
 void AmyPlugEditor::resized()
 {
+    // Engine-busy banner lives in the title band (right of the "AMYplug" title).
+    {
+        auto band = getLocalBounds().removeFromTop(46).reduced(12, 10);
+        band.removeFromLeft(320);   // clear the title text
+        takeoverButton.setBounds(band.removeFromRight(140));
+        band.removeFromRight(10);
+        engineBusyLabel.setBounds(band);
+    }
+
     auto r = getLocalBounds().reduced(12);
     r.removeFromTop(34);   // title
 
