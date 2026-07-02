@@ -132,17 +132,10 @@ HardwarePanel::HardwarePanel(AmyPlugProcessor& p) : proc(p)
     title.setFont(juce::FontOptions(18.0f, juce::Font::bold));
     title.setColour(juce::Label::textColourId, juce::Colours::white);
     addAndMakeVisible(title);
-    for (auto* l : { &devLabel, &modeLabel })
-    { l->setColour(juce::Label::textColourId, juce::Colours::lightgrey); addAndMakeVisible(*l); }
+    devLabel.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+    addAndMakeVisible(devLabel);
     addAndMakeVisible(status);
     addAndMakeVisible(deviceBox);
-    addAndMakeVisible(modeBox);
-    // The attachment does NOT populate the box — add the choices manually first
-    // (same as ControlPanel::addChoice), else it shows "(no choices)".
-    if (auto* mp = dynamic_cast<juce::AudioParameterChoice*>(proc.apvts().getParameter(params::id::mode)))
-        modeBox.addItemList(mp->choices, 1);
-    modeAtt = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        proc.apvts(), params::id::mode, modeBox);
     for (auto* b : { &refreshBtn, &connectBtn, &disconnectBtn, &sendBtn }) addAndMakeVisible(*b);
 
     auto setMode = [this] (float hardware)   // 0 = Software, 1 = Hardware
@@ -204,9 +197,8 @@ void HardwarePanel::paint(juce::Graphics& g)
     g.setColour(juce::Colours::grey);
     g.setFont(juce::FontOptions(12.0f));
     g.drawFittedText("Connect the AMYboard's MIDI port to play the sound ON THE BOARD - the plugin goes\n"
-                     "silent and pushes the current patch. Disconnect to return to the plugin's own sound.\n"
-                     "(The Mode selector above is the same Software/Hardware switch.)",
-                     getLocalBounds().removeFromBottom(64).reduced(20, 8), juce::Justification::topLeft, 3);
+                     "silent and pushes the current patch. Disconnect to return to the plugin's own sound.",
+                     getLocalBounds().removeFromBottom(56).reduced(20, 8), juce::Justification::topLeft, 3);
 }
 
 void HardwarePanel::resized()
@@ -220,8 +212,6 @@ void HardwarePanel::resized()
     { auto line = r.removeFromTop(28); line.removeFromLeft(70);
       connectBtn.setBounds(line.removeFromLeft(120)); line.removeFromLeft(12);
       disconnectBtn.setBounds(line.removeFromLeft(120)); r.removeFromTop(12); }
-    { auto line = r.removeFromTop(28); modeLabel.setBounds(line.removeFromLeft(70));
-      modeBox.setBounds(line.removeFromLeft(160)); r.removeFromTop(12); }
     { auto line = r.removeFromTop(28); line.removeFromLeft(70);
       sendBtn.setBounds(line.removeFromLeft(200)); r.removeFromTop(18); }
     status.setBounds(r.removeFromTop(26));

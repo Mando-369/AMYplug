@@ -59,14 +59,13 @@ private:
 
     AmyPlugProcessor& proc;
     juce::Label      title  { {}, "AMYboard - Hardware Control" };
-    juce::Label      devLabel { {}, "MIDI Out" }, modeLabel { {}, "Mode" };
+    juce::Label      devLabel { {}, "MIDI Out" };
     juce::Label      status;
-    juce::ComboBox   deviceBox, modeBox;
+    juce::ComboBox   deviceBox;
     juce::TextButton refreshBtn    { "Refresh" };
     juce::TextButton connectBtn    { "Connect" };
     juce::TextButton disconnectBtn { "Disconnect" };
     juce::TextButton sendBtn       { "Send Patch to Board" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> modeAtt;
 };
 
 // Centered message for not-yet-built tabs.
