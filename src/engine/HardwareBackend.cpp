@@ -9,7 +9,11 @@ HardwareBackend::HardwareBackend() : juce::Thread("AMYboard MIDI out") {}
 HardwareBackend::~HardwareBackend() { closeOutput(); }
 
 void HardwareBackend::prepare(double, int) {}
-void HardwareBackend::release()            { closeOutput(); }
+// Do NOT close the board here: the host calls releaseResources() on transport /
+// routing / buffer changes, and dropping the MIDI device each time made the
+// connection "keep resetting" (and left Panic with nowhere to send). The device
+// stays open until an explicit Disconnect or the backend is destroyed.
+void HardwareBackend::release()            {}
 
 void HardwareBackend::processBlock(juce::AudioBuffer<float>& audio)
 {
