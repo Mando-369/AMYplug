@@ -89,6 +89,8 @@ private:
     std::unique_ptr<IAmyBackend> hardware;
     IAmyBackend*      active     = nullptr;
     IAmyBackend::Kind activeKind = IAmyBackend::Kind::Software;
+    double lastSampleRate = 44100.0;   // remembered so setMode can (re)prepare software
+    int    lastBlockSize  = 512;
 
     std::atomic<bool> panicRequested { false };
 
@@ -118,6 +120,7 @@ private:
     std::atomic<float>* pPatch     = nullptr;    // current patch number (for engine-aware macros)
     std::atomic<float>* pEngine    = nullptr;    // 0 = Factory, 1 = Analog
     std::atomic<float>* pVoiceMode = nullptr;    // 0 Poly, 1 Mono, 2 Legato
+    std::atomic<float>* pMode      = nullptr;    // 0 = Software, 1 = Hardware
 
     // Analog-engine continuous params (streamed osc-level on change). vcfFreq/reso
     // reuse mCutoff/mReso; the amp envelope reuses mAttack..mRelease.

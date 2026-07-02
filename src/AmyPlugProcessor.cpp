@@ -57,6 +57,7 @@ void AmyPlugProcessor::cacheParamPointers()
     pPatch       = state.getRawParameterValue(params::id::patchA);
     pEngine      = state.getRawParameterValue(params::id::engine);
     pVoiceMode   = state.getRawParameterValue(params::id::voiceMode);
+    pMode        = state.getRawParameterValue(params::id::mode);
     pClipDrive   = state.getRawParameterValue(params::id::clipDrive);
     pBcFreq      = state.getRawParameterValue(params::id::bcFreq);
     pBcBits      = state.getRawParameterValue(params::id::bcBits);
@@ -126,8 +127,16 @@ AmyPlugProcessor::~AmyPlugProcessor() = default;
 
 void AmyPlugProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-    software->prepare(sampleRate, samplesPerBlock);
+    lastSampleRate = sampleRate;
+    lastBlockSize  = samplesPerBlock;
     hardware->prepare(sampleRate, samplesPerBlock);
+    // In Hardware mode do NOT boot the software AMY engine: AMY is a single global
+    // instance shared by every plugin instance, so a hardware instance holding it
+    // would collide with a real Software instance (you'd hear its engine in parallel).
+    if (activeKind == IAmyBackend::Kind::Software)
+        software->prepare(sampleRate, samplesPerBlock);
+    else
+        software->release();
     router.prepare();
     if (pBcFreq) crush.setFreqHz(pBcFreq->load());
     if (pBcBits) crush.setBits(pBcBits->load());
@@ -227,10 +236,25 @@ void AmyPlugProcessor::sendPatchToHardware()
 
 void AmyPlugProcessor::setMode(IAmyBackend::Kind mode)
 {
+    // MUST run on the message thread (it may amy_start/amy_stop, which allocate).
+    // handleAsyncUpdate/prepareToPlay call it there. suspendProcessing() fences the
+    // audio callback so we never release the software engine mid-render.
     if (mode == activeKind) return;
     router.allNotesOff(active);                 // never leave a hung note across modes
-    active     = (mode == IAmyBackend::Kind::Software) ? software.get() : hardware.get();
-    activeKind = mode;
+    suspendProcessing(true);
+    if (mode == IAmyBackend::Kind::Hardware)
+    {
+        active = hardware.get();
+        activeKind = mode;
+        software->release();                    // drop the shared global AMY engine
+    }
+    else
+    {
+        software->prepare(lastSampleRate, lastBlockSize);   // re-acquire the engine
+        active = software.get();
+        activeKind = mode;
+    }
+    suspendProcessing(false);
     rebuildEngineFromModel();                   // bring the new backend up to date
 }
 
@@ -617,7 +641,12 @@ void AmyPlugProcessor::streamGlobalFx()
 
 void AmyPlugProcessor::handleAsyncUpdate()
 {
-    rebuildEngineFromModel();   // message thread: structural change (patch/voices/engine)
+    // Message thread. Apply a pending Software/Hardware switch (setMode rebuilds), or
+    // otherwise a structural change (patch/voices/engine).
+    const auto wanted = (pMode != nullptr && (int) std::lround(pMode->load()) != 0)
+                        ? IAmyBackend::Kind::Hardware : IAmyBackend::Kind::Software;
+    if (wanted != activeKind) setMode(wanted);
+    else                      rebuildEngineFromModel();
 }
 
 void AmyPlugProcessor::saveUserPatch(const juce::String& name)
@@ -735,12 +764,12 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     }
 }
 
-void AmyPlugProcessor::parameterChanged(const juce::String& id, float newValue)
+void AmyPlugProcessor::parameterChanged(const juce::String&, float)
 {
-    if (id == params::id::mode)
-        setMode(newValue < 0.5f ? IAmyBackend::Kind::Software : IAmyBackend::Kind::Hardware);
-    else
-        triggerAsyncUpdate();   // patchA / numVoices -> rebuild off the audio thread
+    // Everything (incl. the Software/Hardware mode switch, which may amy_start/stop)
+    // is applied on the message thread in handleAsyncUpdate — never inline here,
+    // since this can fire from the audio thread under host automation.
+    triggerAsyncUpdate();
 }
 
 void AmyPlugProcessor::getStateInformation(juce::MemoryBlock& dest)
