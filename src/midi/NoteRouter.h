@@ -72,6 +72,7 @@ private:
     int   activeCount = 0;
     bool  wasPlaying  = false;
     float bendOctaveScale = 2.0f / 12.0f;   // ±2 semitones default
+    int   lastPitchWheel = 8192;            // gate repeated identical bend msgs (HW flood)
 
     // Mono/Legato note-priority state (per channel).
     int voiceMode = 0;
