@@ -28,17 +28,30 @@ void HardwareBackend::run()
 {
     // Drain the queue to the open device off the audio thread. sendMessageNow can
     // block on the OS MIDI driver, which is exactly what we keep off the RT thread.
+    // RATE-LIMITED: a whole patch (or a knob sweep) can queue dozens of SysEx at
+    // once; firing them all instantly makes the board's small CPU pop while it
+    // reconfigures. Send a bounded batch per wake and keep the rest for next time.
+    constexpr int kBurstCap = 8;
+    juce::MidiBuffer pending;   // not-yet-sent backlog
     while (! threadShouldExit())
     {
-        juce::MidiBuffer batch;
         {
             const juce::ScopedLock sl(midiLock);
-            if (output != nullptr) { batch.swapWith(sendQueue); }
+            if (output != nullptr && ! sendQueue.isEmpty())
+            { pending.addEvents(sendQueue, 0, -1, 0); sendQueue.clear(); }
         }
-        if (output != nullptr)
-            for (const auto meta : batch)
-                output->sendMessageNow(meta.getMessage());
-        wait(2);   // also woken by notify() on enqueue
+        int sent = 0;
+        if (output != nullptr && ! pending.isEmpty())
+        {
+            juce::MidiBuffer keep;
+            for (const auto meta : pending)
+            {
+                if (sent < kBurstCap) { output->sendMessageNow(meta.getMessage()); ++sent; }
+                else                    keep.addEvent(meta.getMessage(), 0);
+            }
+            pending.swapWith(keep);
+        }
+        wait(pending.isEmpty() ? 4 : 1);   // poll faster while a backlog drains
     }
 }
 

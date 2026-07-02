@@ -145,8 +145,10 @@ HardwarePanel::HardwarePanel(AmyPlugProcessor& p) : proc(p)
     // Connecting a board switches the engine to Hardware (plugin goes silent, the
     // board makes the sound) and pushes the current patch; disconnecting reverts.
     connectBtn.onClick    = [this, setMode] {
+        // Switching to Hardware already re-sends the patch (rebuildEngineFromModel),
+        // so don't also call sendPatchToHardware — that doubled the SysEx burst.
         if (auto* hw = proc.hardwareBackend())
-            if (hw->openOutput(deviceBox.getText())) { setMode(1.0f); proc.sendPatchToHardware(); }
+            if (hw->openOutput(deviceBox.getText())) setMode(1.0f);
     };
     disconnectBtn.onClick = [this, setMode] {
         if (auto* hw = proc.hardwareBackend()) hw->closeOutput();
@@ -564,7 +566,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         int eng0 = 0;
         if (auto* e = s.getRawParameterValue(params::id::engine))
             eng0 = juce::jlimit(0, 2, (int) std::lround(e->load()));
-        const int tab0 = (eng0 == 1) ? 0 : (eng0 == 2) ? 1 : tabs.getCurrentTabIndex();
+        // Reopen on the AMYboard tab if the session was in Hardware mode; else the
+        // tab that matches the loaded engine (Juno/DX7).
+        const int tab0 = (proc.currentMode() == IAmyBackend::Kind::Hardware) ? 2
+                       : (eng0 == 1) ? 0 : (eng0 == 2) ? 1 : tabs.getCurrentTabIndex();
         tabs.setCurrentTabIndex(tab0, false);
         lastTab = tab0;
     }

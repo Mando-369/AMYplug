@@ -780,6 +780,9 @@ void AmyPlugProcessor::getStateInformation(juce::MemoryBlock& dest)
     juce::ValueTree root { "AMYplugState" };
     root.appendChild(state.copyState(), nullptr);
     root.appendChild(model.toValueTree(), nullptr);
+    // Remember the AMYboard MIDI-out so the connection recalls with the session.
+    if (auto* hw = hardwareBackend(); hw != nullptr && hw->isConnected())
+        root.setProperty("hwDevice", hw->connectedName(), nullptr);
     if (auto xml = root.createXml()) copyXmlToBinary(*xml, dest);
 }
 
@@ -793,6 +796,12 @@ void AmyPlugProcessor::setStateInformation(const void* data, int size)
         if (auto patchTree = root.getChildWithName(PatchModel::kStateType); patchTree.isValid())
             model.fromValueTree(patchTree);
         rebuildEngineFromModel();   // recreate exact AMY state from the model
+
+        // Reconnect the saved AMYboard device; the mode param (restored above) then
+        // brings us back into Hardware mode via handleAsyncUpdate.
+        const juce::String hwDevice = root.getProperty("hwDevice", juce::String()).toString();
+        if (hwDevice.isNotEmpty())
+            if (auto* hw = hardwareBackend()) hw->openOutput(hwDevice);
     }
 }
 
