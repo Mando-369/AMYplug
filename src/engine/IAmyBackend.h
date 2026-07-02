@@ -37,6 +37,11 @@ public:
     // SoftwareBackend hands it straight to AMY; HardwareBackend queues it as SysEx.
     virtual void streamWire(const char* msg, int len) = 0;
 
+    // Apply any queued structural (rebuild) messages NOW. Called on the audio thread
+    // at the top of processBlock, BEFORE live parameter streaming, so a rebuild can
+    // never overwrite a fresher streamed edit. Default: nothing pending.
+    virtual void flushPending() {}
+
     // Convenience note-control used by NoteRouter (RT-safe).
     virtual void noteOn(int synth, int midiNote, float velocity) = 0;
     virtual void noteOff(int synth, int midiNote) = 0;

@@ -186,6 +186,11 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     if (pVoiceMode != nullptr) router.setVoiceMode((int) std::lround(pVoiceMode->load()));
     router.process(midi, *active);
 
+    // Apply any queued structural rebuild FIRST, then stream live param deltas on
+    // top — otherwise a rebuild (carrying slightly older values) can land after and
+    // clobber a fresh edit (e.g. an envelope change), which never gets re-sent.
+    active->flushPending();
+
     // Stream any changed automatable macros to AMY (RT-safe, no allocation).
     streamMacrosToBackend();
 
