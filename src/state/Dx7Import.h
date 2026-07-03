@@ -52,4 +52,14 @@ public:
 // simplification Dx7Import makes). Oscillators are mapped to OP1..6 via the patch's
 // own `O` source list, so operator roles line up with the algorithm.
 bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out);
+
+// Decode one of AMY's factory Juno (analog) patch wire strings into our AnalogParams,
+// so "Load into Editor" can populate the Juno tab from a built-in preset. Returns
+// false if the string isn't the subtractive/filter structure (e.g. an FM patch).
+//
+// The 4 DCOs map to OSC A/B/C/D (wave/freq/duty/level); the VCF (freq/reso/kbd/type/
+// env) and LFO decode from their oscs. Juno shares one ADSR between VCA and VCF, so
+// osc0's amp envelope fills BOTH our amp and filter envelopes. Approximate (the
+// envelope routing differs from ours) but captures the patch's character for editing.
+bool factoryAnalogWireToParams(const juce::String& wire, PatchModel::AnalogParams& out);
 } // namespace amyplug

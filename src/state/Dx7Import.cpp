@@ -331,4 +331,93 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
     out = fm;
     return true;
 }
+
+namespace
+{
+// Nth comma-separated field of a coef list as float ("179,0.6,,5" [3] -> 5), or def
+// if absent/empty.
+float nthVal(const juce::String& list, int n, float def)
+{
+    juce::StringArray p; p.addTokens(list, ",", "");
+    return (n < p.size() && p[n].isNotEmpty()) ? p[n].getFloatValue() : def;
+}
+} // namespace
+
+bool factoryAnalogWireToParams(const juce::String& wire, PatchModel::AnalogParams& out)
+{
+    // Juno patches define each osc across SEVERAL Z-tokens (structure, then params),
+    // so MERGE fields per osc rather than overwrite (unlike the single-token FM form).
+    juce::StringArray toks; toks.addTokens(wire, "Z", "");
+    std::map<int, std::map<char, juce::String>> oscs;
+    for (auto& tk : toks)
+    {
+        if (tk.isEmpty()) continue;
+        OscFields o = scanOsc(tk);
+        if (o.osc < 0) continue;
+        for (auto& kv : o.f) oscs[o.osc][kv.first] = kv.second;   // accumulate
+    }
+
+    // The VCF/VCA sink osc is the one carrying a filter type ('G').
+    int vcf = -1;
+    for (auto& e : oscs) if (e.second.count('G')) { vcf = e.first; break; }
+    if (vcf < 0) return false;                        // not the subtractive structure
+    auto& vf = oscs[vcf];
+    const int lfo = vf.count('L') ? vf.at('L').getIntValue() : 1;   // VCF's mod source
+
+    PatchModel::AnalogParams a;
+    // VCF: F = freq(0), kbd(1), , env(3 or 4), , lfo(5); R = reso; G = type.
+    if (vf.count('F'))
+    {
+        a.vcfFreq     = nthVal(vf.at('F'), 0, a.vcfFreq);
+        a.vcfKbd      = nthVal(vf.at('F'), 1, 0.0f);
+        a.vcfEnv      = juce::jmax(nthVal(vf.at('F'), 3, 0.0f), nthVal(vf.at('F'), 4, 0.0f));
+        a.lfoToFilter = nthVal(vf.at('F'), 5, 0.0f);
+    }
+    if (vf.count('R')) a.vcfReso    = firstVal(vf.at('R'));
+    if (vf.count('G')) a.filterType = vf.at('G').getIntValue();
+    if (vf.count('a')) a.level      = firstVal(vf.at('a'));
+    // Juno's single ADSR (osc0 amp bp0 'A') drives both VCA and VCF in our model.
+    if (vf.count('A'))
+    {
+        bpToAdsr(vf.at('A'), a.ampA, a.ampD, a.ampS, a.ampR);
+        a.vcfA = a.ampA; a.vcfD = a.ampD; a.vcfS = a.ampS; a.vcfR = a.ampR;
+    }
+
+    if (oscs.count(lfo))
+    {
+        auto& lf = oscs[lfo];
+        if (lf.count('w')) a.lfoWave = lf.at('w').getIntValue();
+        if (lf.count('f')) a.lfoFreq = firstVal(lf.at('f'));
+    }
+
+    // Audio DCOs = every other osc that carries a wave, in index order -> A/B/C/D.
+    std::vector<int> audio;
+    for (auto& e : oscs)
+        if (e.first != vcf && e.first != lfo && e.second.count('w')) audio.push_back(e.first);
+    std::sort(audio.begin(), audio.end());
+    if (audio.empty()) return false;
+
+    for (int i = 0; i < (int) audio.size() && i < 4; ++i)
+    {
+        const auto& f = oscs[audio[i]];
+        const int   wave  = f.count('w') ? f.at('w').getIntValue() : 3;
+        const float freq  = f.count('f') ? firstVal(f.at('f')) : 440.0f;
+        const float duty  = f.count('d') ? firstVal(f.at('d')) : 0.5f;
+        const float level = f.count('a') ? firstVal(f.at('a')) : 0.0f;
+        switch (i)
+        {
+            case 0:
+                a.aWave=wave; a.aFreq=freq; a.aDuty=duty; a.aLevel=level;
+                if (f.count('f')) a.lfoToPitch = nthVal(f.at('f'), 5, 0.0f);   // LFO depths from OSC A
+                if (f.count('d')) a.lfoToPwm   = nthVal(f.at('d'), 5, 0.0f);
+                break;
+            case 1:  a.bWave=wave; a.bFreq=freq; a.bDuty=duty; a.bLevel=level; break;
+            case 2:  a.cWave=wave; a.cFreq=freq; a.cDuty=duty; a.cLevel=level; break;
+            default: a.dWave=wave; a.dFreq=freq; a.dDuty=duty; a.dLevel=level; break;
+        }
+    }
+
+    out = a;
+    return true;
+}
 } // namespace amyplug

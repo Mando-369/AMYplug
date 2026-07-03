@@ -442,10 +442,9 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     // Enabled only for DX7 presets (Juno analog patches need the wider 4-osc editor).
     toEditorButton.onClick = [this]
     {
-        if (proc.loadFactoryPatchIntoEditor(lastPatch))
-            setEngineIndex(2);                 // jump to the DX7 tab (also driven by the engine param)
+        proc.loadFactoryPatchIntoEditor(lastPatch);   // sets engine -> timer switches the tab
     };
-    toEditorButton.setTooltip("Load this factory DX7 preset's settings into the editable FM (DX7) tab");
+    toEditorButton.setTooltip("Load this factory preset's settings into the editable Juno / DX7 tab");
     addAndMakeVisible(toEditorButton);
 
     if (auto* ep = dynamic_cast<juce::AudioParameterChoice*>(s.getParameter(params::id::engine)))
@@ -746,8 +745,9 @@ void AmyPlugEditor::timerCallback()
         {
             lastPatch = n;
             patchBox.setSelectedId(n + 1, juce::dontSendNotification);
-            // "To Editor" only decodes factory DX7 presets (128..255).
-            toEditorButton.setEnabled(n >= 128 && n <= 255);
+            // "To Editor" decodes factory Juno (0..127) and DX7 (128..255) presets;
+            // piano/amyboard (256..257) have no editable structure.
+            toEditorButton.setEnabled(n >= 0 && n <= 255);
         }
     }
 

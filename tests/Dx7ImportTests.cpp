@@ -182,3 +182,45 @@ TEST_CASE("Factory wire decode rejects a non-FM (Juno) patch", "[dx7][factory]")
     PatchModel::FmParams fm;
     REQUIRE_FALSE(factoryFmWireToParams(kJuno0, fm));
 }
+
+// --- Factory Juno (analog) decode ------------------------------------------
+TEST_CASE("Factory analog decode maps a Juno preset onto OSC A/B/C/D + VCF/LFO", "[dx7][factory][analog]")
+{
+    // Juno #0 "A11 Brass Set 1", verbatim from patches.h. 4 DCOs on v2..v5, VCF/VCA
+    // on v0 (w20, G filter, shared ADSR), LFO on v1 (w4).
+    constexpr const char* kJuno0 =
+        "v1w4a1,,0,1Zv0w20c2L1G4Zv2w1c3L1Zv3w3c4L1Zv4w1c5L1Zv5w5L1Z"
+        "v1f0.945A156,1.0,10000,0Z"
+        "v2a0,,0,0f220,1,,,,0,1d0.902,,,,,0m0Zv3a1,,0,0f220,1,,,,0,1m0Z"
+        "v4a0,,0,0f110,1,,,,0,1m0Zv5a0,,0,0Z"
+        "v0F179.93,0.677,,5.024,0,0R0.93Zv0a0.85,,1,1,0A30,1,1355,0.354,232,0Z"
+        "x0,0,0k1,,0.5,0.5Z";
+
+    PatchModel::AnalogParams a;
+    REQUIRE(factoryAnalogWireToParams(kJuno0, a));
+
+    // Four DCOs, in osc order v2->A, v3->B, v4->C, v5->D.
+    REQUIRE(a.aWave == 1); REQUIRE(a.aFreq == Approx(220.0f).margin(0.5));
+    REQUIRE(a.bWave == 3); REQUIRE(a.bFreq == Approx(220.0f).margin(0.5));
+    REQUIRE(a.bLevel == Approx(1.0f).margin(0.01));
+    REQUIRE(a.cWave == 1); REQUIRE(a.cFreq == Approx(110.0f).margin(0.5));
+    REQUIRE(a.dWave == 5);
+
+    // VCF + LFO.
+    REQUIRE(a.vcfFreq == Approx(179.93f).margin(0.1));
+    REQUIRE(a.vcfReso == Approx(0.93f).margin(0.01));
+    REQUIRE(a.filterType == 4);
+    REQUIRE(a.lfoWave == 4);
+    REQUIRE(a.lfoFreq == Approx(0.945f).margin(0.01));
+
+    // Shared ADSR (osc0 A30,1,1355,0.354,232,0) -> amp + filter env.
+    REQUIRE(a.ampA == Approx(0.030f).margin(0.005));
+    REQUIRE(a.ampS == Approx(0.354f).margin(0.01));
+    REQUIRE(a.vcfS == Approx(0.354f).margin(0.01));   // Juno shares the env
+}
+
+TEST_CASE("Factory analog decode rejects an FM (DX7) patch", "[dx7][factory][analog]")
+{
+    PatchModel::AnalogParams a;
+    REQUIRE_FALSE(factoryAnalogWireToParams(kBrass1, a));   // no filter 'G' -> not analog
+}

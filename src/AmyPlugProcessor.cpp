@@ -883,21 +883,38 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
 
 bool AmyPlugProcessor::loadFactoryPatchIntoEditor(int patchNumber)
 {
-    // Decode a built-in DX7/ALGO preset's wire string into our FM params and drop it
-    // into the editor as an editable FM patch. Only FM/ALGO patches decode (Juno
-    // analog patches return false). We keep the user's current FX/output settings and
-    // only replace the synth graph + engine.
+    // Decode a built-in preset's wire string into the editable engine and push it to
+    // the knobs. DX7/ALGO patches -> the FM tab; Juno analog patches -> the Juno tab.
+    // We keep the user's current FX/output settings and only replace the synth graph.
     if (patchNumber < 0 || patchNumber >= kBuiltinPatchCount) return false;
-    PatchModel::FmParams fm;
-    if (! factoryFmWireToParams(juce::String(kBuiltinPatchCommands[patchNumber]), fm))
-        return false;
+    const juce::String wire { kBuiltinPatchCommands[patchNumber] };
 
     syncModelFromParams();                       // capture current state (FX, etc.)
     if (model.synths.empty()) model.synths.push_back({});
-    model.synths[0].engine = PatchModel::Engine::FM;
-    model.synths[0].fm     = fm;
-    applyPreset(model);                          // push to APVTS: engine=FM + the knobs
-    return true;
+    auto& s = model.synths[0];
+
+    PatchModel::FmParams fm;
+    if (factoryFmWireToParams(wire, fm))
+    {
+        s.engine = PatchModel::Engine::FM;
+        s.fm     = fm;
+        applyPreset(model);                      // engine=FM + the operator knobs
+        return true;
+    }
+
+    PatchModel::AnalogParams an;
+    if (factoryAnalogWireToParams(wire, an))
+    {
+        s.engine = PatchModel::Engine::Analog;
+        s.analog = an;
+        // VCF freq/reso and the amp ADSR are stored as macros (reused params), so
+        // mirror them for applyPreset to reach filterCutoff/filterReso + amp env.
+        s.filterCutoff = an.vcfFreq; s.filterReso = an.vcfReso;
+        s.ampAttack = an.ampA; s.ampDecay = an.ampD; s.ampSustain = an.ampS; s.ampRelease = an.ampR;
+        applyPreset(model);                      // engine=Analog + the Juno knobs
+        return true;
+    }
+    return false;                                // piano / amyboard / unknown structure
 }
 
 void AmyPlugProcessor::parameterChanged(const juce::String&, float)
