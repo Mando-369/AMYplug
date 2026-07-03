@@ -7,6 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include "state/Dx7Import.h"
+#include "state/Dx7Lfo.h"
 #include <vector>
 #include <cstdint>
 
@@ -172,6 +173,34 @@ TEST_CASE("Factory wire decode maps a DX7 preset onto OP1..6", "[dx7][factory]")
     REQUIRE(fm.ops[5].egLevel[2] == Approx(91.0f).margin(1.0));
     REQUIRE(fm.ops[5].egLevel[3] == Approx(0.0f).margin(1.0));
     REQUIRE_FALSE(fm.ops[0].fixedFreq);   // all BRASS 1 operators are ratio mode
+
+    // LFO: osc1 = w0 (AMY SINE -> DX7 Sine wave 4), f6.166667 -> speed 37. The ALGO
+    // freq mod-coef 0.007298 is vibrato -> PMS 7 + a small PMD. No tremolo (amp coef 0).
+    REQUIRE(fm.lfoWave  == 4);
+    REQUIRE(fm.lfoSpeed == Approx(37.0f).margin(0.05));
+    REQUIRE(fm.lfoPms   == 7);
+    REQUIRE(fm.lfoPmd   > 0.0f);
+    REQUIRE(fm.lfoAmd   == Approx(0.0f).margin(1e-4));
+    for (int i = 0; i < 6; ++i) REQUIRE(fm.ops[i].ampModSens == 0);
+    // Re-emitting the decoded PMS+PMD reproduces the original vibrato depth (lossless).
+    REQUIRE((float) dx7lfo::pitchLfoAmp(fm.lfoPms, fm.lfoPmd) == Approx(0.007298f).margin(1e-5));
+}
+
+TEST_CASE("Dx7Lfo conversions round-trip (speed/wave/depths)", "[dx7][lfo]")
+{
+    using namespace amyplug::dx7lfo;
+    // Wave map is a bijection over 0..5.
+    for (int w = 0; w <= 5; ++w) REQUIRE(lfoAmyToDx7(lfoWaveToAmy(w)) == w);
+    // Speed <-> Hz is exact in the common /6 band (a DX7 speed of 37 -> 6.1667 Hz).
+    REQUIRE(lfoSpeedToHz(37.0) == Approx(6.16667).margin(1e-4));
+    REQUIRE(lfoHzToSpeed(lfoSpeedToHz(37.0)) == Approx(37.0).margin(1e-4));
+    // Tremolo depth AMD <-> amp_lfo_amp is invertible; AMD 99 = full (1.0).
+    REQUIRE(ampLfoAmp(99.0) == Approx(1.0).margin(1e-6));
+    REQUIRE(ampToAmd(ampLfoAmp(50.0)) == Approx(50.0).margin(1e-3));
+    // Vibrato: PMD 0 -> no mod; solving PMD at fixed PMS reproduces the same depth.
+    REQUIRE(pitchLfoAmp(7, 0.0) == Approx(0.0).margin(1e-9));
+    const double amp = pitchLfoAmp(7, 30.0);
+    REQUIRE(pitchLfoAmp(7, pitchAmpToPmd(amp, 7)) == Approx(amp).margin(1e-9));
 }
 
 TEST_CASE("Factory wire decode rejects a non-FM (Juno) patch", "[dx7][factory]")

@@ -162,6 +162,13 @@ private:
     Macro mFmEgRate[PatchModel::kFmOps][4], mFmEgLevel[PatchModel::kFmOps][4];  // DX7 4R/4L EG
     std::atomic<float>* pFmFixed[PatchModel::kFmOps]   = {};    // fixed-frequency mode (structural)
     std::atomic<float>* pFmFixedHz[PatchModel::kFmOps] = {};    // fixed frequency in Hz
+    std::atomic<float>* pFmAms[PatchModel::kFmOps]     = {};    // amp mod sensitivity (structural)
+    // LFO (all structural — a change re-emits the LFO wiring on the async rebuild).
+    std::atomic<float>* pFmLfoSpeed = nullptr;
+    std::atomic<float>* pFmLfoWave  = nullptr;
+    std::atomic<float>* pFmLfoPmd   = nullptr;
+    std::atomic<float>* pFmLfoAmd   = nullptr;
+    std::atomic<float>* pFmLfoPms   = nullptr;
 
     static constexpr int kMacroSynth = 1;        // M2: macros target synth 1
 

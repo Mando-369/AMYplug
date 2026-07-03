@@ -638,10 +638,21 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     addEnv(fmEnv1Panel, 1); addEnv(fmEnv1Panel, 2); addEnv(fmEnv1Panel, 3);
     addEnv(fmEnv2Panel, 4); addEnv(fmEnv2Panel, 5); addEnv(fmEnv2Panel, 6);
     fmEnv1Panel.setCellSize(96, 96); fmEnv2Panel.setCellSize(96, 96);
-    // DX7 4 — global pitch EG (affects all operators; level 50 = no shift).
+    // DX7 4 — pitch & global mod: pitch EG, the LFO, and the per-op tremolo routing.
     fmModPanel.addSection("PITCH EG");
     for (int e = 1; e <= 4; ++e) fmModPanel.addKnob(params::id::fmPitchEg('r', e), "R" + juce::String(e));
     for (int e = 1; e <= 4; ++e) fmModPanel.addKnob(params::id::fmPitchEg('l', e), "L" + juce::String(e));
+    // LFO: speed + waveform, vibrato (pitch depth + sensitivity), tremolo (amp depth).
+    fmModPanel.addSection("LFO");
+    fmModPanel.addKnob(params::id::fmLfoSpeed, "Speed");
+    fmModPanel.addChoice(params::id::fmLfoWave, "Wave");
+    fmModPanel.addKnob(params::id::fmLfoPmd, "Vibrato");
+    fmModPanel.addKnob(params::id::fmLfoPms, "Vib Sens");
+    fmModPanel.addKnob(params::id::fmLfoAmd, "Tremolo");
+    // AMS: which operators the LFO tremolo reaches (per-op amp mod sensitivity).
+    fmModPanel.addSection("LFO -> OP (Tremolo)");
+    for (int op = 1; op <= 6; ++op)
+        fmModPanel.addChoice(params::id::fmOp(op, "ams"), "OP " + juce::String(op));
     fmModPanel.setCellSize(110, 100);
 
     // --- global FX rack, top-to-bottom in AMY's actual processing order:

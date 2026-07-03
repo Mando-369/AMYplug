@@ -57,10 +57,10 @@ public:
     };
 
     // The editable FM (DX7-style) voice — a 6-operator phase-modulation synth that
-    // mirrors AMY's ALGO engine: osc0 is the ALGO controller (algorithm + feedback +
-    // master envelope), oscs 1..6 are sine operators. Each operator outputs
-    // level x its own envelope; pitch = note x ratio. All values are the source of
-    // truth (fully recalled). The master amp envelope reuses Synth::ampA..ampR.
+    // mirrors AMY's ALGO engine: osc 0 is the ALGO controller (algorithm + feedback +
+    // pitch envelope), osc 1 is the LFO, oscs 2..7 are the sine operators (matches
+    // fm.py). Each operator outputs level x its own envelope; pitch = note x ratio.
+    // All values are the source of truth (fully recalled).
     struct FmOp
     {
         // Frequency: ratio (key-tracks) or fixed Hz (percussive/inharmonic operators).
@@ -73,6 +73,9 @@ public:
         // floor. Emitted as AMY's 5-breakpoint form via Dx7Envelope (lossless).
         float egRate[4]  = { 95.0f, 60.0f, 40.0f, 55.0f };   // R1..R4
         float egLevel[4] = { 99.0f, 80.0f, 65.0f,  0.0f };   // L1..L4
+        // Amplitude Modulation Sensitivity (DX7 0..3): how much the LFO's amp-mod
+        // depth (AMD) reaches this operator. fm.py treats it as on/off (>0 = on).
+        int   ampModSens = 0;
     };
     static constexpr int kFmOps = 6;
     struct FmParams
@@ -84,6 +87,18 @@ public:
         // all-50 is flat (the default, = the +1-octave tuning env). Drives all operators.
         float pitchEgRate[4]  = { 99.0f, 99.0f, 99.0f, 99.0f };
         float pitchEgLevel[4] = { 50.0f, 50.0f, 50.0f, 50.0f };
+        // LFO — stored DX7-native (Dx7Lfo converts to AMY at emit time). Realised as a
+        // dedicated LFO oscillator (osc 1) that mod-sources the operators (tremolo, per
+        // op AMS) and the ALGO osc (vibrato, PMS+PMD). Defaults are silent (no mod).
+        // Delay + Osc/LFO key-sync are stored for recall but AMY (like fm.py) ignores them.
+        float lfoSpeed   = 35.0f;   // 0..99  (~5.8 Hz)
+        int   lfoWave    = 0;       // 0 Tri, 1 SawDn, 2 SawUp, 3 Square, 4 Sine, 5 S&H
+        float lfoPmd     = 0.0f;    // 0..99  pitch mod depth (vibrato)
+        float lfoAmd     = 0.0f;    // 0..99  amp mod depth (tremolo)
+        int   lfoPms     = 3;       // 0..7   pitch mod sensitivity
+        float lfoDelay   = 0.0f;    // 0..99  (recall only; AMY ignores)
+        int   lfoKeySync = 1;       // 0..1   (recall only; AMY ignores)
+        int   oscKeySync = 1;       // 0..1   reset op phase on note-on (recall only)
     };
 
     struct Synth

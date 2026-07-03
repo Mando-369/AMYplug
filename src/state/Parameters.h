@@ -98,6 +98,13 @@ namespace id
     inline constexpr auto fmFeedback    = "fm_feedback";    // 0..1 on the ALGO osc
     // Global pitch EG (DX7 4R/4L, 0..99). rl = 'r' or 'l', n = 1..4.
     inline juce::String fmPitchEg(char rl, int n) { return juce::String("fm_pitcheg_") + rl + juce::String(n); }
+    // LFO (DX7-native). Realised as a dedicated LFO osc: vibrato (PMS+PMD) on the ALGO
+    // osc, tremolo (AMD, gated per-op by AMS) on the operators.
+    inline constexpr auto fmLfoSpeed = "fm_lfo_speed";      // 0..99
+    inline constexpr auto fmLfoWave  = "fm_lfo_wave";       // 0..5 (Tri/SawDn/SawUp/Sq/Sine/S&H)
+    inline constexpr auto fmLfoPmd   = "fm_lfo_pmd";        // 0..99 pitch mod depth (vibrato)
+    inline constexpr auto fmLfoAmd   = "fm_lfo_amd";        // 0..99 amp mod depth (tremolo)
+    inline constexpr auto fmLfoPms   = "fm_lfo_pms";        // 0..7 pitch mod sensitivity
 
     // Per-operator ids are generated (op = 1..6). field = ratio|level|attack|decay|sustain|release.
     inline juce::String fmOp(int op, const char* field)
@@ -106,7 +113,7 @@ namespace id
     }
 }
 
-// How many FM operators the DX7 engine exposes (oscs 1..6; osc 0 is the ALGO ctrl).
+// How many FM operators the DX7 engine exposes (oscs 2..7; osc 0 = ALGO ctrl, osc 1 = LFO).
 inline constexpr int kFmOps = 6;
 
 // Builds the parameter layout. Implemented inline so the processor can call it
@@ -276,6 +283,20 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
             "Pitch EG L" + juce::String(e), NormalisableRange<float> { 0.0f, 99.0f, 1.0f }, 50.0f));
     }
 
+    // LFO: speed/PMD/AMD are DX7 0..99, PMS 0..7, wave a 6-way menu. Depths default to
+    // 0 (no modulation) so a patch without LFO is silent on those. All structural
+    // (a change re-emits the LFO wiring) — they aren't fast automation targets.
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::fmLfoSpeed, 1 },
+        "LFO Speed", NormalisableRange<float> { 0.0f, 99.0f, 1.0f }, 35.0f));
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::fmLfoWave, 1 },
+        "LFO Wave", juce::StringArray { "Triangle", "Saw Down", "Saw Up", "Square", "Sine", "S&H" }, 0));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::fmLfoPmd, 1 },
+        "LFO Pitch Depth", NormalisableRange<float> { 0.0f, 99.0f, 1.0f }, 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::fmLfoAmd, 1 },
+        "LFO Amp Depth", NormalisableRange<float> { 0.0f, 99.0f, 1.0f }, 0.0f));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::fmLfoPms, 1 },
+        "LFO Pitch Sens", 0, 7, 3));
+
     // Per-operator: frequency ratio (multiple of the note), output level (= FM
     // modulation index for modulators), and a full A/D/S/R envelope. Defaults give
     // a simple 2-operator tone (op1 carrier, op2 modulator) under algorithm 1.
@@ -310,6 +331,10 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add(std::make_unique<AudioParameterFloat>(
             ParameterID { id::fmOp(op, "fixedhz"), 1 }, "Op " + juce::String(op) + " Fixed Hz",
             NormalisableRange<float> { 1.0f, 20000.0f, 0.0f, 0.3f }, 440.0f));
+        // Amplitude Mod Sensitivity (0..3): gates the LFO tremolo into this operator.
+        layout.add(std::make_unique<AudioParameterChoice>(
+            ParameterID { id::fmOp(op, "ams"), 1 }, "Op " + juce::String(op) + " AMS",
+            juce::StringArray { "Off", "1", "2", "3" }, 0));
     }
 
     return layout;

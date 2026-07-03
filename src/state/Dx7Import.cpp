@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR MIT
 #include "Dx7Import.h"
 #include "Dx7Envelope.h"
+#include "Dx7Lfo.h"
 #include <cmath>
 #include <algorithm>
 #include <map>
@@ -20,6 +21,7 @@ struct RawOp
     int coarse  = 1;
     int fine    = 0;
     int detune  = 7;                // 0..14, centre 7
+    int ams     = 0;                // amplitude mod sensitivity 0..3
 };
 struct RawVoice
 {
@@ -28,6 +30,10 @@ struct RawVoice
     int   feedback  = 0;            // 0..7
     int   pitchRates[4]  { 99, 99, 99, 99 };   // pitch EG R1..R4
     int   pitchLevels[4] { 50, 50, 50, 50 };   // pitch EG L1..L4 (50 = no shift)
+    // LFO + global switches.
+    int   lfoSpeed = 35, lfoDelay = 0, lfoPmd = 0, lfoAmd = 0;
+    int   lfoKeySync = 1, lfoWave = 0, lfoPms = 3;
+    int   oscKeySync = 1;
     juce::String name;
 };
 
@@ -96,6 +102,7 @@ PatchModel::FmOp convertOp(const RawOp& op)
         o.egRate[i]  = (float) juce::jlimit(0, 99, op.rates[i]);
         o.egLevel[i] = (float) juce::jlimit(0, 99, op.levels[i]);
     }
+    o.ampModSens = juce::jlimit(0, 3, op.ams);
     return o;
 }
 
@@ -111,9 +118,18 @@ Dx7Voice convertVoice(const RawVoice& raw)
         v.fm.pitchEgLevel[i] = (float) juce::jlimit(0, 99, raw.pitchLevels[i]);
     }
     // raw.ops is stored OP6..OP1; our FmParams.ops[i] is DX7 operator (i+1), so
-    // ops[i] = raw.ops[5 - i] (matches emitFm's O6,5,4,3,2,1 routing).
+    // ops[i] = raw.ops[5 - i] (matches emitFm's O7,6,5,4,3,2 routing).
     for (int i = 0; i < 6; ++i)
         v.fm.ops[i] = convertOp(raw.ops[5 - i]);
+    // LFO + global switches are DX7-native (Dx7Lfo converts to AMY at emit time).
+    v.fm.lfoSpeed   = (float) juce::jlimit(0, 99, raw.lfoSpeed);
+    v.fm.lfoWave    = juce::jlimit(0, 5, raw.lfoWave);
+    v.fm.lfoPmd     = (float) juce::jlimit(0, 99, raw.lfoPmd);
+    v.fm.lfoAmd     = (float) juce::jlimit(0, 99, raw.lfoAmd);
+    v.fm.lfoPms     = juce::jlimit(0, 7, raw.lfoPms);
+    v.fm.lfoDelay   = (float) juce::jlimit(0, 99, raw.lfoDelay);
+    v.fm.lfoKeySync = juce::jlimit(0, 1, raw.lfoKeySync);
+    v.fm.oscKeySync = juce::jlimit(0, 1, raw.oscKeySync);
     return v;
 }
 
@@ -138,15 +154,24 @@ RawVoice unpackPacked(const std::uint8_t* d)
         RawOp& op = v.ops[k];
         for (int i = 0; i < 4; ++i) { op.rates[i] = o[i]; op.levels[i] = o[4 + i]; }
         op.detune      = (o[12] >> 3) & 0x0F;    // byte12: bits0-2 rate-scale, bits3-6 detune
+        op.ams         =  o[13] & 0x03;          // byte13: bits0-1 AMS, bits2-4 key-vel-sens
         op.outputLevel = o[14];
         op.mode        =  o[15] & 0x01;          // byte15: bit0 mode, bits1-5 coarse
         op.coarse      = (o[15] >> 1) & 0x1F;
         op.fine        =  o[16];
     }
-    v.algorithm = (d[110] & 0x1F) + 1;           // stored 0..31
-    v.feedback  =  d[111] & 0x07;                // byte111: bits0-2 feedback
+    v.algorithm  = (d[110] & 0x1F) + 1;          // stored 0..31
+    v.feedback   =  d[111] & 0x07;               // byte111: bits0-2 feedback, bit3 osc key-sync
+    v.oscKeySync = (d[111] >> 3) & 0x01;
     for (int i = 0; i < 4; ++i) { v.pitchRates[i] = d[102 + i]; v.pitchLevels[i] = d[106 + i]; }
-    v.name      = readName(d + 118, 10);
+    v.lfoSpeed   = d[112];
+    v.lfoDelay   = d[113];
+    v.lfoPmd     = d[114];
+    v.lfoAmd     = d[115];
+    v.lfoKeySync =  d[116]       & 0x01;         // byte116: bit0 key-sync, bits1-3 wave, bits4-6 PMS
+    v.lfoWave    = (d[116] >> 1) & 0x07;
+    v.lfoPms     = (d[116] >> 4) & 0x07;
+    v.name       = readName(d + 118, 10);
     return v;
 }
 
@@ -159,16 +184,25 @@ RawVoice readVced(const std::uint8_t* d)
         const std::uint8_t* o = d + k * 21;
         RawOp& op = v.ops[k];
         for (int i = 0; i < 4; ++i) { op.rates[i] = o[i]; op.levels[i] = o[4 + i]; }
+        op.ams         = o[14];                  // amplitude mod sensitivity 0..3
         op.outputLevel = o[16];
         op.mode        = o[17];                  // 0 = ratio, 1 = fixed
         op.coarse      = o[18];
         op.fine        = o[19];
         op.detune      = o[20];
     }
-    v.algorithm = d[134] + 1;                    // stored 0..31
-    v.feedback  = d[135];
+    v.algorithm  = d[134] + 1;                   // stored 0..31
+    v.feedback   = d[135];
+    v.oscKeySync = d[136];
     for (int i = 0; i < 4; ++i) { v.pitchRates[i] = d[126 + i]; v.pitchLevels[i] = d[130 + i]; }
-    v.name      = readName(d + 145, 10);
+    v.lfoSpeed   = d[137];
+    v.lfoDelay   = d[138];
+    v.lfoPmd     = d[139];
+    v.lfoAmd     = d[140];
+    v.lfoKeySync = d[141];
+    v.lfoWave    = d[142];
+    v.lfoPms     = d[143];
+    v.name       = readName(d + 145, 10);
     return v;
 }
 } // namespace
@@ -324,14 +358,41 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
     if (algoOsc < 0) return false;                            // no algorithm -> not FM (e.g. Juno)
     const auto& algo = oscs[algoOsc].f;
 
+    // Nth comma field of a coef list as float ("0,1,0,1,0,0.0073" [5] -> 0.0073), or 0.
+    auto nthCoef = [] (const juce::String& list, int n) -> float
+    {
+        juce::StringArray p; p.addTokens(list, ",", "");
+        return (n < p.size() && p[n].isNotEmpty()) ? p[n].getFloatValue() : 0.0f;
+    };
+
     PatchModel::FmParams fm;
     fm.algorithm = juce::jlimit(1, 32, algo.at('o').getIntValue());
     if (algo.count('b')) fm.feedback = juce::jlimit(0.0f, 1.0f, algo.at('b').getFloatValue());
     if (algo.count('A')) dx7env::breakpointsToPitchEg(algo.at('A'), fm.pitchEgRate, fm.pitchEgLevel);  // pitch EG
 
-    // Map oscillators to OP1..6 via the patch's O source list. AMY lists algo_source
-    // 6->1 (source k is DX7 operator 6-k); our ops[i] is DX7 operator i+1, so ops[i]
-    // takes the osc named at O position (kFmOps-1-i).
+    // LFO — osc 1 carries wave + speed; the ALGO osc's freq mod-coef (index 5) is the
+    // vibrato depth (pitch_lfo_amp). Decode back to DX7-native at a fixed PMS = 7 so
+    // re-emitting reproduces the same AMY numbers (recall stays faithful).
+    if (oscs.count(1))
+    {
+        const auto& lf = oscs.at(1).f;
+        if (lf.count('w')) fm.lfoWave  = dx7lfo::lfoAmyToDx7(lf.at('w').getIntValue());
+        if (lf.count('f')) fm.lfoSpeed = (float) dx7lfo::lfoHzToSpeed(firstVal(lf.at('f')));
+    }
+    if (algo.count('f'))
+    {
+        const float pitchLfo = nthCoef(algo.at('f'), 5);
+        if (pitchLfo > 0.0f)
+        {
+            fm.lfoPms = dx7lfo::kFactoryDecodePms;
+            fm.lfoPmd = (float) dx7lfo::pitchAmpToPmd(pitchLfo, fm.lfoPms);
+        }
+    }
+
+    // Map oscillators to OP1..6 via the patch's O source list, positionally. The
+    // factory bank lists algo_source forward (2,3,4,5,6,7); our ops[i] is DX7 operator
+    // i+1, so ops[i] takes the osc named at O position (kFmOps-1-i). Independent of the
+    // osc numbering emitFm uses, since it follows the O-list values themselves.
     juce::StringArray src; src.addTokens(algo.at('O'), ",", "");
     if (src.size() != PatchModel::kFmOps) return false;
 
@@ -351,6 +412,17 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
         else if (f.count('I')) op.ratio = juce::jmax(0.0f, f.at('I').getFloatValue());
         if (f.count('a')) op.level = juce::jlimit(0.0f, 4.0f, firstVal(f.at('a')));
         if (f.count('A')) dx7env::breakpointsToEg(f.at('A'), op.egRate, op.egLevel);  // exact shape
+        // Tremolo: amp mod-coef (index 5) != 0 means this op has AMS on; its value is
+        // the shared LFO amp depth (amp_lfo_amp) -> AMD. fm.py only stores AMS on/off.
+        if (f.count('a'))
+        {
+            const float ampLfo = nthCoef(f.at('a'), 5);
+            if (ampLfo > 0.0f)
+            {
+                op.ampModSens = 3;
+                fm.lfoAmd = (float) dx7lfo::ampToAmd(ampLfo);
+            }
+        }
         ++decoded;
     }
     if (decoded == 0) return false;

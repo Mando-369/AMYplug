@@ -2,6 +2,7 @@
 #include "PatchModel.h"
 #include "../engine/AmyWire.h"
 #include "Dx7Envelope.h"
+#include "Dx7Lfo.h"
 #include <cmath>
 
 namespace amyplug
@@ -137,12 +138,16 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
     const juce::String pre = "i" + juce::String(s.channel);
     auto F = [] (float v) { return juce::String(v, 4); };
 
-    // 7 oscs per voice: 0 = ALGO controller, 1..6 = operators.
-    out.emplace_back((pre + "iv" + juce::String(juce::jlimit(1, 16, s.numVoices)) + "in7Z").toStdString());
+    // 8 oscs per voice (matches fm.py): 0 = ALGO controller, 1 = LFO, 2..7 = operators.
+    out.emplace_back((pre + "iv" + juce::String(juce::jlimit(1, 16, s.numVoices)) + "in8Z").toStdString());
+
+    // LFO tremolo depth (amp mod-coef), shared by every operator whose AMS > 0.
+    const float ampLfo = (float) amyplug::dx7lfo::ampLfoAmp(fm.lfoAmd);
 
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const auto& op = fm.ops[i];
+        const int osc = i + 2;   // operators live on oscs 2..7 (osc 1 is the LFO)
         // Frequency: ratio (key-tracks) or fixed Hz. Fixed MUST zero the note coef
         // (f<hz>,0) — else the operator still key-tracks and a high note + high fixed
         // Hz pushes log-freq past AMY's wavetable range (out-of-bounds -> abort).
@@ -150,15 +155,26 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
             ? ("f" + F(juce::jlimit(1.0f, 20000.0f, op.fixedHz)) + ",0")
             : ("I" + F(op.ratio));
         // amp const = level, eg0 COEF 1 (matches fm.py): the operator's own bp0 env is
-        // the modulation depth over time. The env is the DX7 4R/4L EG rendered to AMY's
-        // exact 5-breakpoint form (Dx7Envelope) — the full shape, not an ADSR reduction.
+        // the modulation depth over time. mod-coef (index 5) = the LFO tremolo depth
+        // when this op's AMS > 0 (mod_source = osc 1, the LFO). The env is the DX7
+        // 4R/4L EG rendered to AMY's exact 5-breakpoint form (Dx7Envelope).
+        const float trem = (op.ampModSens > 0) ? ampLfo : 0.0f;
         const juce::String env = amyplug::dx7env::egToBreakpoints(op.egRate, op.egLevel);
-        out.emplace_back((pre + "v" + juce::String(i + 1) + "w0"
-            + "a" + F(op.level) + ",0,0,1,0,0"
+        out.emplace_back((pre + "v" + juce::String(osc) + "w0"
+            + "a" + F(op.level) + ",0,0,1,0," + F(trem)
             + freq
             + "A" + env
+            + "L1"                          // mod_source = osc 1 (the LFO)
             + "Z").toStdString());
     }
+
+    // osc 1 — the LFO. wave + speed (Hz); amp const 1, cosine phase like DX7 (fm.py).
+    out.emplace_back((pre + "v1"
+        + "w" + juce::String(amyplug::dx7lfo::lfoWaveToAmy(fm.lfoWave))
+        + "a1"
+        + "f" + F((float) amyplug::dx7lfo::lfoSpeedToHz(fm.lfoSpeed))
+        + "P0.25"
+        + "Z").toStdString());
 
     // osc 0 — ALGO controller. CONSTANT amp (a const,note,vel,...): const 1 + vel,
     // NO amp envelope — the per-operator envelopes own the voice's shape AND its
@@ -175,13 +191,17 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
     // octave below the built-in DX7 presets, so we emit a neutral pitch env held at
     // 1.0 (attack + release both stay at 1.0 — no pitch glide on note-off).
     // Pitch EG on bp0 (level 50 = ratio 1.0 = the +1 octave; non-flat sweeps around it).
+    // freq mod-coef (index 5) = the LFO vibrato depth (pitch_lfo_amp from PMS+PMD),
+    // mod_source = osc 1. O lists the operator oscs 7..2 (reverse) so DX7 OP1 == fm.ops[0].
+    const float pitchLfo = (float) amyplug::dx7lfo::pitchLfoAmp(fm.lfoPms, fm.lfoPmd);
     const juce::String pitchEnv = amyplug::dx7env::pitchEgToBreakpoints(fm.pitchEgRate, fm.pitchEgLevel);
     out.emplace_back((pre + "v0w8"
-        + "f0,1,0,1,0,0"                 // const 0, note 1, EG0 (pitch env) 1
+        + "f0,1,0,1,0," + F(pitchLfo)    // const 0, note 1, EG0 (pitch env) 1, LFO vibrato
         + "a1,0,1,0,0,0"
         + "A" + pitchEnv                 // DX7 pitch envelope (all-50 default = flat = +1 octave)
         + "b" + F(fm.feedback)
-        + "O6,5,4,3,2,1"
+        + "L1"                           // mod_source = osc 1 (the LFO)
+        + "O7,6,5,4,3,2"
         + "o" + juce::String(juce::jlimit(1, 32, fm.algorithm))
         + "Z").toStdString());
 }
@@ -322,6 +342,14 @@ juce::ValueTree PatchModel::toValueTree() const
             sv.setProperty("fm_pitchr" + juce::String(e + 1), fm.pitchEgRate[e],  nullptr);
             sv.setProperty("fm_pitchl" + juce::String(e + 1), fm.pitchEgLevel[e], nullptr);
         }
+        sv.setProperty("fm_lfoSpeed",   fm.lfoSpeed,   nullptr);
+        sv.setProperty("fm_lfoWave",    fm.lfoWave,    nullptr);
+        sv.setProperty("fm_lfoPmd",     fm.lfoPmd,     nullptr);
+        sv.setProperty("fm_lfoAmd",     fm.lfoAmd,     nullptr);
+        sv.setProperty("fm_lfoPms",     fm.lfoPms,     nullptr);
+        sv.setProperty("fm_lfoDelay",   fm.lfoDelay,   nullptr);
+        sv.setProperty("fm_lfoKeySync", fm.lfoKeySync, nullptr);
+        sv.setProperty("fm_oscKeySync", fm.oscKeySync, nullptr);
         for (int i = 0; i < kFmOps; ++i)
         {
             const auto& op = fm.ops[i];
@@ -335,6 +363,7 @@ juce::ValueTree PatchModel::toValueTree() const
             }
             sv.setProperty(k + "fixed", op.fixedFreq, nullptr);
             sv.setProperty(k + "fixedHz", op.fixedHz, nullptr);
+            sv.setProperty(k + "ams", op.ampModSens, nullptr);
         }
         juce::String joined;
         for (const auto& c : s.oscWireCommands) joined << juce::String(c) << "\n";
@@ -419,6 +448,14 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
             fm.pitchEgRate[e]  = (float) sv.getProperty("fm_pitchr" + juce::String(e + 1), fm.pitchEgRate[e]);
             fm.pitchEgLevel[e] = (float) sv.getProperty("fm_pitchl" + juce::String(e + 1), fm.pitchEgLevel[e]);
         }
+        fm.lfoSpeed   = (float) sv.getProperty("fm_lfoSpeed",   fm.lfoSpeed);
+        fm.lfoWave    = (int)   sv.getProperty("fm_lfoWave",    fm.lfoWave);
+        fm.lfoPmd     = (float) sv.getProperty("fm_lfoPmd",     fm.lfoPmd);
+        fm.lfoAmd     = (float) sv.getProperty("fm_lfoAmd",     fm.lfoAmd);
+        fm.lfoPms     = (int)   sv.getProperty("fm_lfoPms",     fm.lfoPms);
+        fm.lfoDelay   = (float) sv.getProperty("fm_lfoDelay",   fm.lfoDelay);
+        fm.lfoKeySync = (int)   sv.getProperty("fm_lfoKeySync", fm.lfoKeySync);
+        fm.oscKeySync = (int)   sv.getProperty("fm_oscKeySync", fm.oscKeySync);
         for (int i = 0; i < kFmOps; ++i)
         {
             auto& op = fm.ops[i];
@@ -430,8 +467,9 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
                 op.egRate[e]  = (float) sv.getProperty(k + "r" + juce::String(e + 1), op.egRate[e]);
                 op.egLevel[e] = (float) sv.getProperty(k + "l" + juce::String(e + 1), op.egLevel[e]);
             }
-            op.fixedFreq = (bool)  sv.getProperty(k + "fixed", op.fixedFreq);
-            op.fixedHz   = (float) sv.getProperty(k + "fixedHz", op.fixedHz);
+            op.fixedFreq   = (bool)  sv.getProperty(k + "fixed", op.fixedFreq);
+            op.fixedHz     = (float) sv.getProperty(k + "fixedHz", op.fixedHz);
+            op.ampModSens  = (int)   sv.getProperty(k + "ams", op.ampModSens);
         }
         auto lines = juce::StringArray::fromLines(sv.getProperty("oscWire").toString());
         for (auto& l : lines) if (l.isNotEmpty()) s.oscWireCommands.push_back(l.toStdString());
