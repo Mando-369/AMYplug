@@ -534,27 +534,32 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
 
     // --- DX7 (FM) operator controls, two columns: OP1|OP2 / OP3|OP4 / OP5|OP6.
     //     (Algorithm + feedback live in the tab's top row alongside the diagram.) -
-    // DX7 1 — per-operator frequency + output level (below the algorithm diagram).
-    for (int op = 1; op <= 6; ++op)
+    // DX7 1 — per-operator frequency + level, 3 columns of 2 ops (OP1/4, OP2/5, OP3/6).
+    auto addOsc = [] (ControlPanel& p, int op)
     {
-        fmOscPanel.addSection("OP " + juce::String(op));
-        fmOscPanel.addKnob(params::id::fmOp(op, "ratio"),   "Ratio");
-        fmOscPanel.addKnob(params::id::fmOp(op, "level"),   "Level");
-        fmOscPanel.addChoice(params::id::fmOp(op, "fixed"), "Fixed");
-        fmOscPanel.addKnob(params::id::fmOp(op, "fixedhz"), "Fix Hz");
-    }
-    fmOscPanel.setCellSize(130, 96);
-    // DX7 2 — per-operator DX7 4-rate / 4-level envelope.
-    for (int op = 1; op <= 6; ++op)
+        p.addSection("OP " + juce::String(op));
+        p.addKnob(params::id::fmOp(op, "ratio"),   "Ratio");
+        p.addKnob(params::id::fmOp(op, "level"),   "Level");
+        p.addChoice(params::id::fmOp(op, "fixed"), "Fixed");
+        p.addKnob(params::id::fmOp(op, "fixedhz"), "Fix Hz");
+    };
+    addOsc(fmOscA, 1); addOsc(fmOscA, 4);
+    addOsc(fmOscB, 2); addOsc(fmOscB, 5);
+    addOsc(fmOscC, 3); addOsc(fmOscC, 6);
+    for (auto* p : { &fmOscA, &fmOscB, &fmOscC }) p->setCellSize(96, 92);
+    // DX7 2 / DX7 3 — per-operator DX7 4-rate / 4-level envelope, OP1-3 and OP4-6.
+    auto addEnv = [] (ControlPanel& p, int op)
     {
-        fmEnvPanel.addSection("OP " + juce::String(op));
+        p.addSection("OP " + juce::String(op));
         for (int e = 1; e <= 4; ++e)
-            fmEnvPanel.addKnob(params::id::fmOp(op, ("r" + juce::String(e)).toRawUTF8()), "R" + juce::String(e));
+            p.addKnob(params::id::fmOp(op, ("r" + juce::String(e)).toRawUTF8()), "R" + juce::String(e));
         for (int e = 1; e <= 4; ++e)
-            fmEnvPanel.addKnob(params::id::fmOp(op, ("l" + juce::String(e)).toRawUTF8()), "L" + juce::String(e));
-    }
-    fmEnvPanel.setCellSize(96, 96);
-    // DX7 3 — global pitch EG (affects all operators; level 50 = no shift).
+            p.addKnob(params::id::fmOp(op, ("l" + juce::String(e)).toRawUTF8()), "L" + juce::String(e));
+    };
+    addEnv(fmEnv1Panel, 1); addEnv(fmEnv1Panel, 2); addEnv(fmEnv1Panel, 3);
+    addEnv(fmEnv2Panel, 4); addEnv(fmEnv2Panel, 5); addEnv(fmEnv2Panel, 6);
+    fmEnv1Panel.setCellSize(96, 96); fmEnv2Panel.setCellSize(96, 96);
+    // DX7 4 — global pitch EG (affects all operators; level 50 = no shift).
     fmModPanel.addSection("PITCH EG");
     for (int e = 1; e <= 4; ++e) fmModPanel.addKnob(params::id::fmPitchEg('r', e), "R" + juce::String(e));
     for (int e = 1; e <= 4; ++e) fmModPanel.addKnob(params::id::fmPitchEg('l', e), "L" + juce::String(e));
@@ -594,18 +599,21 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     // --- tabs -------------------------------------------------------------
     junoViewport.setViewedComponent(&junoCols, false);
     junoViewport.setScrollBarsShown(true, false);
-    fmOscViewport.setViewedComponent(&fmOscPanel, false);
+    fmOscViewport.setViewedComponent(&fmOscCols, false);
     fmOscViewport.setScrollBarsShown(true, false);
-    fmEnvViewport.setViewedComponent(&fmEnvPanel, false);
-    fmEnvViewport.setScrollBarsShown(true, false);
+    fmEnv1Viewport.setViewedComponent(&fmEnv1Panel, false);
+    fmEnv1Viewport.setScrollBarsShown(true, false);
+    fmEnv2Viewport.setViewedComponent(&fmEnv2Panel, false);
+    fmEnv2Viewport.setScrollBarsShown(true, false);
     fmModViewport.setViewedComponent(&fmModPanel, false);
     fmModViewport.setScrollBarsShown(true, false);
     tabs.setOutline(0);
-    tabs.addTab("Juno",     kPanel, &junoViewport,  false);
-    tabs.addTab("DX7 1",    kPanel, &dx7Tab1,       false);   // algorithm + oscillators
-    tabs.addTab("DX7 2",    kPanel, &fmEnvViewport, false);   // operator envelopes
-    tabs.addTab("DX7 3",    kPanel, &fmModViewport, false);   // pitch & mod
-    tabs.addTab("AMYboard", kPanel, &hwPanel,       false);   // MIDI-out select + connect + send patch
+    tabs.addTab("Juno",     kPanel, &junoViewport,   false);
+    tabs.addTab("DX7 1",    kPanel, &dx7Tab1,        false);   // algorithm + oscillators
+    tabs.addTab("DX7 2",    kPanel, &fmEnv1Viewport, false);   // operator envelopes OP1-3
+    tabs.addTab("DX7 3",    kPanel, &fmEnv2Viewport, false);   // operator envelopes OP4-6
+    tabs.addTab("DX7 4",    kPanel, &fmModViewport,  false);   // pitch & mod
+    tabs.addTab("AMYboard", kPanel, &hwPanel,        false);   // MIDI-out select + connect + send patch
     addAndMakeVisible(tabs);
 
     // Open on the tab matching the loaded engine, and seed lastTab so the first
@@ -615,9 +623,9 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         int eng0 = 0;
         if (auto* e = s.getRawParameterValue(params::id::engine))
             eng0 = juce::jlimit(0, 2, (int) std::lround(e->load()));
-        // Reopen on the AMYboard tab (4) if the session was in Hardware mode; else the
+        // Reopen on the AMYboard tab (5) if the session was in Hardware mode; else the
         // tab that matches the loaded engine (Analog->Juno 0, FM->DX7 1 = tab 1).
-        const int tab0 = (proc.currentMode() == IAmyBackend::Kind::Hardware) ? 4
+        const int tab0 = (proc.currentMode() == IAmyBackend::Kind::Hardware) ? 5
                        : (eng0 == 1) ? 0 : (eng0 == 2) ? 1 : tabs.getCurrentTabIndex();
         tabs.setCurrentTabIndex(tab0, false);
         lastTab = tab0;
@@ -786,24 +794,25 @@ void AmyPlugEditor::timerCallback()
         if (curTab != lastTab)
         {
             lastTab = curTab;
-            const int tabEng = (curTab == 0) ? 1 : (curTab >= 1 && curTab <= 3) ? 2 : eng;
+            const int tabEng = (curTab == 0) ? 1 : (curTab >= 1 && curTab <= 4) ? 2 : eng;
             if (tabEng != eng) { setEngineIndex(tabEng); eng = tabEng; }
         }
 
         if (eng != lastEngine)
         {
             lastEngine = eng;
-            // Analog -> Juno (0); FM -> keep the current DX7 tab (1-3) or default to DX7 1.
+            // Analog -> Juno (0); FM -> keep the current DX7 tab (1-4) or default to DX7 1.
             const int wantTab = (eng == 1) ? 0
-                              : (eng == 2) ? ((curTab >= 1 && curTab <= 3) ? curTab : 1)
+                              : (eng == 2) ? ((curTab >= 1 && curTab <= 4) ? curTab : 1)
                               : curTab;
             if (wantTab != tabs.getCurrentTabIndex())
             { tabs.setCurrentTabIndex(wantTab, false); lastTab = wantTab; }
 
             const bool analog = (eng == 1), fm = (eng == 2), factory = (eng == 0);
             junoCols.setEnabled(analog); junoCols.setAlpha(analog ? 1.0f : 0.4f);
-            for (auto* p : { (juce::Component*) &fmOscPanel, (juce::Component*) &fmEnvPanel,
-                             (juce::Component*) &fmModPanel })
+            for (auto* p : { (juce::Component*) &fmOscA, (juce::Component*) &fmOscB,
+                             (juce::Component*) &fmOscC, (juce::Component*) &fmEnv1Panel,
+                             (juce::Component*) &fmEnv2Panel, (juce::Component*) &fmModPanel })
             { p->setEnabled(fm); p->setAlpha(fm ? 1.0f : 0.4f); }
             for (auto* c : { (juce::Component*) &patchBox, (juce::Component*) &prevButton,
                              (juce::Component*) &nextButton, (juce::Component*) &browserLabel })
@@ -884,9 +893,13 @@ void AmyPlugEditor::resized()
     // Both tabs use two columns; each container is as tall as its taller column.
     const int junoH = juce::jmax(junoPanelL.preferredHeight(), junoPanelR.preferredHeight());
     junoCols.setSize(contentW, junoH);
-    // The three DX7 panels are single full-width columns; size each to its content.
-    fmOscPanel.setSize(contentW, fmOscPanel.preferredHeight());
-    fmEnvPanel.setSize(contentW, fmEnvPanel.preferredHeight());
+    // DX7 1 oscillators: 3 columns, container as tall as its tallest column (2 ops).
+    const int oscH = juce::jmax(fmOscA.preferredHeight(),
+                                juce::jmax(fmOscB.preferredHeight(), fmOscC.preferredHeight()));
+    fmOscCols.setSize(contentW, oscH);
+    // DX7 2/3 envelopes + DX7 4 pitch: single full-width columns.
+    fmEnv1Panel.setSize(contentW, fmEnv1Panel.preferredHeight());
+    fmEnv2Panel.setSize(contentW, fmEnv2Panel.preferredHeight());
     fmModPanel.setSize(contentW, fmModPanel.preferredHeight());
 }
 } // namespace amyplug

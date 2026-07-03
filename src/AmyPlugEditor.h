@@ -96,6 +96,25 @@ private:
     juce::Component& right;
 };
 
+// Lays out N child components side by side in equal columns.
+class ColumnPanels : public juce::Component
+{
+public:
+    explicit ColumnPanels(std::vector<juce::Component*> cols) : columns(std::move(cols))
+    { for (auto* c : columns) addAndMakeVisible(*c); }
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        const int n = (int) columns.size();
+        if (n == 0) return;
+        const int w = r.getWidth() / n;
+        for (int i = 0; i < n; ++i)
+            columns[i]->setBounds(i < n - 1 ? r.removeFromLeft(w) : r);
+    }
+private:
+    std::vector<juce::Component*> columns;
+};
+
 // Draws the selected FM algorithm's operator graph (modulators stacked above the
 // carriers they feed, feedback marked) so you can see which OP does what.
 class AlgorithmDiagram : public juce::Component
@@ -183,13 +202,17 @@ private:
     //   DX7 1 = algorithm + oscillators (per-op ratio/level/fixed),
     //   DX7 2 = operator envelopes (per-op R1-4 / L1-4),
     //   DX7 3 = pitch & global modulation (pitch EG; LFO/transpose to come).
+    // DX7 1 — algorithm + oscillators, in 3 columns of 2 ops (short + tight).
+    ControlPanel     fmOscA { proc.apvts() }, fmOscB { proc.apvts() }, fmOscC { proc.apvts() };
+    ColumnPanels     fmOscCols { { &fmOscA, &fmOscB, &fmOscC } };
     juce::Viewport   fmOscViewport;
-    ControlPanel     fmOscPanel { proc.apvts() };
     Dx7TabComponent  dx7Tab1 { proc.apvts(), algoDiagram, fmOscViewport };
-    juce::Viewport   fmEnvViewport;
-    ControlPanel     fmEnvPanel { proc.apvts() };
-    juce::Viewport   fmModViewport;
+    // DX7 2 / DX7 3 — operator envelopes, split OP1-3 and OP4-6.
+    ControlPanel     fmEnv1Panel { proc.apvts() }, fmEnv2Panel { proc.apvts() };
+    juce::Viewport   fmEnv1Viewport, fmEnv2Viewport;
+    // DX7 4 — pitch & global mod.
     ControlPanel     fmModPanel { proc.apvts() };
+    juce::Viewport   fmModViewport;
     ControlPanel     fxPanel   { proc.apvts() };   // global FX rack (right column)
     HardwarePanel    hwPanel   { proc };            // AMYboard tab
 
