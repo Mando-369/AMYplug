@@ -534,27 +534,31 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
 
     // --- DX7 (FM) operator controls, two columns: OP1|OP2 / OP3|OP4 / OP5|OP6.
     //     (Algorithm + feedback live in the tab's top row alongside the diagram.) -
-    auto addOp = [] (ControlPanel& panel, int op)
+    // DX7 1 — per-operator frequency + output level (below the algorithm diagram).
+    for (int op = 1; op <= 6; ++op)
     {
-        panel.addSection("OP " + juce::String(op));
-        panel.addKnob(params::id::fmOp(op, "ratio"),   "Ratio");
-        panel.addKnob(params::id::fmOp(op, "level"),   "Level");
-        panel.addChoice(params::id::fmOp(op, "fixed"), "Fixed");
-        panel.addKnob(params::id::fmOp(op, "fixedhz"), "Fix Hz");
-        // DX7 4-rate / 4-level operator envelope.
+        fmOscPanel.addSection("OP " + juce::String(op));
+        fmOscPanel.addKnob(params::id::fmOp(op, "ratio"),   "Ratio");
+        fmOscPanel.addKnob(params::id::fmOp(op, "level"),   "Level");
+        fmOscPanel.addChoice(params::id::fmOp(op, "fixed"), "Fixed");
+        fmOscPanel.addKnob(params::id::fmOp(op, "fixedhz"), "Fix Hz");
+    }
+    fmOscPanel.setCellSize(130, 96);
+    // DX7 2 — per-operator DX7 4-rate / 4-level envelope.
+    for (int op = 1; op <= 6; ++op)
+    {
+        fmEnvPanel.addSection("OP " + juce::String(op));
         for (int e = 1; e <= 4; ++e)
-            panel.addKnob(params::id::fmOp(op, ("r" + juce::String(e)).toRawUTF8()), "R" + juce::String(e));
+            fmEnvPanel.addKnob(params::id::fmOp(op, ("r" + juce::String(e)).toRawUTF8()), "R" + juce::String(e));
         for (int e = 1; e <= 4; ++e)
-            panel.addKnob(params::id::fmOp(op, ("l" + juce::String(e)).toRawUTF8()), "L" + juce::String(e));
-    };
-    addOp(fmPanelL, 1); addOp(fmPanelL, 3); addOp(fmPanelL, 5);
-    addOp(fmPanelR, 2); addOp(fmPanelR, 4); addOp(fmPanelR, 6);
-    // Global pitch EG (affects all operators). Level 50 = no shift.
-    fmPanelR.addSection("PITCH EG");
-    for (int e = 1; e <= 4; ++e) fmPanelR.addKnob(params::id::fmPitchEg('r', e), "R" + juce::String(e));
-    for (int e = 1; e <= 4; ++e) fmPanelR.addKnob(params::id::fmPitchEg('l', e), "L" + juce::String(e));
-    fmPanelL.setCellSize(86, 94);
-    fmPanelR.setCellSize(86, 94);
+            fmEnvPanel.addKnob(params::id::fmOp(op, ("l" + juce::String(e)).toRawUTF8()), "L" + juce::String(e));
+    }
+    fmEnvPanel.setCellSize(96, 96);
+    // DX7 3 — global pitch EG (affects all operators; level 50 = no shift).
+    fmModPanel.addSection("PITCH EG");
+    for (int e = 1; e <= 4; ++e) fmModPanel.addKnob(params::id::fmPitchEg('r', e), "R" + juce::String(e));
+    for (int e = 1; e <= 4; ++e) fmModPanel.addKnob(params::id::fmPitchEg('l', e), "L" + juce::String(e));
+    fmModPanel.setCellSize(110, 100);
 
     // --- global FX rack, top-to-bottom in AMY's actual processing order:
     //     EQ -> Chorus -> Echo -> Reverb -> Synth Vol (all inside AMY), then the
@@ -590,12 +594,18 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     // --- tabs -------------------------------------------------------------
     junoViewport.setViewedComponent(&junoCols, false);
     junoViewport.setScrollBarsShown(true, false);
-    fmViewport.setViewedComponent(&fmOps, false);
-    fmViewport.setScrollBarsShown(true, false);
+    fmOscViewport.setViewedComponent(&fmOscPanel, false);
+    fmOscViewport.setScrollBarsShown(true, false);
+    fmEnvViewport.setViewedComponent(&fmEnvPanel, false);
+    fmEnvViewport.setScrollBarsShown(true, false);
+    fmModViewport.setViewedComponent(&fmModPanel, false);
+    fmModViewport.setScrollBarsShown(true, false);
     tabs.setOutline(0);
-    tabs.addTab("Juno",     kPanel, &junoViewport, false);
-    tabs.addTab("DX7",      kPanel, &dx7Tab, false);   // algorithm diagram + operator controls
-    tabs.addTab("AMYboard", kPanel, &hwPanel, false);   // MIDI-out select + connect + send patch
+    tabs.addTab("Juno",     kPanel, &junoViewport,  false);
+    tabs.addTab("DX7 1",    kPanel, &dx7Tab1,       false);   // algorithm + oscillators
+    tabs.addTab("DX7 2",    kPanel, &fmEnvViewport, false);   // operator envelopes
+    tabs.addTab("DX7 3",    kPanel, &fmModViewport, false);   // pitch & mod
+    tabs.addTab("AMYboard", kPanel, &hwPanel,       false);   // MIDI-out select + connect + send patch
     addAndMakeVisible(tabs);
 
     // Open on the tab matching the loaded engine, and seed lastTab so the first
@@ -605,9 +615,9 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         int eng0 = 0;
         if (auto* e = s.getRawParameterValue(params::id::engine))
             eng0 = juce::jlimit(0, 2, (int) std::lround(e->load()));
-        // Reopen on the AMYboard tab if the session was in Hardware mode; else the
-        // tab that matches the loaded engine (Juno/DX7).
-        const int tab0 = (proc.currentMode() == IAmyBackend::Kind::Hardware) ? 2
+        // Reopen on the AMYboard tab (4) if the session was in Hardware mode; else the
+        // tab that matches the loaded engine (Analog->Juno 0, FM->DX7 1 = tab 1).
+        const int tab0 = (proc.currentMode() == IAmyBackend::Kind::Hardware) ? 4
                        : (eng0 == 1) ? 0 : (eng0 == 2) ? 1 : tabs.getCurrentTabIndex();
         tabs.setCurrentTabIndex(tab0, false);
         lastTab = tab0;
@@ -771,25 +781,30 @@ void AmyPlugEditor::timerCallback()
     {
         int eng = juce::jlimit(0, 2, (int) std::lround(e->load()));
 
-        // A user tab click activates that tab's engine (Juno→Analog, DX7→FM).
+        // A user tab click activates that tab's engine. Tabs: 0 Juno, 1-3 DX7, 4 AMYboard.
         const int curTab = tabs.getCurrentTabIndex();
         if (curTab != lastTab)
         {
             lastTab = curTab;
-            const int tabEng = (curTab == 0) ? 1 : (curTab == 1) ? 2 : eng;
+            const int tabEng = (curTab == 0) ? 1 : (curTab >= 1 && curTab <= 3) ? 2 : eng;
             if (tabEng != eng) { setEngineIndex(tabEng); eng = tabEng; }
         }
 
         if (eng != lastEngine)
         {
             lastEngine = eng;
-            const int wantTab = (eng == 1) ? 0 : (eng == 2) ? 1 : curTab;  // Factory keeps tab
+            // Analog -> Juno (0); FM -> keep the current DX7 tab (1-3) or default to DX7 1.
+            const int wantTab = (eng == 1) ? 0
+                              : (eng == 2) ? ((curTab >= 1 && curTab <= 3) ? curTab : 1)
+                              : curTab;
             if (wantTab != tabs.getCurrentTabIndex())
             { tabs.setCurrentTabIndex(wantTab, false); lastTab = wantTab; }
 
             const bool analog = (eng == 1), fm = (eng == 2), factory = (eng == 0);
             junoCols.setEnabled(analog); junoCols.setAlpha(analog ? 1.0f : 0.4f);
-            fmOps.setEnabled(fm);         fmOps.setAlpha(fm ? 1.0f : 0.4f);
+            for (auto* p : { (juce::Component*) &fmOscPanel, (juce::Component*) &fmEnvPanel,
+                             (juce::Component*) &fmModPanel })
+            { p->setEnabled(fm); p->setAlpha(fm ? 1.0f : 0.4f); }
             for (auto* c : { (juce::Component*) &patchBox, (juce::Component*) &prevButton,
                              (juce::Component*) &nextButton, (juce::Component*) &browserLabel })
                 c->setAlpha(factory ? 1.0f : 0.4f);
@@ -869,7 +884,9 @@ void AmyPlugEditor::resized()
     // Both tabs use two columns; each container is as tall as its taller column.
     const int junoH = juce::jmax(junoPanelL.preferredHeight(), junoPanelR.preferredHeight());
     junoCols.setSize(contentW, junoH);
-    const int opH = juce::jmax(fmPanelL.preferredHeight(), fmPanelR.preferredHeight());
-    fmOps.setSize(contentW, opH);
+    // The three DX7 panels are single full-width columns; size each to its content.
+    fmOscPanel.setSize(contentW, fmOscPanel.preferredHeight());
+    fmEnvPanel.setSize(contentW, fmEnvPanel.preferredHeight());
+    fmModPanel.setSize(contentW, fmModPanel.preferredHeight());
 }
 } // namespace amyplug

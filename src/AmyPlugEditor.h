@@ -178,12 +178,18 @@ private:
     ControlPanel     junoPanelL { proc.apvts() };  // OSC A, LFO, VCF ENV (left)
     ControlPanel     junoPanelR { proc.apvts() };  // OSC B, VCF, AMP ENV (right)
     TwoColumnPanels  junoCols { junoPanelL, junoPanelR };
-    juce::Viewport   fmViewport;                    // scrolls the FM (DX7) operators
-    ControlPanel     fmPanelL { proc.apvts() };     // OP 1, 3, 5 (left column)
-    ControlPanel     fmPanelR { proc.apvts() };     // OP 2, 4, 6 (right column)
-    TwoColumnPanels  fmOps { fmPanelL, fmPanelR };   // viewed by fmViewport
-    AlgorithmDiagram algoDiagram;                    // operator graph for the DX7 tab
-    Dx7TabComponent  dx7Tab { proc.apvts(), algoDiagram, fmViewport };
+    AlgorithmDiagram algoDiagram;                    // operator graph (DX7 1)
+    // The DX7 editor is split across 3 tabs for readability, grouped musically:
+    //   DX7 1 = algorithm + oscillators (per-op ratio/level/fixed),
+    //   DX7 2 = operator envelopes (per-op R1-4 / L1-4),
+    //   DX7 3 = pitch & global modulation (pitch EG; LFO/transpose to come).
+    juce::Viewport   fmOscViewport;
+    ControlPanel     fmOscPanel { proc.apvts() };
+    Dx7TabComponent  dx7Tab1 { proc.apvts(), algoDiagram, fmOscViewport };
+    juce::Viewport   fmEnvViewport;
+    ControlPanel     fmEnvPanel { proc.apvts() };
+    juce::Viewport   fmModViewport;
+    ControlPanel     fmModPanel { proc.apvts() };
     ControlPanel     fxPanel   { proc.apvts() };   // global FX rack (right column)
     HardwarePanel    hwPanel   { proc };            // AMYboard tab
 
