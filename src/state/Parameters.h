@@ -63,6 +63,18 @@ namespace id
     inline constexpr auto oscBFine      = "osc_b_fine";
     inline constexpr auto oscBDuty      = "osc_b_duty";
     inline constexpr auto oscBLevel     = "osc_b_level";
+    inline constexpr auto oscCWave      = "osc_c_wave";
+    inline constexpr auto oscCFreq      = "osc_c_freq";
+    inline constexpr auto oscCCoarse    = "osc_c_coarse";
+    inline constexpr auto oscCFine      = "osc_c_fine";
+    inline constexpr auto oscCDuty      = "osc_c_duty";
+    inline constexpr auto oscCLevel     = "osc_c_level";
+    inline constexpr auto oscDWave      = "osc_d_wave";
+    inline constexpr auto oscDFreq      = "osc_d_freq";
+    inline constexpr auto oscDCoarse    = "osc_d_coarse";
+    inline constexpr auto oscDFine      = "osc_d_fine";
+    inline constexpr auto oscDDuty      = "osc_d_duty";
+    inline constexpr auto oscDLevel     = "osc_d_level";
     inline constexpr auto lfoWave       = "lfo_wave";
     inline constexpr auto lfoFreq       = "lfo_freq";
     inline constexpr auto lfoToPitch    = "lfo_to_pitch";
@@ -207,6 +219,18 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::oscBFine, 1 }, "Osc B Fine", -100, 100, 0));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscBDuty, 1 }, "Osc B Duty", unit(), 0.5f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscBLevel, 1 }, "Osc B Level", unit(), 0.5f));
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::oscCWave, 1 }, "Osc C Wave", waveNames, 3));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscCFreq, 1 }, "Osc C Freq", oscFreq(), 440.0f));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::oscCCoarse, 1 }, "Osc C Coarse", -24, 24, 0));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::oscCFine, 1 }, "Osc C Fine", -100, 100, 0));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscCDuty, 1 }, "Osc C Duty", unit(), 0.5f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscCLevel, 1 }, "Osc C Level", unit(), 0.0f));
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::oscDWave, 1 }, "Osc D Wave", waveNames, 3));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscDFreq, 1 }, "Osc D Freq", oscFreq(), 440.0f));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::oscDCoarse, 1 }, "Osc D Coarse", -24, 24, 0));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::oscDFine, 1 }, "Osc D Fine", -100, 100, 0));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscDDuty, 1 }, "Osc D Duty", unit(), 0.5f));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::oscDLevel, 1 }, "Osc D Level", unit(), 0.0f));
 
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::lfoWave, 1 }, "LFO Wave", waveNames, 4));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::lfoFreq, 1 }, "LFO Freq",

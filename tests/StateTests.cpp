@@ -126,12 +126,14 @@ TEST_CASE("Analog engine builds the 4-oscillator subtractive voice", "[state][an
     const std::string osc0 = msgFor("v0w20");
     const std::string osc2 = msgFor("v2w");
 
-    REQUIRE(anyContains(w, "in4"));        // 4 oscs per voice
+    REQUIRE(anyContains(w, "in6"));        // 6 oscs/voice: osc0 VCF + osc1 LFO + 4 audio (A/B/C/D)
     REQUIRE_FALSE(osc0.empty());           // osc0 = SILENT filter/VCA
     REQUIRE(anyContains(w, "c2"));         // chained osc0<-osc2
     REQUIRE(anyContains(w, "v1w"));        // LFO osc1
     REQUIRE(anyContains(w, ",0Z"));        // LFO freq has note-coef 0 (won't track notes)
     REQUIRE(anyContains(w, "v3w"));        // OSC B
+    REQUIRE(anyContains(w, "v4w"));        // OSC C
+    REQUIRE(anyContains(w, "v5w"));        // OSC D
     REQUIRE(anyContains(w, "L1"));         // LFO as mod source
     REQUIRE_FALSE(anyContains(w, "K"));    // analog never loads a factory patch
 
@@ -151,6 +153,8 @@ TEST_CASE("Analog params survive the ValueTree round-trip", "[state][analog]")
     a.synths[0].analog.vcfFreq = 1234.0f;
     a.synths[0].analog.aWave   = 5;
     a.synths[0].analog.lfoToFilter = 0.42f;
+    a.synths[0].analog.cWave = 2; a.synths[0].analog.cLevel = 0.6f; a.synths[0].analog.cCoarse = -7;
+    a.synths[0].analog.dFreq = 330.0f; a.synths[0].analog.dLevel = 0.3f;
     a.eqLow = -3.0f;
 
     PatchModel b; b.fromValueTree(a.toValueTree());
@@ -158,7 +162,17 @@ TEST_CASE("Analog params survive the ValueTree round-trip", "[state][analog]")
     REQUIRE(b.synths[0].analog.vcfFreq == 1234.0f);
     REQUIRE(b.synths[0].analog.aWave   == 5);
     REQUIRE(b.synths[0].analog.lfoToFilter == 0.42f);
+    REQUIRE(b.synths[0].analog.cWave   == 2);
+    REQUIRE(b.synths[0].analog.cLevel  == 0.6f);
+    REQUIRE(b.synths[0].analog.cCoarse == -7);
+    REQUIRE(b.synths[0].analog.dFreq   == 330.0f);
+    REQUIRE(b.synths[0].analog.dLevel  == 0.3f);
     REQUIRE(b.eqLow == -3.0f);
+
+    // Recall-safety: OSC C/D default silent so a 2-osc patch is bit-identical.
+    PatchModel def;
+    REQUIRE(def.synths[0].analog.cLevel == 0.0f);
+    REQUIRE(def.synths[0].analog.dLevel == 0.0f);
 }
 
 TEST_CASE("FM engine builds the 6-operator ALGO voice", "[state][fm]")
@@ -302,15 +316,15 @@ TEST_CASE("Analog unison stacks detuned osc copies (chained)", "[state][analog][
             if (s.find(osc) != std::string::npos && s.find(freq) != std::string::npos) return true;
         return false;
     };
-    REQUIRE(anyContains(w, "in6"));      // 2 (VCF+LFO) + 2*2 audio oscs
+    REQUIRE(anyContains(w, "in10"));     // 2 (VCF+LFO) + 4*2 audio oscs
     REQUIRE(oscHas("v2w", "f433"));      // copy 0 OSC A: 440 * 2^(-25/1200) ~= 433.7
-    REQUIRE(oscHas("v4w", "f446"));      // copy 1 OSC A: 440 * 2^(+25/1200) ~= 446.4
-    REQUIRE(anyContains(w, "v5w"));      // last audio osc (copy 1 OSC B)
-    REQUIRE(anyContains(w, "c5"));       // chain reaches osc5 (osc0<-osc2<-...<-osc5)
+    REQUIRE(oscHas("v6w", "f446"));      // copy 1 OSC A (osc 2+4): 440 * 2^(+25/1200) ~= 446.4
+    REQUIRE(anyContains(w, "v9w"));      // last audio osc (copy 1 OSC D)
+    REQUIRE(anyContains(w, "c9"));       // chain reaches osc9 (osc0<-osc2<-...<-osc9)
 
-    // Unison 1 (default) keeps the original 4-osc voice.
+    // Unison 1 (default) keeps the base 4-audio-osc voice (6 oscs total).
     PatchModel m1; m1.synths[0].engine = PatchModel::Engine::Analog;
-    REQUIRE(anyContains(m1.toWireMessages(), "in4"));
+    REQUIRE(anyContains(m1.toWireMessages(), "in6"));
 
     PatchModel b; b.fromValueTree(m.toValueTree());
     REQUIRE(b.unisonVoices == 2);

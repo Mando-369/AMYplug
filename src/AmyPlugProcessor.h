@@ -140,7 +140,9 @@ private:
     // reuse mCutoff/mReso; the amp envelope reuses mAttack..mRelease.
     Macro mVcfKbd, mVcfEnv, mLfoFreq, mLfoPitch, mLfoPwm, mLfoFilter;
     Macro mOscADuty, mOscALevel, mOscBDuty, mOscBLevel, mOscAFreq, mOscBFreq;
+    Macro mOscCDuty, mOscCLevel, mOscDDuty, mOscDLevel, mOscCFreq, mOscDFreq;
     Macro mOscACoarse, mOscAFine, mOscBCoarse, mOscBFine;   // OSC A/B pitch offset
+    Macro mOscCCoarse, mOscCFine, mOscDCoarse, mOscDFine;   // OSC C/D pitch offset
     Macro mGlide;                                           // portamento (i<ch>m), all engines
     Macro mUnisonDetune;                                    // unison spread (cents)
     std::atomic<float>* pUnisonVoices = nullptr;            // stacked analog osc copies

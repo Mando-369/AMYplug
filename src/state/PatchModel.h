@@ -34,14 +34,15 @@ public:
     // osc2/osc3 = OSC A/OSC B. All values are the source of truth (fully recalled).
     struct AnalogParams
     {
-        // OSC A (osc 2) / OSC B (osc 3) — note-following audio oscillators.
-        int   aWave = 3,   bWave = 1;      // amy::Wave (SawUp, Pulse)
-        float aFreq = 440.0f, bFreq = 440.0f; // Hz at A4 (note 69); the osc tracks
-                                             // the keyboard from there. 440 = normal.
-        int   aCoarse = 0, bCoarse = 0;    // pitch offset, semitones (±24)
-        int   aFine = 0,   bFine = 0;      // pitch offset, cents (±100)
-        float aDuty = 0.5f, bDuty = 0.5f;
-        float aLevel = 0.7f, bLevel = 0.5f;
+        // OSC A/B/C/D (oscs 2/3/4/5) — note-following audio oscillators. C and D
+        // default silent (level 0) so a 2-osc patch recalls bit-identical; they exist
+        // so the 4-oscillator Juno factory patches can be represented and loaded.
+        int   aWave = 3,   bWave = 1,   cWave = 3,   dWave = 3;   // amy::Wave
+        float aFreq = 440.0f, bFreq = 440.0f, cFreq = 440.0f, dFreq = 440.0f; // Hz at A4 (note 69)
+        int   aCoarse = 0, bCoarse = 0, cCoarse = 0, dCoarse = 0; // pitch offset, semitones (±24)
+        int   aFine = 0,   bFine = 0,   cFine = 0,   dFine = 0;   // pitch offset, cents (±100)
+        float aDuty = 0.5f, bDuty = 0.5f, cDuty = 0.5f, dDuty = 0.5f;
+        float aLevel = 0.7f, bLevel = 0.5f, cLevel = 0.0f, dLevel = 0.0f;
         // LFO (osc 1) — fixed low frequency (note-coef 0), modulates the others.
         int   lfoWave = 4;                 // Triangle
         float lfoFreq = 4.0f;              // Hz

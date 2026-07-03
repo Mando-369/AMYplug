@@ -64,12 +64,14 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s,
     auto tuned = [] (float baseHz, int coarse, int fine)
     { return baseHz * std::pow(2.0f, ((float) coarse + (float) fine / 100.0f) / 12.0f); };
 
-    // Unison: U detuned copies of the OSC A+OSC B pair, stacked as extra audio oscs
+    // Unison: U detuned copies of the OSC A/B/C/D set, stacked as extra audio oscs
     // and chained into the VCF (osc0<-osc2<-osc3<-...<-oscLast). This is how AMY's
     // own factory "unison" patches fatten a voice. Subtle detune works here (unlike
     // note-fanning) because every copy is its own oscillator, not its own note.
+    // Four base oscs (C/D usually silent) let the 4-DCO Juno factory patches load.
     const int U        = juce::jlimit(1, 4, unisonVoices);
-    const int numAudio = 2 * U;                       // OSC A + OSC B per copy
+    const int perCopy  = 4;                            // OSC A + OSC B + OSC C + OSC D
+    const int numAudio = perCopy * U;
     const int oscs     = 2 + numAudio;                // + osc0 (VCF) and osc1 (LFO)
 
     out.emplace_back((pre + "iv" + juce::String(juce::jlimit(1, 16, s.numVoices))
@@ -96,15 +98,18 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s,
     for (int i = 0; i < numAudio; ++i)
     {
         const int   osc    = 2 + i;
-        const int   copy   = i / 2;
-        const bool  isA    = (i % 2 == 0);
+        const int   copy   = i / perCopy;
+        const int   which  = i % perCopy;             // 0=A, 1=B, 2=C, 3=D
         const float offCt  = unisonOffsetCents(copy, U, unisonDetune);
-        const int   wave   = isA ? a.aWave  : a.bWave;
-        const float level  = isA ? a.aLevel : a.bLevel;
-        const float duty   = isA ? a.aDuty  : a.bDuty;
-        const float baseHz = tuned(isA ? a.aFreq   : a.bFreq,
-                                   isA ? a.aCoarse : a.bCoarse,
-                                   isA ? a.aFine   : a.bFine);
+        int   wave; float level, duty, baseF; int coarse, fine;
+        switch (which)
+        {
+            case 0:  wave=a.aWave; level=a.aLevel; duty=a.aDuty; baseF=a.aFreq; coarse=a.aCoarse; fine=a.aFine; break;
+            case 1:  wave=a.bWave; level=a.bLevel; duty=a.bDuty; baseF=a.bFreq; coarse=a.bCoarse; fine=a.bFine; break;
+            case 2:  wave=a.cWave; level=a.cLevel; duty=a.cDuty; baseF=a.cFreq; coarse=a.cCoarse; fine=a.cFine; break;
+            default: wave=a.dWave; level=a.dLevel; duty=a.dDuty; baseF=a.dFreq; coarse=a.dCoarse; fine=a.dFine; break;
+        }
+        const float baseHz = tuned(baseF, coarse, fine);
         const float freq   = baseHz * std::pow(2.0f, offCt / 1200.0f);
 
         juce::String line = pre + "v" + juce::String(osc) + "w" + juce::String(wave)
@@ -283,10 +288,14 @@ juce::ValueTree PatchModel::toValueTree() const
         const auto& a = s.analog;
         for (auto p : { std::pair<const char*, float>
             { "a_aWave", (float) a.aWave }, { "a_bWave", (float) a.bWave },
-            { "a_aFreq", a.aFreq }, { "a_bFreq", a.bFreq },
+            { "a_cWave", (float) a.cWave }, { "a_dWave", (float) a.dWave },
+            { "a_aFreq", a.aFreq }, { "a_bFreq", a.bFreq }, { "a_cFreq", a.cFreq }, { "a_dFreq", a.dFreq },
             { "a_aCoarse", (float) a.aCoarse }, { "a_bCoarse", (float) a.bCoarse },
+            { "a_cCoarse", (float) a.cCoarse }, { "a_dCoarse", (float) a.dCoarse },
             { "a_aFine", (float) a.aFine }, { "a_bFine", (float) a.bFine },
-            { "a_aDuty", a.aDuty }, { "a_bDuty", a.bDuty }, { "a_aLevel", a.aLevel }, { "a_bLevel", a.bLevel },
+            { "a_cFine", (float) a.cFine }, { "a_dFine", (float) a.dFine },
+            { "a_aDuty", a.aDuty }, { "a_bDuty", a.bDuty }, { "a_cDuty", a.cDuty }, { "a_dDuty", a.dDuty },
+            { "a_aLevel", a.aLevel }, { "a_bLevel", a.bLevel }, { "a_cLevel", a.cLevel }, { "a_dLevel", a.dLevel },
             { "a_lfoWave", (float) a.lfoWave }, { "a_lfoFreq", a.lfoFreq },
             { "a_lfoToPitch", a.lfoToPitch }, { "a_lfoToPwm", a.lfoToPwm }, { "a_lfoToFilter", a.lfoToFilter },
             { "a_filterType", (float) a.filterType }, { "a_vcfFreq", a.vcfFreq }, { "a_vcfReso", a.vcfReso },
@@ -361,11 +370,17 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
         s.ampRelease   = (float) sv.getProperty("ampRelease",   0.25);
         auto& a = s.analog;
         a.aWave = (int) sv.getProperty("a_aWave", a.aWave);   a.bWave = (int) sv.getProperty("a_bWave", a.bWave);
+        a.cWave = (int) sv.getProperty("a_cWave", a.cWave);   a.dWave = (int) sv.getProperty("a_dWave", a.dWave);
         a.aFreq = (float) sv.getProperty("a_aFreq", a.aFreq); a.bFreq = (float) sv.getProperty("a_bFreq", a.bFreq);
+        a.cFreq = (float) sv.getProperty("a_cFreq", a.cFreq); a.dFreq = (float) sv.getProperty("a_dFreq", a.dFreq);
         a.aCoarse = (int) sv.getProperty("a_aCoarse", a.aCoarse); a.bCoarse = (int) sv.getProperty("a_bCoarse", a.bCoarse);
+        a.cCoarse = (int) sv.getProperty("a_cCoarse", a.cCoarse); a.dCoarse = (int) sv.getProperty("a_dCoarse", a.dCoarse);
         a.aFine = (int) sv.getProperty("a_aFine", a.aFine); a.bFine = (int) sv.getProperty("a_bFine", a.bFine);
+        a.cFine = (int) sv.getProperty("a_cFine", a.cFine); a.dFine = (int) sv.getProperty("a_dFine", a.dFine);
         a.aDuty = (float) sv.getProperty("a_aDuty", a.aDuty); a.bDuty = (float) sv.getProperty("a_bDuty", a.bDuty);
+        a.cDuty = (float) sv.getProperty("a_cDuty", a.cDuty); a.dDuty = (float) sv.getProperty("a_dDuty", a.dDuty);
         a.aLevel = (float) sv.getProperty("a_aLevel", a.aLevel); a.bLevel = (float) sv.getProperty("a_bLevel", a.bLevel);
+        a.cLevel = (float) sv.getProperty("a_cLevel", a.cLevel); a.dLevel = (float) sv.getProperty("a_dLevel", a.dLevel);
         a.lfoWave = (int) sv.getProperty("a_lfoWave", a.lfoWave); a.lfoFreq = (float) sv.getProperty("a_lfoFreq", a.lfoFreq);
         a.lfoToPitch = (float) sv.getProperty("a_lfoToPitch", a.lfoToPitch);
         a.lfoToPwm = (float) sv.getProperty("a_lfoToPwm", a.lfoToPwm);

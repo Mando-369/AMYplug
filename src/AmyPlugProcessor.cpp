@@ -34,6 +34,7 @@ AmyPlugProcessor::AmyPlugProcessor()
     // unsafe to stream live — it can race the engine-switch rebuild and hit an
     // oscillator that isn't set up yet). Continuous params stream live.
     for (auto* id : { params::id::engine, params::id::oscAWave, params::id::oscBWave,
+                      params::id::oscCWave, params::id::oscDWave,
                       params::id::lfoWave, params::id::vcfType,
                       params::id::fmAlgorithm,    // FM: routing change → rebuild
                       params::id::voiceMode,      // Mono/Legato rebuild the synth to 1 voice
@@ -81,6 +82,16 @@ void AmyPlugProcessor::cacheParamPointers()
     mOscAFine.ptr   = state.getRawParameterValue(params::id::oscAFine);
     mOscBCoarse.ptr = state.getRawParameterValue(params::id::oscBCoarse);
     mOscBFine.ptr   = state.getRawParameterValue(params::id::oscBFine);
+    mOscCDuty.ptr  = state.getRawParameterValue(params::id::oscCDuty);
+    mOscCLevel.ptr = state.getRawParameterValue(params::id::oscCLevel);
+    mOscDDuty.ptr  = state.getRawParameterValue(params::id::oscDDuty);
+    mOscDLevel.ptr = state.getRawParameterValue(params::id::oscDLevel);
+    mOscCFreq.ptr  = state.getRawParameterValue(params::id::oscCFreq);
+    mOscDFreq.ptr  = state.getRawParameterValue(params::id::oscDFreq);
+    mOscCCoarse.ptr = state.getRawParameterValue(params::id::oscCCoarse);
+    mOscCFine.ptr   = state.getRawParameterValue(params::id::oscCFine);
+    mOscDCoarse.ptr = state.getRawParameterValue(params::id::oscDCoarse);
+    mOscDFine.ptr   = state.getRawParameterValue(params::id::oscDFine);
     mGlide.ptr      = state.getRawParameterValue(params::id::glide);
     mUnisonDetune.ptr = state.getRawParameterValue(params::id::unisonDetune);
     pUnisonVoices     = state.getRawParameterValue(params::id::unisonVoices);
@@ -382,12 +393,18 @@ void AmyPlugProcessor::syncModelFromParams()
     auto rd = [this] (const char* id, float def) {
         if (auto* p = state.getRawParameterValue(id)) return p->load(); return def; };
     a.aWave = (int) rd(params::id::oscAWave, 3);  a.bWave = (int) rd(params::id::oscBWave, 1);
+    a.cWave = (int) rd(params::id::oscCWave, 3);  a.dWave = (int) rd(params::id::oscDWave, 3);
     a.aFreq = rd(params::id::oscAFreq, 440.0f);  a.bFreq = rd(params::id::oscBFreq, 440.0f);
+    a.cFreq = rd(params::id::oscCFreq, 440.0f);  a.dFreq = rd(params::id::oscDFreq, 440.0f);
     a.aCoarse = (int) rd(params::id::oscACoarse, 0); a.bCoarse = (int) rd(params::id::oscBCoarse, 0);
+    a.cCoarse = (int) rd(params::id::oscCCoarse, 0); a.dCoarse = (int) rd(params::id::oscDCoarse, 0);
     a.aFine   = (int) rd(params::id::oscAFine, 0);   a.bFine   = (int) rd(params::id::oscBFine, 0);
+    a.cFine   = (int) rd(params::id::oscCFine, 0);   a.dFine   = (int) rd(params::id::oscDFine, 0);
     a.vcfFreq = s.filterCutoff; a.vcfReso = s.filterReso;     // reused params
     a.aDuty = rd(params::id::oscADuty, 0.5f);  a.bDuty = rd(params::id::oscBDuty, 0.5f);
+    a.cDuty = rd(params::id::oscCDuty, 0.5f);  a.dDuty = rd(params::id::oscDDuty, 0.5f);
     a.aLevel = rd(params::id::oscALevel, 0.7f); a.bLevel = rd(params::id::oscBLevel, 0.5f);
+    a.cLevel = rd(params::id::oscCLevel, 0.0f); a.dLevel = rd(params::id::oscDLevel, 0.0f);
     a.lfoWave = (int) rd(params::id::lfoWave, 4); a.lfoFreq = rd(params::id::lfoFreq, 4.0f);
     a.lfoToPitch = rd(params::id::lfoToPitch, 0.0f); a.lfoToPwm = rd(params::id::lfoToPwm, 0.0f);
     a.lfoToFilter = rd(params::id::lfoToFilter, 0.0f);
@@ -509,8 +526,8 @@ void AmyPlugProcessor::streamAnalogParams()
     const float det = mUnisonDetune.ptr ? mUnisonDetune.ptr->load(std::memory_order_relaxed) : 0.0f;
     const bool  detuneChanged = mUnisonDetune.ptr && det != mUnisonDetune.last;
     auto offCents = [] (int k, int u, float d) { return u <= 1 ? 0.0f : -d + 2.0f * d * (float) k / (float) (u - 1); };
-    auto aOsc = [] (int k) { return 2 + 2 * k; };        // OSC A copy k
-    auto bOsc = [] (int k) { return 2 + 2 * k + 1; };    // OSC B copy k
+    // Four base oscs A/B/C/D per unison copy: osc = 2 + copy*4 + which (0=A..3=D).
+    auto oscFor = [] (int which, int k) { return 2 + k * 4 + which; };
 
     // LFO osc1 freq, and its mod depth onto every copy's pitch (idx5) / PWM (idx5).
     one(mLfoFreq, "i1v1f%g,0");
@@ -520,16 +537,16 @@ void AmyPlugProcessor::streamAnalogParams()
         const float v = m.ptr->load(std::memory_order_relaxed);
         if (v == m.last) return;
         m.last = v;
-        for (int k = 0; k < U; ++k) for (int osc : { aOsc(k), bOsc(k) })
-        { char b[48]; std::snprintf(b, sizeof b, "i1v%d%c,,,,,%g", osc, letter, (double) v);
+        for (int k = 0; k < U; ++k) for (int w = 0; w < 4; ++w)
+        { char b[48]; std::snprintf(b, sizeof b, "i1v%d%c,,,,,%g", oscFor(w, k), letter, (double) v);
           active->streamWire(b, (int) std::strlen(b)); }
     };
     lfoDepth(mLfoPitch, 'f');
     lfoDepth(mLfoPwm,   'd');
 
-    // OSC A/B pitch: base Freq * 2^((coarse + fine/100)/12), then the per-copy unison
-    // detune. Re-send all copies if Freq/Coarse/Fine OR the unison detune changed.
-    auto pitch = [&] (Macro& f, Macro& c, Macro& n, bool isA)
+    // OSC A/B/C/D pitch: base Freq * 2^((coarse + fine/100)/12), then the per-copy
+    // unison detune. Re-send all copies if Freq/Coarse/Fine OR the unison detune changed.
+    auto pitch = [&] (Macro& f, Macro& c, Macro& n, int which)
     {
         if (! (f.ptr && c.ptr && n.ptr)) return;
         const float fv=f.ptr->load(), cv=c.ptr->load(), nv=n.ptr->load();
@@ -539,17 +556,19 @@ void AmyPlugProcessor::streamAnalogParams()
         for (int k = 0; k < U; ++k)
         {
             const float hz = base * std::pow(2.0f, offCents(k, U, det) / 1200.0f);
-            char b[48]; std::snprintf(b, sizeof b, "i1v%df%g", isA ? aOsc(k) : bOsc(k), (double) hz);
+            char b[48]; std::snprintf(b, sizeof b, "i1v%df%g", oscFor(which, k), (double) hz);
             active->streamWire(b, (int) std::strlen(b));
         }
     };
-    pitch(mOscAFreq, mOscACoarse, mOscAFine, true);
-    pitch(mOscBFreq, mOscBCoarse, mOscBFine, false);
-    if (mUnisonDetune.ptr) mUnisonDetune.last = det;   // consume after both pitch() calls
+    pitch(mOscAFreq, mOscACoarse, mOscAFine, 0);
+    pitch(mOscBFreq, mOscBCoarse, mOscBFine, 1);
+    pitch(mOscCFreq, mOscCCoarse, mOscCFine, 2);
+    pitch(mOscDFreq, mOscDCoarse, mOscDFine, 3);
+    if (mUnisonDetune.ptr) mUnisonDetune.last = det;   // consume after all pitch() calls
 
     // OSC duty / level to every copy. Level writes const AND eg0 (a<L>,0,0,<L>,0,0)
     // so the amp env keeps shaping it (must match emitAnalog).
-    auto perCopy = [&] (Macro& m, bool isA, const char* fmt, bool twice)
+    auto perCopy = [&] (Macro& m, int which, const char* fmt, bool twice)
     {
         if (m.ptr == nullptr) return;
         const float v = m.ptr->load(std::memory_order_relaxed);
@@ -558,15 +577,19 @@ void AmyPlugProcessor::streamAnalogParams()
         for (int k = 0; k < U; ++k)
         {
             char b[64];
-            if (twice) std::snprintf(b, sizeof b, fmt, isA ? aOsc(k) : bOsc(k), (double) v, (double) v);
-            else       std::snprintf(b, sizeof b, fmt, isA ? aOsc(k) : bOsc(k), (double) v);
+            if (twice) std::snprintf(b, sizeof b, fmt, oscFor(which, k), (double) v, (double) v);
+            else       std::snprintf(b, sizeof b, fmt, oscFor(which, k), (double) v);
             active->streamWire(b, (int) std::strlen(b));
         }
     };
-    perCopy(mOscADuty,  true,  "i1v%dd%g", false);
-    perCopy(mOscBDuty,  false, "i1v%dd%g", false);
-    perCopy(mOscALevel, true,  "i1v%da%g,0,0,%g,0,0", true);
-    perCopy(mOscBLevel, false, "i1v%da%g,0,0,%g,0,0", true);
+    perCopy(mOscADuty,  0, "i1v%dd%g", false);
+    perCopy(mOscBDuty,  1, "i1v%dd%g", false);
+    perCopy(mOscCDuty,  2, "i1v%dd%g", false);
+    perCopy(mOscDDuty,  3, "i1v%dd%g", false);
+    perCopy(mOscALevel, 0, "i1v%da%g,0,0,%g,0,0", true);
+    perCopy(mOscBLevel, 1, "i1v%da%g,0,0,%g,0,0", true);
+    perCopy(mOscCLevel, 2, "i1v%da%g,0,0,%g,0,0", true);
+    perCopy(mOscDLevel, 3, "i1v%da%g,0,0,%g,0,0", true);
 
     // Amp env (bp0 'A') to every audio osc; filter env (bp1 'B') to osc 0.
     auto env = [this] (std::initializer_list<int> oscs, char letter,
@@ -593,7 +616,7 @@ void AmyPlugProcessor::streamAnalogParams()
         if (av!=mAttack.last || dv!=mDecay.last || sv!=mSustain.last || rv!=mRelease.last)
         {
             mAttack.last=av; mDecay.last=dv; mSustain.last=sv; mRelease.last=rv;
-            for (int osc = 2; osc < 2 + 2 * U; ++osc)
+            for (int osc = 2; osc < 2 + 4 * U; ++osc)
             {
                 char b[80]; std::snprintf(b, sizeof b, "i1v%dA%d,1,%d,%.3f,%d,0", osc,
                     (int) std::lround(av*1000.0f), (int) std::lround(dv*1000.0f), (double) sv,
@@ -809,11 +832,17 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
                            : s.engine == PatchModel::Engine::Analog ? 1.0f : 0.0f);
     const auto& a = s.analog;
     setP(params::id::oscAWave, (float) a.aWave);   setP(params::id::oscBWave, (float) a.bWave);
+    setP(params::id::oscCWave, (float) a.cWave);   setP(params::id::oscDWave, (float) a.dWave);
     setP(params::id::oscAFreq, a.aFreq);           setP(params::id::oscBFreq, a.bFreq);
+    setP(params::id::oscCFreq, a.cFreq);           setP(params::id::oscDFreq, a.dFreq);
     setP(params::id::oscACoarse, (float) a.aCoarse); setP(params::id::oscBCoarse, (float) a.bCoarse);
+    setP(params::id::oscCCoarse, (float) a.cCoarse); setP(params::id::oscDCoarse, (float) a.dCoarse);
     setP(params::id::oscAFine, (float) a.aFine);     setP(params::id::oscBFine, (float) a.bFine);
+    setP(params::id::oscCFine, (float) a.cFine);     setP(params::id::oscDFine, (float) a.dFine);
     setP(params::id::oscADuty, a.aDuty);           setP(params::id::oscBDuty, a.bDuty);
+    setP(params::id::oscCDuty, a.cDuty);           setP(params::id::oscDDuty, a.dDuty);
     setP(params::id::oscALevel, a.aLevel);         setP(params::id::oscBLevel, a.bLevel);
+    setP(params::id::oscCLevel, a.cLevel);         setP(params::id::oscDLevel, a.dLevel);
     setP(params::id::lfoWave, (float) a.lfoWave);  setP(params::id::lfoFreq, a.lfoFreq);
     setP(params::id::lfoToPitch, a.lfoToPitch);    setP(params::id::lfoToPwm, a.lfoToPwm);
     setP(params::id::lfoToFilter, a.lfoToFilter);

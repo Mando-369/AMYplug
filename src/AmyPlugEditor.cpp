@@ -478,6 +478,13 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     junoPanelL.addKnob(params::id::oscAFine, "Fine");
     junoPanelL.addKnob(params::id::oscADuty, "Duty");
     junoPanelL.addKnob(params::id::oscALevel, "Level");
+    junoPanelL.addSection("OSC C");
+    junoPanelL.addChoice(params::id::oscCWave, "Wave");
+    junoPanelL.addKnob(params::id::oscCFreq, "Freq");
+    junoPanelL.addKnob(params::id::oscCCoarse, "Coarse");
+    junoPanelL.addKnob(params::id::oscCFine, "Fine");
+    junoPanelL.addKnob(params::id::oscCDuty, "Duty");
+    junoPanelL.addKnob(params::id::oscCLevel, "Level");
     junoPanelL.addSection("VCF");
     junoPanelL.addKnob(params::id::filterCutoff, "Freq");
     junoPanelL.addKnob(params::id::filterReso, "Reso");
@@ -498,6 +505,13 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     junoPanelR.addKnob(params::id::oscBFine, "Fine");
     junoPanelR.addKnob(params::id::oscBDuty, "Duty");
     junoPanelR.addKnob(params::id::oscBLevel, "Level");
+    junoPanelR.addSection("OSC D");
+    junoPanelR.addChoice(params::id::oscDWave, "Wave");
+    junoPanelR.addKnob(params::id::oscDFreq, "Freq");
+    junoPanelR.addKnob(params::id::oscDCoarse, "Coarse");
+    junoPanelR.addKnob(params::id::oscDFine, "Fine");
+    junoPanelR.addKnob(params::id::oscDDuty, "Duty");
+    junoPanelR.addKnob(params::id::oscDLevel, "Level");
     junoPanelR.addSection("VCF ENV");
     junoPanelR.addKnob(params::id::vcfAttack, "A");
     junoPanelR.addKnob(params::id::vcfDecay, "D");
