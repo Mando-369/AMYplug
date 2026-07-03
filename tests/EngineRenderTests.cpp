@@ -238,3 +238,53 @@ TEST_CASE("RESET_ALL_NOTES silences a held note (panic / transport-stop path)", 
 
     amy_stop();
 }
+
+namespace
+{
+// Fundamental estimate via upward zero-crossings on the left channel — reliable for
+// a plain sine. Returns Hz over the rendered window.
+double fundamentalHz(int blocks)
+{
+    long crossings = 0, samples = 0; double prev = 0.0;
+    for (int blk = 0; blk < blocks; ++blk)
+    {
+        const int16_t* b = amy_simple_fill_buffer();
+        for (int i = 0; i < AMY_BLOCK_SIZE; ++i)
+        {
+            const double s = (double) b[2 * i] / 32768.0;   // left channel
+            if (prev <= 0.0 && s > 0.0) ++crossings;
+            prev = s; ++samples;
+        }
+    }
+    const double seconds = (double) samples / (double) AMY_SAMPLE_RATE;
+    return seconds > 0.0 ? (double) crossings / seconds : 0.0;
+}
+
+double measureOscPitch(const char* oscSetup)
+{
+    amy_config_t c = amy_default_config();
+    c.audio = AMY_AUDIO_IS_NONE; c.midi = AMY_MIDI_IS_NONE;
+    c.platform.multicore = 0; c.platform.multithread = 0;
+    amy_start(c);
+    amy_add_message((char*) oscSetup);
+    amy_add_message((char*) "v0n60l1Z");    // note 60 (C4 ~261.6 Hz)
+    renderStats(20);                        // let it settle
+    const double f = fundamentalHz(80);
+    amy_stop();
+    return f;
+}
+} // namespace
+
+// Proves the emitFm ALGO fix: an EG0 (pitch-env) freq coef held at 1.0 raises the osc
+// exactly one octave (combine_controls sums freq coefs in log2). Without it every FM
+// voice played an octave below the built-in DX7 presets.
+TEST_CASE("FM ALGO pitch: the EG0 pitch-env term raises the voice one octave", "[engine][fm]")
+{
+    const double base   = measureOscPitch("v0w0f0,1a1Z");                 // note tracking only
+    const double raised = measureOscPitch("v0w0f0,1,0,1,0,0A0,1,0,1a1Z"); // + EG0 pitch env @1.0
+
+    REQUIRE(base   > 235.0); REQUIRE(base   < 290.0);   // ~261.6 Hz
+    REQUIRE(raised > 470.0); REQUIRE(raised < 580.0);   // ~523.3 Hz (one octave up)
+    REQUIRE(raised > base * 1.8);
+    REQUIRE(raised < base * 2.2);
+}

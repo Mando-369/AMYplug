@@ -151,12 +151,20 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
     // NO amp envelope — the per-operator envelopes own the voice's shape AND its
     // release. (A master amp env here would gate the whole voice off before the
     // operators finish releasing, which breaks note-off tails.) Matches fm.py.
-    // f0,1 = const 0, note-coef 1 → standard A4=440 tracking. AMY's algorithm table
-    // lists operators 6→1 (algo_source[5] = DX7 operator 1), so we map oscs 6..1
-    // into the O list to make our "OP 1" = DX7 operator 1.
+    // AMY's algorithm table lists operators 6→1 (algo_source[5] = DX7 operator 1), so
+    // we map oscs 6..1 into the O list to make our "OP 1" = DX7 operator 1.
+    //
+    // Frequency: fm.py sets freq = "0,1,0,1,0,.." — const 0, note-coef 1, AND an EG0
+    // coef of 1 driven by a pitch envelope (bp0) whose DX7-centre value is 1.0. AMY
+    // sums freq coefs linearly in log2 (combine_controls), so logfreq = note + 1.0 =
+    // note + ONE OCTAVE. The whole voice (operators inherit this base) sits an octave
+    // up; that is AMY's DX7 tuning. Omitting the EG0 term drops every FM voice an
+    // octave below the built-in DX7 presets, so we emit a neutral pitch env held at
+    // 1.0 (attack + release both stay at 1.0 — no pitch glide on note-off).
     out.emplace_back((pre + "v0w8"
-        + "f0,1"
+        + "f0,1,0,1,0,0"                 // const 0, note 1, EG0 (pitch env) 1
         + "a1,0,1,0,0,0"
+        + "A0,1,0,1"                     // neutral pitch env: hold 1.0 (= +1 octave) through release
         + "b" + F(fm.feedback)
         + "O6,5,4,3,2,1"
         + "o" + juce::String(juce::jlimit(1, 32, fm.algorithm))
