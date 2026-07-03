@@ -6,6 +6,7 @@
 #include "engine/EngineOwnership.h"
 #include "engine/AmyWire.h"
 #include "state/Dx7Import.h"
+#include "BuiltinPatchNames.h"   // kBuiltinPatchCommands / kBuiltinPatchCount (generated)
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -849,6 +850,25 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
         setP(params::id::fmOp(op, "sustain"), o.s);
         setP(params::id::fmOp(op, "release"), o.r);
     }
+}
+
+bool AmyPlugProcessor::loadFactoryPatchIntoEditor(int patchNumber)
+{
+    // Decode a built-in DX7/ALGO preset's wire string into our FM params and drop it
+    // into the editor as an editable FM patch. Only FM/ALGO patches decode (Juno
+    // analog patches return false). We keep the user's current FX/output settings and
+    // only replace the synth graph + engine.
+    if (patchNumber < 0 || patchNumber >= kBuiltinPatchCount) return false;
+    PatchModel::FmParams fm;
+    if (! factoryFmWireToParams(juce::String(kBuiltinPatchCommands[patchNumber]), fm))
+        return false;
+
+    syncModelFromParams();                       // capture current state (FX, etc.)
+    if (model.synths.empty()) model.synths.push_back({});
+    model.synths[0].engine = PatchModel::Engine::FM;
+    model.synths[0].fm     = fm;
+    applyPreset(model);                          // push to APVTS: engine=FM + the knobs
+    return true;
 }
 
 void AmyPlugProcessor::parameterChanged(const juce::String&, float)

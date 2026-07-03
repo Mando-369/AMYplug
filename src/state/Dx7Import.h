@@ -41,4 +41,15 @@ public:
     // Build a full FM-engine PatchModel from one converted voice.
     static PatchModel toPatchModel(const Dx7Voice& voice);
 };
+
+// Decode one of AMY's factory patch wire strings (from patches.h, exposed via the
+// generated kBuiltinPatchCommands[]) into our FM params, so "Load into Editor" can
+// populate the DX7 tab from a built-in preset. Returns false if the string isn't an
+// FM/ALGO patch (e.g. a Juno analog patch has no algorithm), leaving `out` untouched.
+//
+// Operator ratios, output levels, algorithm and feedback decode exactly; each
+// operator's multi-breakpoint amp envelope is reduced to our per-op A/D/S/R (the same
+// simplification Dx7Import makes). Oscillators are mapped to OP1..6 via the patch's
+// own `O` source list, so operator roles line up with the algorithm.
+bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out);
 } // namespace amyplug

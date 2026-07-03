@@ -2,6 +2,8 @@
 #include "Dx7Import.h"
 #include <cmath>
 #include <algorithm>
+#include <map>
+#include <vector>
 
 namespace amyplug
 {
@@ -216,5 +218,117 @@ PatchModel Dx7Import::toPatchModel(const Dx7Voice& voice)
     // envelopes do the shaping; a short release still guarantees a clean note-off.
     s.ampAttack = 0.001f; s.ampDecay = 0.001f; s.ampSustain = 1.0f; s.ampRelease = 0.05f;
     return m;
+}
+
+// ---------------------------------------------------------------------------
+// Factory-patch wire decode: AMY's patch_commands string -> our FmParams.
+// ---------------------------------------------------------------------------
+namespace
+{
+// One osc's fields, parsed from a "v<n>...Z" token. A wire field is a letter
+// followed by its value chars ([0-9 . , + -]); a new letter starts the next field.
+struct OscFields
+{
+    int osc = -1;
+    std::map<char, juce::String> f;   // field letter -> value string
+};
+
+OscFields scanOsc(const juce::String& tok)
+{
+    OscFields o;
+    const int n = tok.length();
+    int i = 0;
+    while (i < n)
+    {
+        if (juce::CharacterFunctions::isLetter(tok[i]))
+        {
+            const char letter = (char) tok[i];
+            const int start = ++i;
+            while (i < n && ! juce::CharacterFunctions::isLetter(tok[i])) ++i;
+            o.f[letter] = tok.substring(start, i);
+        }
+        else ++i;
+    }
+    if (o.f.count('v')) o.osc = o.f['v'].getIntValue();
+    return o;
+}
+
+// First comma-separated value of a coef list ("0.458,0,0,1" -> 0.458).
+float firstVal(const juce::String& list)
+{
+    return list.upToFirstOccurrenceOf(",", false, false).getFloatValue();
+}
+
+// Reduce an AMY breakpoint list "t0,l0,t1,l1,..." (ms,level pairs; the LAST pair is
+// the release, fired on note-off) to A/D/S/R in seconds. Heuristic but stable for the
+// factory DX7 bank: attack = time to the peak level, sustain = level held before the
+// final segment, decay = time from peak to that level, release = the final segment.
+void bpToAdsr(const juce::String& bp, float& a, float& d, float& s, float& r)
+{
+    juce::StringArray parts; parts.addTokens(bp, ",", "");
+    std::vector<float> t, l;
+    for (int i = 0; i + 1 < parts.size(); i += 2)
+    {
+        t.push_back(juce::jmax(0.0f, parts[i].getFloatValue()));
+        l.push_back(juce::jlimit(0.0f, 1.0f, parts[i + 1].getFloatValue()));
+    }
+    if (l.empty()) return;                                   // keep defaults
+    const int last = (int) l.size() - 1;
+    int peak = 0;
+    for (int i = 1; i <= last; ++i) if (l[i] > l[peak]) peak = i;
+    float atk = 0.0f; for (int i = 0; i <= peak; ++i) atk += t[i];
+    float dec = 0.0f; for (int i = peak + 1; i <= last - 1; ++i) dec += t[i];
+    const float rel = (last >= 1) ? t[last]     : 50.0f;
+    const float sus = (last >= 1) ? l[last - 1] : l[last];
+    a = juce::jmax(0.0f, atk) * 0.001f;
+    d = juce::jmax(0.0f, dec) * 0.001f;
+    s = juce::jlimit(0.0f, 1.0f, sus);
+    r = juce::jmax(1.0f, rel) * 0.001f;
+}
+} // namespace
+
+bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
+{
+    juce::StringArray toks; toks.addTokens(wire, "Z", "");
+    std::map<int, OscFields> oscs;
+    int algoOsc = -1;
+    for (auto& tk : toks)
+    {
+        if (tk.isEmpty()) continue;
+        OscFields o = scanOsc(tk);
+        if (o.osc < 0) continue;
+        oscs[o.osc] = o;
+        if (o.f.count('o') && o.f.count('O')) algoOsc = o.osc;   // the ALGO controller
+    }
+    if (algoOsc < 0) return false;                            // no algorithm -> not FM (e.g. Juno)
+    const auto& algo = oscs[algoOsc].f;
+
+    PatchModel::FmParams fm;
+    fm.algorithm = juce::jlimit(1, 32, algo.at('o').getIntValue());
+    if (algo.count('b')) fm.feedback = juce::jlimit(0.0f, 1.0f, algo.at('b').getFloatValue());
+
+    // Map oscillators to OP1..6 via the patch's O source list. AMY lists algo_source
+    // 6->1 (source k is DX7 operator 6-k); our ops[i] is DX7 operator i+1, so ops[i]
+    // takes the osc named at O position (kFmOps-1-i).
+    juce::StringArray src; src.addTokens(algo.at('O'), ",", "");
+    if (src.size() != PatchModel::kFmOps) return false;
+
+    int decoded = 0;
+    for (int i = 0; i < PatchModel::kFmOps; ++i)
+    {
+        const int oscIdx = src[PatchModel::kFmOps - 1 - i].getIntValue();
+        auto it = oscs.find(oscIdx);
+        if (it == oscs.end()) continue;
+        const auto& f = it->second.f;
+        auto& op = fm.ops[i];
+        if (f.count('I')) op.ratio = juce::jmax(0.0f, f.at('I').getFloatValue());
+        if (f.count('a')) op.level = juce::jlimit(0.0f, 4.0f, firstVal(f.at('a')));
+        if (f.count('A')) bpToAdsr(f.at('A'), op.a, op.d, op.s, op.r);
+        ++decoded;
+    }
+    if (decoded == 0) return false;
+
+    out = fm;
+    return true;
 }
 } // namespace amyplug

@@ -60,6 +60,9 @@ public:
     // Import a DX7 .syx cartridge: every voice becomes a named FM user patch.
     // Returns the number of voices imported (0 if the file isn't a DX7 dump).
     int  importDx7Cartridge(const juce::File& file);
+    // Decode a built-in DX7/ALGO preset into the FM editor as an editable patch.
+    // Returns false if the patch isn't FM (e.g. a Juno analog preset).
+    bool loadFactoryPatchIntoEditor(int patchNumber);
     void applyPreset(const PatchModel& preset);   // push preset values to the params
     void         setMode(IAmyBackend::Kind mode);                   // Software/Hardware
     IAmyBackend::Kind currentMode() const { return activeKind; }

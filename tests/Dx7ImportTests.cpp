@@ -132,3 +132,53 @@ TEST_CASE("DX7 import builds a recallable FM PatchModel", "[dx7]")
     for (const auto& s : wire) if (s.find("w8") != std::string::npos && s.find("o5") != std::string::npos) hasAlgo = true;
     REQUIRE(hasAlgo);
 }
+
+// --- Factory wire decode (Load into Editor) --------------------------------
+// A real AMY factory DX7 patch (#128 "DX7 BRASS 1", verbatim from patches.h).
+// Operators live on v2..v7 with O2,3,4,5,6,7; ratio=I, level=first coef of a.
+namespace
+{
+constexpr const char* kBrass1 =
+    "v2a0.458502,0,0,1,0,0P0.25A0,0.000188,97,0.917004,0,0.917004,530,0.5,70,0.000188L1I1Z"
+    "v3a1.834008,0,0,1,0,0P0.25A0,0.000188,4,1,30,0.917004,0,0.917004,53,0.000188L1I1.00125Z"
+    "v4a2,0,0,1,0,0P0.25A0,0.000188,4,1,30,0.917004,0,0.917004,53,0.000188L1I1Z"
+    "v5a2,0,0,1,0,0P0.25A0,0.000188,4,1,0,0.917004,0,0.917004,53,0.000188L1I0.9975Z"
+    "v6a0.64842,0,0,1,0,0P0.25A0,0.000188,11,0.229251,26,0.707107,37,0.771105,52,0.000188L1I0.504375Z"
+    "v7a1.834008,0,0,1,0,0P0.25A0,0.000188,7,1,3,0.385553,0,0.771105,52,0.000188L1I0.504375Z"
+    "v1w0a1f6.166667P0.25Z"
+    "v0w8a1,0,1,0,0,0f0,1,0,1,0,0.007298b0.16A0,1,0,1,0,1,0,1,731,1L1O2,3,4,5,6,7o22Z";
+} // namespace
+
+TEST_CASE("Factory wire decode maps a DX7 preset onto OP1..6", "[dx7][factory]")
+{
+    PatchModel::FmParams fm;
+    REQUIRE(factoryFmWireToParams(kBrass1, fm));
+
+    REQUIRE(fm.algorithm == 22);
+    REQUIRE(fm.feedback == Approx(0.16f).margin(1e-4));
+
+    // O2,3,4,5,6,7 -> ops[i] takes osc(src[5-i]); AMY lists algo_source 6->1 so our
+    // OP1 == DX7 operator 1 == osc7, OP6 == osc2.
+    REQUIRE(fm.ops[0].ratio == Approx(0.504375f).margin(1e-4));   // osc7
+    REQUIRE(fm.ops[0].level == Approx(1.834008f).margin(1e-4));
+    REQUIRE(fm.ops[2].ratio == Approx(0.9975f).margin(1e-4));     // osc5
+    REQUIRE(fm.ops[3].ratio == Approx(1.0f).margin(1e-4));        // osc4
+    REQUIRE(fm.ops[5].ratio == Approx(1.0f).margin(1e-4));        // osc2
+    REQUIRE(fm.ops[5].level == Approx(0.458502f).margin(1e-4));
+
+    // Envelope reduction is sane: osc2's A -> attack ~97ms, sustain 0.5, release ~70ms.
+    REQUIRE(fm.ops[5].a == Approx(0.097f).margin(0.01));
+    REQUIRE(fm.ops[5].s == Approx(0.5f).margin(0.05));
+    REQUIRE(fm.ops[5].r == Approx(0.07f).margin(0.01));
+}
+
+TEST_CASE("Factory wire decode rejects a non-FM (Juno) patch", "[dx7][factory]")
+{
+    // Juno #0 "A11 Brass Set 1" — analog structure, no algorithm/O list.
+    constexpr const char* kJuno0 =
+        "v1w4a1,,0,1Zv0w20c2L1G4Zv2w1c3L1Zv3w3c4L1Zv4w1c5L1Zv5w5L1Z"
+        "v1f0.945A156,1.0,10000,0Zv0F179.93,0.677,,5.024,0,0R0.93Z"
+        "v0a0.85,,1,1,0A30,1,1355,0.354,232,0Zx0,0,0k1,,0.5,0.5Z";
+    PatchModel::FmParams fm;
+    REQUIRE_FALSE(factoryFmWireToParams(kJuno0, fm));
+}

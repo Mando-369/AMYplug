@@ -165,6 +165,7 @@ private:
     juce::TextButton saveButton   { "Save..." };
     juce::TextButton deleteButton { "Delete" };
     juce::TextButton importButton { "Import DX7..." };
+    juce::TextButton toEditorButton { "To Editor" };   // factory DX7 preset -> FM tab
     std::unique_ptr<juce::FileChooser> fileChooser;
     juce::ComboBox   engineBox;                    // Factory / Analog / FM
     juce::Label      browserLabel { {}, "PATCH" };

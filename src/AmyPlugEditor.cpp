@@ -438,6 +438,16 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     importButton.setTooltip("Import a DX7 .syx cartridge as named FM user patches");
     addAndMakeVisible(importButton);
 
+    // "To Editor": decode the selected factory DX7 preset into the editable FM tab.
+    // Enabled only for DX7 presets (Juno analog patches need the wider 4-osc editor).
+    toEditorButton.onClick = [this]
+    {
+        if (proc.loadFactoryPatchIntoEditor(lastPatch))
+            setEngineIndex(2);                 // jump to the DX7 tab (also driven by the engine param)
+    };
+    toEditorButton.setTooltip("Load this factory DX7 preset's settings into the editable FM (DX7) tab");
+    addAndMakeVisible(toEditorButton);
+
     if (auto* ep = dynamic_cast<juce::AudioParameterChoice*>(s.getParameter(params::id::engine)))
         engineBox.addItemList(ep->choices, 1);
     engineBox.setTooltip("Which engine drives synth 1: Factory preset, Analog (Juno tab), or FM (DX7 tab)");
@@ -718,7 +728,13 @@ void AmyPlugEditor::timerCallback()
     if (auto* raw = proc.apvts().getRawParameterValue(params::id::patchA))
     {
         const int n = juce::jlimit(0, kBuiltinPatchCount - 1, (int) std::lround(raw->load()));
-        if (n != lastPatch) { lastPatch = n; patchBox.setSelectedId(n + 1, juce::dontSendNotification); }
+        if (n != lastPatch)
+        {
+            lastPatch = n;
+            patchBox.setSelectedId(n + 1, juce::dontSendNotification);
+            // "To Editor" only decodes factory DX7 presets (128..255).
+            toEditorButton.setEnabled(n >= 128 && n <= 255);
+        }
     }
 
     // Keep the FM algorithm diagram in sync with the selected algorithm.
@@ -796,6 +812,8 @@ void AmyPlugEditor::resized()
     auto row1 = r.removeFromTop(26);
     browserLabel.setBounds(row1.removeFromLeft(40));
     importButton.setBounds(row1.removeFromRight(104));
+    row1.removeFromRight(6);
+    toEditorButton.setBounds(row1.removeFromRight(84));
     row1.removeFromRight(10);
     nextButton.setBounds(row1.removeFromRight(28));
     prevButton.setBounds(row1.removeFromRight(28));
