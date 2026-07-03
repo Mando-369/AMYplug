@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR MIT
 #include "PatchModel.h"
 #include "../engine/AmyWire.h"
+#include "Dx7Envelope.h"
 #include <cmath>
 
 namespace amyplug
@@ -148,12 +149,10 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
         const juce::String freq = op.fixedFreq
             ? ("f" + F(juce::jlimit(1.0f, 20000.0f, op.fixedHz)) + ",0")
             : ("I" + F(op.ratio));
-        // amp const = level, eg0 COEF 1 (matches fm.py): the operator's own bp0 env —
-        // which peaks at op.peak, NOT 1.0 — is the modulation depth over time. Using a
-        // fixed 1.0 peak grossly over-modulated (e.g. MARIMBA had a 0.16 peak vs level 2).
-        auto ms = [] (float sec) { return juce::String((int) std::lround(sec * 1000.0f)); };
-        const juce::String env = ms(op.a) + "," + F(juce::jlimit(0.0f, 1.0f, op.peak))
-            + "," + ms(op.d) + "," + F(juce::jlimit(0.0f, 1.0f, op.s)) + "," + ms(op.r) + ",0";
+        // amp const = level, eg0 COEF 1 (matches fm.py): the operator's own bp0 env is
+        // the modulation depth over time. The env is the DX7 4R/4L EG rendered to AMY's
+        // exact 5-breakpoint form (Dx7Envelope) — the full shape, not an ADSR reduction.
+        const juce::String env = amyplug::dx7env::egToBreakpoints(op.egRate, op.egLevel);
         out.emplace_back((pre + "v" + juce::String(i + 1) + "w0"
             + "a" + F(op.level) + ",0,0,1,0,0"
             + freq
@@ -322,11 +321,11 @@ juce::ValueTree PatchModel::toValueTree() const
             const juce::String k = "fm_op" + juce::String(i + 1) + "_";
             sv.setProperty(k + "ratio", op.ratio, nullptr);
             sv.setProperty(k + "level", op.level, nullptr);
-            sv.setProperty(k + "a", op.a, nullptr);
-            sv.setProperty(k + "d", op.d, nullptr);
-            sv.setProperty(k + "s", op.s, nullptr);
-            sv.setProperty(k + "r", op.r, nullptr);
-            sv.setProperty(k + "peak", op.peak, nullptr);
+            for (int e = 0; e < 4; ++e)
+            {
+                sv.setProperty(k + "r" + juce::String(e + 1), op.egRate[e],  nullptr);
+                sv.setProperty(k + "l" + juce::String(e + 1), op.egLevel[e], nullptr);
+            }
             sv.setProperty(k + "fixed", op.fixedFreq, nullptr);
             sv.setProperty(k + "fixedHz", op.fixedHz, nullptr);
         }
@@ -414,11 +413,11 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
             const juce::String k = "fm_op" + juce::String(i + 1) + "_";
             op.ratio = (float) sv.getProperty(k + "ratio", op.ratio);
             op.level = (float) sv.getProperty(k + "level", op.level);
-            op.a = (float) sv.getProperty(k + "a", op.a);
-            op.d = (float) sv.getProperty(k + "d", op.d);
-            op.s = (float) sv.getProperty(k + "s", op.s);
-            op.r = (float) sv.getProperty(k + "r", op.r);
-            op.peak      = (float) sv.getProperty(k + "peak", op.peak);
+            for (int e = 0; e < 4; ++e)
+            {
+                op.egRate[e]  = (float) sv.getProperty(k + "r" + juce::String(e + 1), op.egRate[e]);
+                op.egLevel[e] = (float) sv.getProperty(k + "l" + juce::String(e + 1), op.egLevel[e]);
+            }
             op.fixedFreq = (bool)  sv.getProperty(k + "fixed", op.fixedFreq);
             op.fixedHz   = (float) sv.getProperty(k + "fixedHz", op.fixedHz);
         }

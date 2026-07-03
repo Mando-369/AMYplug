@@ -539,10 +539,13 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         panel.addSection("OP " + juce::String(op));
         panel.addKnob(params::id::fmOp(op, "ratio"),   "Ratio");
         panel.addKnob(params::id::fmOp(op, "level"),   "Level");
-        panel.addKnob(params::id::fmOp(op, "attack"),  "A");
-        panel.addKnob(params::id::fmOp(op, "decay"),   "D");
-        panel.addKnob(params::id::fmOp(op, "sustain"), "S");
-        panel.addKnob(params::id::fmOp(op, "release"), "R");
+        panel.addChoice(params::id::fmOp(op, "fixed"), "Fixed");
+        panel.addKnob(params::id::fmOp(op, "fixedhz"), "Fix Hz");
+        // DX7 4-rate / 4-level operator envelope.
+        for (int e = 1; e <= 4; ++e)
+            panel.addKnob(params::id::fmOp(op, ("r" + juce::String(e)).toRawUTF8()), "R" + juce::String(e));
+        for (int e = 1; e <= 4; ++e)
+            panel.addKnob(params::id::fmOp(op, ("l" + juce::String(e)).toRawUTF8()), "L" + juce::String(e));
     };
     addOp(fmPanelL, 1); addOp(fmPanelL, 3); addOp(fmPanelL, 5);
     addOp(fmPanelR, 2); addOp(fmPanelR, 4); addOp(fmPanelR, 6);

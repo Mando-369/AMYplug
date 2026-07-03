@@ -6,6 +6,7 @@
 #include "engine/EngineOwnership.h"
 #include "engine/AmyWire.h"
 #include "state/Dx7Import.h"
+#include "state/Dx7Envelope.h"   // DX7 4R/4L EG -> AMY breakpoints (RT-safe C variant)
 #include "BuiltinPatchNames.h"   // kBuiltinPatchCommands / kBuiltinPatchCount (generated)
 #include <cstdio>
 #include <cstring>
@@ -123,11 +124,11 @@ void AmyPlugProcessor::cacheParamPointers()
         const int op = i + 1;
         mFmRatio[i].ptr = state.getRawParameterValue(params::id::fmOp(op, "ratio"));
         mFmLevel[i].ptr = state.getRawParameterValue(params::id::fmOp(op, "level"));
-        mFmA[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "attack"));
-        mFmD[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "decay"));
-        mFmS[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "sustain"));
-        mFmR[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "release"));
-        mFmPeak[i].ptr  = state.getRawParameterValue(params::id::fmOp(op, "peak"));
+        for (int e = 0; e < 4; ++e)
+        {
+            mFmEgRate[i][e].ptr  = state.getRawParameterValue(params::id::fmOp(op, ("r" + juce::String(e + 1)).toRawUTF8()));
+            mFmEgLevel[i][e].ptr = state.getRawParameterValue(params::id::fmOp(op, ("l" + juce::String(e + 1)).toRawUTF8()));
+        }
         pFmFixed[i]     = state.getRawParameterValue(params::id::fmOp(op, "fixed"));
         pFmFixedHz[i]   = state.getRawParameterValue(params::id::fmOp(op, "fixedhz"));
     }
@@ -450,11 +451,11 @@ void AmyPlugProcessor::syncModelFromParams()
         auto& op = fm.ops[i];
         if (mFmRatio[i].ptr) op.ratio = mFmRatio[i].ptr->load();
         if (mFmLevel[i].ptr) op.level = mFmLevel[i].ptr->load();
-        if (mFmA[i].ptr)     op.a     = mFmA[i].ptr->load();
-        if (mFmD[i].ptr)     op.d     = mFmD[i].ptr->load();
-        if (mFmS[i].ptr)     op.s     = mFmS[i].ptr->load();
-        if (mFmR[i].ptr)     op.r     = mFmR[i].ptr->load();
-        if (mFmPeak[i].ptr)  op.peak  = mFmPeak[i].ptr->load();
+        for (int e = 0; e < 4; ++e)
+        {
+            if (mFmEgRate[i][e].ptr)  op.egRate[e]  = mFmEgRate[i][e].ptr->load();
+            if (mFmEgLevel[i][e].ptr) op.egLevel[e] = mFmEgLevel[i][e].ptr->load();
+        }
         if (pFmFixed[i])     op.fixedFreq = pFmFixed[i]->load() > 0.5f;
         if (pFmFixedHz[i])   op.fixedHz   = pFmFixedHz[i]->load();
     }
@@ -655,22 +656,24 @@ void AmyPlugProcessor::streamFmParams()
                            active->streamWire(b, (int) std::strlen(b)); }
     };
 
-    // Re-send an operator amp envelope (bp0 'A') if its A/D/S/R or PEAK changed. Peak
-    // is the attack level (the true modulation depth), NOT a fixed 1.0.
-    auto env = [this] (int osc, Macro& pk, Macro& a, Macro& d, Macro& s, Macro& r)
+    // Re-send an operator's amp envelope (bp0 'A') if any of its DX7 4R/4L values
+    // changed. The full EG is rendered to AMY's exact breakpoint form (Dx7Envelope) —
+    // the C variant is allocation-free, so this is RT-safe.
+    auto env = [this] (int osc, int i)
     {
-        if (! (a.ptr && d.ptr && s.ptr && r.ptr)) return;
-        const float pv = pk.ptr ? pk.ptr->load() : 1.0f;
-        const float av=a.ptr->load(), dv=d.ptr->load(), sv=s.ptr->load(), rv=r.ptr->load();
-        const bool pkChanged = pk.ptr && pv != pk.last;
-        if (av!=a.last || dv!=d.last || sv!=s.last || rv!=r.last || pkChanged)
+        float rate[4], level[4]; bool changed = false;
+        for (int e = 0; e < 4; ++e)
         {
-            a.last=av; d.last=dv; s.last=sv; r.last=rv; if (pk.ptr) pk.last=pv;
-            char b[80]; std::snprintf(b, sizeof b, "i1v%dA%d,%g,%d,%.3f,%d,0", osc,
-                (int) std::lround(av*1000.0f), (double) juce::jlimit(0.0f, 1.0f, pv),
-                (int) std::lround(dv*1000.0f), (double) sv, (int) std::lround(rv*1000.0f));
-            active->streamWire(b, (int) std::strlen(b));
+            rate[e]  = mFmEgRate[i][e].ptr  ? mFmEgRate[i][e].ptr->load(std::memory_order_relaxed)  : 99.0f;
+            level[e] = mFmEgLevel[i][e].ptr ? mFmEgLevel[i][e].ptr->load(std::memory_order_relaxed) : 0.0f;
+            if (mFmEgRate[i][e].ptr  && rate[e]  != mFmEgRate[i][e].last)  changed = true;
+            if (mFmEgLevel[i][e].ptr && level[e] != mFmEgLevel[i][e].last) changed = true;
         }
+        if (! changed) return;
+        for (int e = 0; e < 4; ++e) { mFmEgRate[i][e].last = rate[e]; mFmEgLevel[i][e].last = level[e]; }
+        char b[160]; int n = std::snprintf(b, sizeof b, "i1v%dA", osc);
+        n += dx7env::egToBreakpointsC(b + n, (int) sizeof b - n, rate, level);
+        active->streamWire(b, n);
     };
 
     one(mFmFeedback, "i1v0b%g");                       // ALGO osc self-feedback
@@ -697,7 +700,7 @@ void AmyPlugProcessor::streamFmParams()
                 active->streamWire(b, (int) std::strlen(b));
             }
         }
-        env(osc, mFmPeak[i], mFmA[i], mFmD[i], mFmS[i], mFmR[i]);   // per-op envelope
+        env(osc, i);   // per-op DX7 4R/4L envelope
     }
 
     // No master amp env on the ALGO osc — the operator envelopes own the voice.
@@ -894,11 +897,11 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
         const auto& o = fm.ops[i];
         setP(params::id::fmOp(op, "ratio"),   o.ratio);
         setP(params::id::fmOp(op, "level"),   o.level);
-        setP(params::id::fmOp(op, "attack"),  o.a);
-        setP(params::id::fmOp(op, "decay"),   o.d);
-        setP(params::id::fmOp(op, "sustain"), o.s);
-        setP(params::id::fmOp(op, "release"), o.r);
-        setP(params::id::fmOp(op, "peak"),    o.peak);
+        for (int e = 0; e < 4; ++e)
+        {
+            setP(params::id::fmOp(op, ("r" + juce::String(e + 1)).toRawUTF8()), o.egRate[e]);
+            setP(params::id::fmOp(op, ("l" + juce::String(e + 1)).toRawUTF8()), o.egLevel[e]);
+        }
         setP(params::id::fmOp(op, "fixed"),   o.fixedFreq ? 1.0f : 0.0f);
         setP(params::id::fmOp(op, "fixedhz"), o.fixedHz);
     }

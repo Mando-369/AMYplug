@@ -158,9 +158,7 @@ private:
     std::atomic<float>* pAlgorithm = nullptr;
     Macro mFmFeedback;
     Macro mFmRatio[PatchModel::kFmOps], mFmLevel[PatchModel::kFmOps];
-    Macro mFmA[PatchModel::kFmOps], mFmD[PatchModel::kFmOps];
-    Macro mFmS[PatchModel::kFmOps], mFmR[PatchModel::kFmOps];
-    Macro mFmPeak[PatchModel::kFmOps];                          // envelope peak (mod depth)
+    Macro mFmEgRate[PatchModel::kFmOps][4], mFmEgLevel[PatchModel::kFmOps][4];  // DX7 4R/4L EG
     std::atomic<float>* pFmFixed[PatchModel::kFmOps]   = {};    // fixed-frequency mode (structural)
     std::atomic<float>* pFmFixedHz[PatchModel::kFmOps] = {};    // fixed frequency in Hz
 

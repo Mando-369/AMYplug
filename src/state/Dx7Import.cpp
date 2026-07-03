@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR MIT
 #include "Dx7Import.h"
+#include "Dx7Envelope.h"
 #include <cmath>
 #include <algorithm>
 #include <map>
@@ -87,15 +88,12 @@ PatchModel::FmOp convertOp(const RawOp& op)
 
     o.level = juce::jlimit(0.0f, 4.0f, (float) (2.0 * dx7LevelToLinear(op.outputLevel)));
 
-    // DX7 EG (R1..R4 / L1..L4) -> peak + A/D/S/R. L1 is the attack peak (the true
-    // modulation depth); L4 is the start/release floor (usually 0).
-    const double L1 = op.levels[0], L2 = op.levels[1], L3 = op.levels[2], L4 = op.levels[3];
-    o.peak = juce::jlimit(0.0f, 1.0f, (float) dx7LevelToLinear(op.levels[0]));
-    o.a = juce::jlimit(0.0f, 10.0f, (float) egSeconds(op.rates[0], L4, L1));
-    o.d = juce::jlimit(0.0f, 10.0f, (float) (egSeconds(op.rates[1], L1, L2)
-                                           + egSeconds(op.rates[2], L2, L3)));
-    o.s = juce::jlimit(0.0f, 1.0f, (float) dx7LevelToLinear(op.levels[2]));
-    o.r = juce::jlimit(0.0f, 10.0f, (float) egSeconds(op.rates[3], L3, L4));
+    // Store the DX7 4-rate/4-level EG natively (lossless — no ADSR reduction).
+    for (int i = 0; i < 4; ++i)
+    {
+        o.egRate[i]  = (float) juce::jlimit(0, 99, op.rates[i]);
+        o.egLevel[i] = (float) juce::jlimit(0, 99, op.levels[i]);
+    }
     return o;
 }
 
@@ -342,7 +340,7 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
         }
         else if (f.count('I')) op.ratio = juce::jmax(0.0f, f.at('I').getFloatValue());
         if (f.count('a')) op.level = juce::jlimit(0.0f, 4.0f, firstVal(f.at('a')));
-        if (f.count('A')) { bpToAdsr(f.at('A'), op.a, op.d, op.s, op.r); op.peak = bpPeak(f.at('A')); }
+        if (f.count('A')) dx7env::breakpointsToEg(f.at('A'), op.egRate, op.egLevel);  // exact shape
         ++decoded;
     }
     if (decoded == 0) return false;

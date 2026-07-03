@@ -277,18 +277,20 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
             ParameterID { id::fmOp(op, "ratio"), 1 }, "Op " + juce::String(op) + " Ratio", ratioRange(), ratio));
         layout.add(std::make_unique<AudioParameterFloat>(
             ParameterID { id::fmOp(op, "level"), 1 }, "Op " + juce::String(op) + " Level", levelRange(), lvl));
-        layout.add(std::make_unique<AudioParameterFloat>(
-            ParameterID { id::fmOp(op, "attack"),  1 }, "Op " + juce::String(op) + " Attack",  secs(), 0.005f));
-        layout.add(std::make_unique<AudioParameterFloat>(
-            ParameterID { id::fmOp(op, "decay"),   1 }, "Op " + juce::String(op) + " Decay",   secs(), (op == 2 ? 0.5f : 0.3f)));
-        layout.add(std::make_unique<AudioParameterFloat>(
-            ParameterID { id::fmOp(op, "sustain"), 1 }, "Op " + juce::String(op) + " Sustain", unit(), (op == 2 ? 0.3f : 0.7f)));
-        layout.add(std::make_unique<AudioParameterFloat>(
-            ParameterID { id::fmOp(op, "release"), 1 }, "Op " + juce::String(op) + " Release", secs(), 0.4f));
-        // Envelope attack PEAK = the operator's true modulation depth (DX7 ops peak
-        // well below 1.0). fixed = fixed-frequency mode; fixedhz = its absolute Hz.
-        layout.add(std::make_unique<AudioParameterFloat>(
-            ParameterID { id::fmOp(op, "peak"), 1 }, "Op " + juce::String(op) + " Peak", unit(), 1.0f));
+        // DX7 4-rate / 4-level operator envelope (each 0..99) — the native DX7 EG.
+        const float rDef[4] = { 95.0f, 60.0f, 40.0f, 55.0f };
+        const float lDef[4] = { 99.0f, 80.0f, 65.0f,  0.0f };
+        auto eg99 = [] { return NormalisableRange<float> { 0.0f, 99.0f, 1.0f }; };
+        for (int e = 1; e <= 4; ++e)
+        {
+            layout.add(std::make_unique<AudioParameterFloat>(
+                ParameterID { id::fmOp(op, ("r" + juce::String(e)).toRawUTF8()), 1 },
+                "Op " + juce::String(op) + " R" + juce::String(e), eg99(), rDef[e - 1]));
+            layout.add(std::make_unique<AudioParameterFloat>(
+                ParameterID { id::fmOp(op, ("l" + juce::String(e)).toRawUTF8()), 1 },
+                "Op " + juce::String(op) + " L" + juce::String(e), eg99(), lDef[e - 1]));
+        }
+        // fixed = fixed-frequency mode; fixedhz = its absolute Hz.
         layout.add(std::make_unique<AudioParameterBool>(
             ParameterID { id::fmOp(op, "fixed"), 1 }, "Op " + juce::String(op) + " Fixed", false));
         layout.add(std::make_unique<AudioParameterFloat>(

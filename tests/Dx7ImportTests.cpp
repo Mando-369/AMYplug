@@ -166,14 +166,12 @@ TEST_CASE("Factory wire decode maps a DX7 preset onto OP1..6", "[dx7][factory]")
     REQUIRE(fm.ops[5].ratio == Approx(1.0f).margin(1e-4));        // osc2
     REQUIRE(fm.ops[5].level == Approx(0.458502f).margin(1e-4));
 
-    // Envelope reduction is sane: osc2's A -> attack ~97ms, sustain 0.5, release ~70ms.
-    REQUIRE(fm.ops[5].a == Approx(0.097f).margin(0.01));
-    REQUIRE(fm.ops[5].s == Approx(0.5f).margin(0.05));
-    REQUIRE(fm.ops[5].r == Approx(0.07f).margin(0.01));
-    // Envelope PEAK is preserved (osc2 peaks at 0.917, NOT assumed 1.0) — the fix for
-    // over-modulation. All BRASS 1 operators are ratio mode (none fixed).
-    REQUIRE(fm.ops[5].peak == Approx(0.917f).margin(0.01));
-    REQUIRE_FALSE(fm.ops[0].fixedFreq);
+    // Full DX7 4R/4L envelope decoded losslessly: L1 (attack peak) ~98, L3 (sustain)
+    // ~91, L4 (release floor) 0. levelToLinear(98)=0.917, (91)=0.5, (0)~0.
+    REQUIRE(fm.ops[5].egLevel[0] == Approx(98.0f).margin(1.0));
+    REQUIRE(fm.ops[5].egLevel[2] == Approx(91.0f).margin(1.0));
+    REQUIRE(fm.ops[5].egLevel[3] == Approx(0.0f).margin(1.0));
+    REQUIRE_FALSE(fm.ops[0].fixedFreq);   // all BRASS 1 operators are ratio mode
 }
 
 TEST_CASE("Factory wire decode rejects a non-FM (Juno) patch", "[dx7][factory]")
@@ -227,4 +225,43 @@ TEST_CASE("Factory analog decode rejects an FM (DX7) patch", "[dx7][factory][ana
 {
     PatchModel::AnalogParams a;
     REQUIRE_FALSE(factoryAnalogWireToParams(kBrass1, a));   // no filter 'G' -> not analog
+}
+
+// --- DX7 4R/4L envelope round-trip (Stage 2 lossless-shape proof) ----------
+#include "state/Dx7Envelope.h"
+namespace
+{
+// Parse "t0,l0,t1,l1,..." into parallel arrays.
+void parseBp(const juce::String& s, std::vector<double>& t, std::vector<double>& l)
+{
+    juce::StringArray p; p.addTokens(s, ",", "");
+    for (int i = 0; i + 1 < p.size(); i += 2) { t.push_back(p[i].getDoubleValue()); l.push_back(p[i + 1].getDoubleValue()); }
+}
+// Decode a factory operator envelope to 4R/4L, re-emit, and assert the breakpoints
+// come back (times within 2% or 3ms; levels within 4%).
+void requireEnvRoundTrips(const char* env)
+{
+    float rate[4], level[4];
+    REQUIRE(amyplug::dx7env::breakpointsToEg(env, rate, level));
+    const juce::String re = amyplug::dx7env::egToBreakpoints(rate, level);
+
+    std::vector<double> t0, l0, t1, l1;
+    parseBp(env, t0, l0); parseBp(re, t1, l1);
+    REQUIRE(t1.size() == t0.size());
+    for (size_t i = 0; i < t0.size(); ++i)
+    {
+        REQUIRE(t1[i] == Approx(t0[i]).epsilon(0.02).margin(3.0));   // times
+        REQUIRE(l1[i] == Approx(l0[i]).epsilon(0.04).margin(0.0005)); // linear levels
+    }
+}
+} // namespace
+
+TEST_CASE("DX7 4R/4L envelope decode<->emit round-trips the factory shapes", "[dx7][env]")
+{
+    // Real operator envelopes from patches.h (MARIMBA, BASS 1, PIANO 3) — the shapes
+    // Stage 1's ADSR flattened. If these round-trip, the full shape is preserved.
+    requireEnvRoundTrips("0,0.000188,12896,0.162105,0,0.162105,270,0.000188,60000,0.000188"); // MARIMBA v2
+    requireEnvRoundTrips("0,0.000188,0,0.594604,201,0.00213,3294,0.000188,208,0.000188");      // BASS 1 v2
+    requireEnvRoundTrips("0,0.000188,2,1,34,0.000977,5708,0.000188,28743,0.000188");            // PIANO 3 v2
+    requireEnvRoundTrips("0,0.000188,97,0.917004,0,0.917004,530,0.5,70,0.000188");              // BRASS 1 v2
 }

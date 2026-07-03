@@ -68,12 +68,11 @@ public:
         float ratio   = 1.0f;     // freq = note freq x ratio        (when !fixedFreq)
         float fixedHz = 440.0f;   // absolute Hz, no key-tracking     (when fixedFreq)
         float level   = 0.0f;     // output amplitude / modulation index (0..4) = amp const
-        // Per-op amp envelope. `peak` is the envelope's attack level — the TRUE
-        // modulation depth (DX7 operators peak well below 1.0; assuming 1.0 grossly
-        // over-modulates, e.g. MARIMBA). AMY emits `a<level>,0,0,1,0,0` + this env, so
-        // level x env(peak..sustain) is the operator's amplitude over time.
-        float peak = 1.0f;                                // attack level 0..1
-        float a = 0.005f, d = 0.3f, s = 0.7f, r = 0.4f;   // seconds + sustain level 0..1
+        // Amp envelope as the DX7 4-rate / 4-level EG (each 0..99), the native DX7
+        // control. L1 is the attack peak (true modulation depth); L4 is the release
+        // floor. Emitted as AMY's 5-breakpoint form via Dx7Envelope (lossless).
+        float egRate[4]  = { 95.0f, 60.0f, 40.0f, 55.0f };   // R1..R4
+        float egLevel[4] = { 99.0f, 80.0f, 65.0f,  0.0f };   // L1..L4
     };
     static constexpr int kFmOps = 6;
     struct FmParams
