@@ -22,6 +22,16 @@ EnvelopeDisplay::EnvelopeDisplay(juce::AudioProcessorValueTreeState& s, int op)
     startTimerHz(12);
 }
 
+EnvelopeDisplay::EnvelopeDisplay(juce::AudioProcessorValueTreeState& s, PitchTag) : pitch(true)
+{
+    for (int e = 0; e < 4; ++e)
+    {
+        rateP[e]  = s.getRawParameterValue(params::id::fmPitchEg('r', e + 1));
+        levelP[e] = s.getRawParameterValue(params::id::fmPitchEg('l', e + 1));
+    }
+    startTimerHz(12);
+}
+
 void EnvelopeDisplay::timerCallback()
 {
     bool changed = false;
@@ -46,21 +56,32 @@ void EnvelopeDisplay::paint(juce::Graphics& g)
     float L[4], R[4];
     for (int e = 0; e < 4; ++e)
     {
-        L[e] = levelP[e] ? levelP[e]->load() : 0.0f;
+        L[e] = levelP[e] ? levelP[e]->load() : (pitch ? 50.0f : 0.0f);
         R[e] = rateP[e]  ? rateP[e]->load()  : 99.0f;
     }
     // Segment durations (sqrt-compressed so long tails stay visible but bounded), plus
-    // a fixed sustain hold. Shape: L4 -> L1 -> L2 -> L3 -> (hold) -> L4.
+    // a fixed sustain hold. Shape: L4 -> L1 -> L2 -> L3 -> (hold) -> L4. The pitch EG
+    // uses its own rate curve (pitchSegSeconds); the operator EG uses the amp curve.
     using namespace amyplug::dx7env;
-    const double t0 = std::sqrt(segSeconds(R[0], L[3], L[0], false));
-    const double t1 = std::sqrt(segSeconds(R[1], L[0], L[1], false));
-    const double t2 = std::sqrt(segSeconds(R[2], L[1], L[2], false));
-    const double t3 = std::sqrt(segSeconds(R[3], L[2], L[3], true));
+    auto seg = [this] (double r, double from, double to, bool rel)
+    { return pitch ? pitchSegSeconds(r, from, to, rel) : segSeconds(r, from, to, rel); };
+    const double t0 = std::sqrt(seg(R[0], L[3], L[0], false));
+    const double t1 = std::sqrt(seg(R[1], L[0], L[1], false));
+    const double t2 = std::sqrt(seg(R[2], L[1], L[2], false));
+    const double t3 = std::sqrt(seg(R[3], L[2], L[3], true));
     const double sus = 0.4 * (t0 + t1 + t2 + t3 + 0.001);
     const double total = t0 + t1 + t2 + t3 + sus + 1e-6;
 
     auto X = [&] (double acc) { return plot.getX() + (float) (acc / total) * plot.getWidth(); };
     auto Y = [&] (float lvl)  { return plot.getBottom() - (lvl / 99.0f) * plot.getHeight(); };
+
+    // Pitch EG: draw a faint centre line at level 50 (= no pitch shift) for reference.
+    if (pitch)
+    {
+        g.setColour(juce::Colour(0xff2a3138));
+        const float yc = Y(50.0f);
+        g.drawLine(plot.getX(), yc, plot.getRight(), yc, 1.0f);
+    }
 
     juce::Path p;
     double acc = 0.0;
@@ -146,7 +167,10 @@ void ControlPanel::paint(juce::Graphics& g)
     auto r = getLocalBounds().reduced(4);
     for (int sec = 0; sec < sectionTitles.size(); ++sec)
     {
-        auto box = r.removeFromTop(kTitleH + rowH);
+        // Must mirror resized(): a section with a graph reserves kGraphH between its
+        // title and its knob row, so the title bands stay aligned with their controls.
+        const bool hasGraph = graphForSection.count(sec) > 0;
+        auto box = r.removeFromTop(kTitleH + (hasGraph ? kGraphH : 0) + rowH);
         g.setColour(kPanel);   g.fillRoundedRectangle(box.toFloat(), 5.0f);
         auto tb = box.removeFromTop(kTitleH);
         g.setColour(kTitle);   g.fillRoundedRectangle(tb.toFloat(), 5.0f);
@@ -638,8 +662,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     addEnv(fmEnv1Panel, 1); addEnv(fmEnv1Panel, 2); addEnv(fmEnv1Panel, 3);
     addEnv(fmEnv2Panel, 4); addEnv(fmEnv2Panel, 5); addEnv(fmEnv2Panel, 6);
     fmEnv1Panel.setCellSize(96, 96); fmEnv2Panel.setCellSize(96, 96);
-    // DX7 4 — pitch & global mod: pitch EG, the LFO, and the per-op tremolo routing.
+    // DX7 4 — pitch & global mod: pitch EG (with its own viewer), the LFO, and the
+    // per-op tremolo routing.
     fmModPanel.addSection("PITCH EG");
+    fmModPanel.addGraph(fmPitchGraph);   // 200x130 pitch-envelope viewer atop the knobs
     for (int e = 1; e <= 4; ++e) fmModPanel.addKnob(params::id::fmPitchEg('r', e), "R" + juce::String(e));
     for (int e = 1; e <= 4; ++e) fmModPanel.addKnob(params::id::fmPitchEg('l', e), "L" + juce::String(e));
     // LFO: speed + waveform, vibrato (pitch depth + sensitivity), tremolo (amp depth).

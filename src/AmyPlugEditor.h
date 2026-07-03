@@ -9,19 +9,24 @@
 
 namespace amyplug
 {
-// Draws one DX7 operator's 4-rate/4-level envelope (attack -> L1, decays -> L2/L3,
-// sustain hold, release -> L4) as a small graph. Polls the params and repaints on
-// change so it tracks live edits and preset loads.
+// Draws a DX7 4-rate/4-level envelope (attack -> L1, decays -> L2/L3, sustain hold,
+// release -> L4) as a small graph. Polls the params and repaints on change so it
+// tracks live edits and preset loads. Two flavours: an operator AMP envelope (level
+// 0 = silent, at the bottom) or the global PITCH envelope (level 50 = no shift, drawn
+// around a centre line, with pitch-EG segment timing).
 class EnvelopeDisplay : public juce::Component, private juce::Timer
 {
 public:
-    EnvelopeDisplay(juce::AudioProcessorValueTreeState& s, int op);
+    EnvelopeDisplay(juce::AudioProcessorValueTreeState& s, int op);   // operator amp EG
+    struct PitchTag {};
+    EnvelopeDisplay(juce::AudioProcessorValueTreeState& s, PitchTag); // global pitch EG
     void paint(juce::Graphics&) override;
 private:
     void timerCallback() override;
     std::atomic<float>* rateP[4] {};
     std::atomic<float>* levelP[4] {};
     float lastR[4] { -1, -1, -1, -1 }, lastL[4] { -1, -1, -1, -1 };
+    bool pitch = false;   // pitch EG (centre at 50) vs operator amp EG (floor at 0)
 };
 // A panel of labelled controls (rotaries + choice combos) grouped into titled
 // sections laid out in columns — used for the Juno engine tab and the FX rack.
@@ -276,8 +281,9 @@ private:
     EnvGraphRow      fmEnv2Tab { fmEnv2Panel, fmEnvGraph[3], fmEnvGraph[4], fmEnvGraph[5],
                                  "OP 4", "OP 5", "OP 6" };
     juce::Viewport   fmEnv1Viewport, fmEnv2Viewport;
-    // DX7 4 — pitch & global mod.
+    // DX7 4 — pitch & global mod. The pitch EG gets its own viewer (centre = no shift).
     ControlPanel     fmModPanel { proc.apvts() };
+    EnvelopeDisplay  fmPitchGraph { proc.apvts(), EnvelopeDisplay::PitchTag {} };
     juce::Viewport   fmModViewport;
     ControlPanel     fxPanel   { proc.apvts() };   // global FX rack (right column)
     HardwarePanel    hwPanel   { proc };            // AMYboard tab
