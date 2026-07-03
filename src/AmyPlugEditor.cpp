@@ -721,7 +721,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         lastTab = tab0;
     }
 
-    setSize(1280, 740);
+    // Height fits the tallest scrolled tab body without clipping: the Juno right
+    // column has 5 sections (…VOICE) ~618px; window overhead (title + 2 top rows +
+    // insets + tab bar) is ~156px, so >= 774px keeps VOICE fully visible.
+    setSize(1280, 800);
     startTimerHz(15);
 }
 
