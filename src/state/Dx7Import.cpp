@@ -26,6 +26,8 @@ struct RawVoice
     RawOp ops[6];                   // stored DX7 order: ops[0] = OP6 ... ops[5] = OP1
     int   algorithm = 1;            // 1..32
     int   feedback  = 0;            // 0..7
+    int   pitchRates[4]  { 99, 99, 99, 99 };   // pitch EG R1..R4
+    int   pitchLevels[4] { 50, 50, 50, 50 };   // pitch EG L1..L4 (50 = no shift)
     juce::String name;
 };
 
@@ -103,6 +105,11 @@ Dx7Voice convertVoice(const RawVoice& raw)
     v.name = raw.name.trimEnd();
     v.fm.algorithm = juce::jlimit(1, 32, raw.algorithm);
     v.fm.feedback  = juce::jlimit(0.0f, 1.0f, (float) feedbackToFloat(raw.feedback));
+    for (int i = 0; i < 4; ++i)
+    {
+        v.fm.pitchEgRate[i]  = (float) juce::jlimit(0, 99, raw.pitchRates[i]);
+        v.fm.pitchEgLevel[i] = (float) juce::jlimit(0, 99, raw.pitchLevels[i]);
+    }
     // raw.ops is stored OP6..OP1; our FmParams.ops[i] is DX7 operator (i+1), so
     // ops[i] = raw.ops[5 - i] (matches emitFm's O6,5,4,3,2,1 routing).
     for (int i = 0; i < 6; ++i)
@@ -138,6 +145,7 @@ RawVoice unpackPacked(const std::uint8_t* d)
     }
     v.algorithm = (d[110] & 0x1F) + 1;           // stored 0..31
     v.feedback  =  d[111] & 0x07;                // byte111: bits0-2 feedback
+    for (int i = 0; i < 4; ++i) { v.pitchRates[i] = d[102 + i]; v.pitchLevels[i] = d[106 + i]; }
     v.name      = readName(d + 118, 10);
     return v;
 }
@@ -159,6 +167,7 @@ RawVoice readVced(const std::uint8_t* d)
     }
     v.algorithm = d[134] + 1;                    // stored 0..31
     v.feedback  = d[135];
+    for (int i = 0; i < 4; ++i) { v.pitchRates[i] = d[126 + i]; v.pitchLevels[i] = d[130 + i]; }
     v.name      = readName(d + 145, 10);
     return v;
 }
@@ -318,6 +327,7 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
     PatchModel::FmParams fm;
     fm.algorithm = juce::jlimit(1, 32, algo.at('o').getIntValue());
     if (algo.count('b')) fm.feedback = juce::jlimit(0.0f, 1.0f, algo.at('b').getFloatValue());
+    if (algo.count('A')) dx7env::breakpointsToPitchEg(algo.at('A'), fm.pitchEgRate, fm.pitchEgLevel);  // pitch EG
 
     // Map oscillators to OP1..6 via the patch's O source list. AMY lists algo_source
     // 6->1 (source k is DX7 operator 6-k); our ops[i] is DX7 operator i+1, so ops[i]

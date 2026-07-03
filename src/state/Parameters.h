@@ -96,6 +96,8 @@ namespace id
     //     master output envelope on the ALGO osc. ---
     inline constexpr auto fmAlgorithm   = "fm_algorithm";   // 1..32 (DX7 algorithms)
     inline constexpr auto fmFeedback    = "fm_feedback";    // 0..1 on the ALGO osc
+    // Global pitch EG (DX7 4R/4L, 0..99). rl = 'r' or 'l', n = 1..4.
+    inline juce::String fmPitchEg(char rl, int n) { return juce::String("fm_pitcheg_") + rl + juce::String(n); }
 
     // Per-operator ids are generated (op = 1..6). field = ratio|level|attack|decay|sustain|release.
     inline juce::String fmOp(int op, const char* field)
@@ -262,6 +264,14 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterChoice>(
         ParameterID { id::fmAlgorithm, 1 }, "FM Algorithm", algoLabels, 0));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::fmFeedback, 1 }, "FM Feedback", unit(), 0.0f));
+    // Global pitch EG (R1..R4 / L1..L4, 0..99; L=50 is no shift, all-50 = flat).
+    for (int e = 1; e <= 4; ++e)
+    {
+        layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::fmPitchEg('r', e), 1 },
+            "Pitch EG R" + juce::String(e), NormalisableRange<float> { 0.0f, 99.0f, 1.0f }, 99.0f));
+        layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::fmPitchEg('l', e), 1 },
+            "Pitch EG L" + juce::String(e), NormalisableRange<float> { 0.0f, 99.0f, 1.0f }, 50.0f));
+    }
 
     // Per-operator: frequency ratio (multiple of the note), output level (= FM
     // modulation index for modulators), and a full A/D/S/R envelope. Defaults give

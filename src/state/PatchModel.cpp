@@ -174,10 +174,12 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
     // up; that is AMY's DX7 tuning. Omitting the EG0 term drops every FM voice an
     // octave below the built-in DX7 presets, so we emit a neutral pitch env held at
     // 1.0 (attack + release both stay at 1.0 — no pitch glide on note-off).
+    // Pitch EG on bp0 (level 50 = ratio 1.0 = the +1 octave; non-flat sweeps around it).
+    const juce::String pitchEnv = amyplug::dx7env::pitchEgToBreakpoints(fm.pitchEgRate, fm.pitchEgLevel);
     out.emplace_back((pre + "v0w8"
         + "f0,1,0,1,0,0"                 // const 0, note 1, EG0 (pitch env) 1
         + "a1,0,1,0,0,0"
-        + "A0,1,0,1"                     // neutral pitch env: hold 1.0 (= +1 octave) through release
+        + "A" + pitchEnv                 // DX7 pitch envelope (all-50 default = flat = +1 octave)
         + "b" + F(fm.feedback)
         + "O6,5,4,3,2,1"
         + "o" + juce::String(juce::jlimit(1, 32, fm.algorithm))
@@ -315,6 +317,11 @@ juce::ValueTree PatchModel::toValueTree() const
         const auto& fm = s.fm;
         sv.setProperty("fm_algorithm", fm.algorithm, nullptr);
         sv.setProperty("fm_feedback",  fm.feedback,  nullptr);
+        for (int e = 0; e < 4; ++e)
+        {
+            sv.setProperty("fm_pitchr" + juce::String(e + 1), fm.pitchEgRate[e],  nullptr);
+            sv.setProperty("fm_pitchl" + juce::String(e + 1), fm.pitchEgLevel[e], nullptr);
+        }
         for (int i = 0; i < kFmOps; ++i)
         {
             const auto& op = fm.ops[i];
@@ -407,6 +414,11 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
         auto& fm = s.fm;
         fm.algorithm = (int)   sv.getProperty("fm_algorithm", fm.algorithm);
         fm.feedback  = (float) sv.getProperty("fm_feedback",  fm.feedback);
+        for (int e = 0; e < 4; ++e)
+        {
+            fm.pitchEgRate[e]  = (float) sv.getProperty("fm_pitchr" + juce::String(e + 1), fm.pitchEgRate[e]);
+            fm.pitchEgLevel[e] = (float) sv.getProperty("fm_pitchl" + juce::String(e + 1), fm.pitchEgLevel[e]);
+        }
         for (int i = 0; i < kFmOps; ++i)
         {
             auto& op = fm.ops[i];

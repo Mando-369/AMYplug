@@ -119,6 +119,11 @@ void AmyPlugProcessor::cacheParamPointers()
 
     pAlgorithm     = state.getRawParameterValue(params::id::fmAlgorithm);
     mFmFeedback.ptr = state.getRawParameterValue(params::id::fmFeedback);
+    for (int e = 0; e < 4; ++e)
+    {
+        mFmPitchRate[e].ptr  = state.getRawParameterValue(params::id::fmPitchEg('r', e + 1));
+        mFmPitchLevel[e].ptr = state.getRawParameterValue(params::id::fmPitchEg('l', e + 1));
+    }
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const int op = i + 1;
@@ -446,6 +451,11 @@ void AmyPlugProcessor::syncModelFromParams()
     auto& fm = s.fm;
     if (pAlgorithm)      fm.algorithm = (int) std::lround(pAlgorithm->load()) + 1;   // choice index 0..31 -> algo 1..32
     if (mFmFeedback.ptr) fm.feedback  = mFmFeedback.ptr->load();
+    for (int e = 0; e < 4; ++e)
+    {
+        if (mFmPitchRate[e].ptr)  fm.pitchEgRate[e]  = mFmPitchRate[e].ptr->load();
+        if (mFmPitchLevel[e].ptr) fm.pitchEgLevel[e] = mFmPitchLevel[e].ptr->load();
+    }
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         auto& op = fm.ops[i];
@@ -678,6 +688,25 @@ void AmyPlugProcessor::streamFmParams()
 
     one(mFmFeedback, "i1v0b%g");                       // ALGO osc self-feedback
 
+    // Global pitch EG on the ALGO osc (v0 bp0 'A') — re-send if any 4R/4L value changed.
+    {
+        float pr[4], pl[4]; bool ch = false;
+        for (int e = 0; e < 4; ++e)
+        {
+            pr[e] = mFmPitchRate[e].ptr  ? mFmPitchRate[e].ptr->load(std::memory_order_relaxed)  : 99.0f;
+            pl[e] = mFmPitchLevel[e].ptr ? mFmPitchLevel[e].ptr->load(std::memory_order_relaxed) : 50.0f;
+            if (mFmPitchRate[e].ptr  && pr[e] != mFmPitchRate[e].last)  ch = true;
+            if (mFmPitchLevel[e].ptr && pl[e] != mFmPitchLevel[e].last) ch = true;
+        }
+        if (ch)
+        {
+            for (int e = 0; e < 4; ++e) { mFmPitchRate[e].last = pr[e]; mFmPitchLevel[e].last = pl[e]; }
+            char b[160]; int n = std::snprintf(b, sizeof b, "i1v0A");
+            n += dx7env::pitchEgToBreakpointsC(b + n, (int) sizeof b - n, pr, pl);
+            active->streamWire(b, n);
+        }
+    }
+
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const int osc = i + 1;
@@ -891,6 +920,11 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     const auto& fm = s.fm;
     setP(params::id::fmAlgorithm, (float) (fm.algorithm - 1));   // algo 1..32 -> choice index 0..31
     setP(params::id::fmFeedback,  fm.feedback);
+    for (int e = 0; e < 4; ++e)
+    {
+        setP(params::id::fmPitchEg('r', e + 1), fm.pitchEgRate[e]);
+        setP(params::id::fmPitchEg('l', e + 1), fm.pitchEgLevel[e]);
+    }
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const int op = i + 1;

@@ -80,6 +80,10 @@ public:
         int   algorithm = 1;      // 1..32 (DX7 algorithms)
         float feedback  = 0.0f;   // 0..1, self-feedback on the ALGO osc
         FmOp  ops[kFmOps];
+        // Global pitch EG (DX7 4R/4L, each 0..99) on the ALGO osc. Level 50 = no shift;
+        // all-50 is flat (the default, = the +1-octave tuning env). Drives all operators.
+        float pitchEgRate[4]  = { 99.0f, 99.0f, 99.0f, 99.0f };
+        float pitchEgLevel[4] = { 50.0f, 50.0f, 50.0f, 50.0f };
     };
 
     struct Synth

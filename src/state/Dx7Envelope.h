@@ -88,6 +88,85 @@ inline juce::String egToBreakpoints(const float rate[4], const float level[4])
     return juce::String(b);
 }
 
+// --- Pitch EG (the ALGO osc's bp0) -----------------------------------------------
+// The pitch envelope uses a DIFFERENT level map and segment timing than the amp EG
+// (fm.py: dx7_attacks=False, rate_double_interval=20, rate_scale=11, rate_offset=-6),
+// and its levels are pitch *ratios* (DX7 pitch value 50 -> ratio 1.0 = no shift).
+inline double pitchvalToRatio(double pitchval)
+{
+    const double sign = (pitchval >= 50.0) ? 1.0 : -1.0;
+    double semi = std::abs(pitchval - 50.0);
+    if (semi > 36.0) semi += (semi - 34.0) * (semi - 34.0) * 93.0 / 225.0 - semi + 34.0;
+    return std::pow(2.0, (sign * semi) / 32.0);
+}
+inline double ratioToPitchval(double ratio)
+{
+    double semi = 32.0 * std::log2(std::max(1e-9, ratio));
+    const double sign = (semi >= 0.0) ? 1.0 : -1.0;
+    semi = std::abs(semi);
+    if (semi > 36.0) semi += 34.0 + std::sqrt(std::abs(semi - 34.0) * 225.0 / 93.0) - semi;
+    return juce::jlimit(0.0, 99.0, 50.0 + sign * semi);
+}
+inline double pitchSegSeconds(double rate, double from, double to, bool isRelease)
+{
+    const double dir = (to > from) ? 1.0 : -1.0;
+    double diff = to - from;
+    if (isRelease && diff == 0.0) diff = dir * 60.0;
+    const double lcps = dir * (-6.0 + 11.0 * std::pow(2.0, rate / 20.0));
+    return (lcps != 0.0) ? diff / lcps : 0.0;
+}
+inline double pitchRateForSegment(double from, double to, double durationSec, bool isRelease)
+{
+    if (to == from && ! isRelease) return 99.0;
+    double lo = 0.0, hi = 99.0;
+    for (int it = 0; it < 48; ++it)
+    {
+        const double mid = 0.5 * (lo + hi);
+        if (pitchSegSeconds(mid, from, to, isRelease) > durationSec) lo = mid; else hi = mid;
+    }
+    return juce::jlimit(0.0, 99.0, 0.5 * (lo + hi));
+}
+inline int pitchEgToBreakpointsC(char* out, int cap, const float rate[4], const float level[4])
+{
+    // AMY adds the pitch-env value directly to log2(freq); the operators then multiply
+    // that base, so a large value pushes every operator past AMY's freq range (OOB ->
+    // abort). The neutral value 1.0 (the +1-octave base) is proven safe, so keep the
+    // env in a tight band around it. Real envelopes sit near 1.0; a deep sweep clamps.
+    auto R = [] (double v) { return juce::jlimit(0.5, 2.0, pitchvalToRatio(v)); };
+    int n = std::snprintf(out, (size_t) cap, "0,%.6g", R(level[3]));
+    double cur = level[3];
+    for (int i = 0; i < 4 && n < cap; ++i)
+    {
+        const double sec = pitchSegSeconds(rate[i], cur, level[i], i == 3);
+        n += std::snprintf(out + n, (size_t) (cap - n), ",%d,%.6g",
+                           (int) std::lround(sec * 1000.0), R(level[i]));
+        cur = level[i];
+    }
+    return n;
+}
+inline juce::String pitchEgToBreakpoints(const float rate[4], const float level[4])
+{
+    char b[128]; pitchEgToBreakpointsC(b, (int) sizeof b, rate, level);
+    return juce::String(b);
+}
+inline bool breakpointsToPitchEg(const juce::String& bp, float rate[4], float level[4])
+{
+    juce::StringArray p; p.addTokens(bp, ",", "");
+    if (p.size() < 10) return false;
+    const double L4 = ratioToPitchval(p[1].getDoubleValue());
+    double cur = L4;
+    for (int i = 0; i < 4; ++i)
+    {
+        const double tms = p[2 + i * 2].getDoubleValue();
+        const double lvl = ratioToPitchval(p[3 + i * 2].getDoubleValue());
+        level[i] = (float) lvl;
+        rate[i]  = (float) pitchRateForSegment(cur, lvl, tms / 1000.0, i == 3);
+        cur = lvl;
+    }
+    level[3] = (float) L4;
+    return true;
+}
+
 // Inverse: an AMY breakpoint string (>=5 pairs) -> 4R/4L. Returns false if malformed.
 inline bool breakpointsToEg(const juce::String& bp, float rate[4], float level[4])
 {

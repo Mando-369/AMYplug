@@ -157,6 +157,7 @@ private:
     // master amp envelope reuses mAttack..mRelease. Per-op arrays index 0..5.
     std::atomic<float>* pAlgorithm = nullptr;
     Macro mFmFeedback;
+    Macro mFmPitchRate[4], mFmPitchLevel[4];   // global pitch EG (ALGO osc bp0)
     Macro mFmRatio[PatchModel::kFmOps], mFmLevel[PatchModel::kFmOps];
     Macro mFmEgRate[PatchModel::kFmOps][4], mFmEgLevel[PatchModel::kFmOps][4];  // DX7 4R/4L EG
     std::atomic<float>* pFmFixed[PatchModel::kFmOps]   = {};    // fixed-frequency mode (structural)

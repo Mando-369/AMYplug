@@ -549,6 +549,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     };
     addOp(fmPanelL, 1); addOp(fmPanelL, 3); addOp(fmPanelL, 5);
     addOp(fmPanelR, 2); addOp(fmPanelR, 4); addOp(fmPanelR, 6);
+    // Global pitch EG (affects all operators). Level 50 = no shift.
+    fmPanelR.addSection("PITCH EG");
+    for (int e = 1; e <= 4; ++e) fmPanelR.addKnob(params::id::fmPitchEg('r', e), "R" + juce::String(e));
+    for (int e = 1; e <= 4; ++e) fmPanelR.addKnob(params::id::fmPitchEg('l', e), "L" + juce::String(e));
     fmPanelL.setCellSize(86, 94);
     fmPanelR.setCellSize(86, 94);
 

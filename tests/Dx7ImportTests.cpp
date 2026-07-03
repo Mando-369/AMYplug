@@ -265,3 +265,24 @@ TEST_CASE("DX7 4R/4L envelope decode<->emit round-trips the factory shapes", "[d
     requireEnvRoundTrips("0,0.000188,2,1,34,0.000977,5708,0.000188,28743,0.000188");            // PIANO 3 v2
     requireEnvRoundTrips("0,0.000188,97,0.917004,0,0.917004,530,0.5,70,0.000188");              // BRASS 1 v2
 }
+
+TEST_CASE("DX7 pitch-EG decode<->emit round-trips (ratio levels + pitch timing)", "[dx7][env]")
+{
+    using namespace amyplug::dx7env;
+    auto roundTrips = [] (const char* bpStr)
+    {
+        float rate[4], level[4];
+        REQUIRE(breakpointsToPitchEg(bpStr, rate, level));
+        const juce::String re = pitchEgToBreakpoints(rate, level);
+        std::vector<double> t0, l0, t1, l1;
+        juce::StringArray a; a.addTokens(juce::String(bpStr), ",", ""); juce::StringArray b; b.addTokens(re, ",", "");
+        REQUIRE(a.size() == b.size());
+        for (int i = 0; i + 1 < a.size(); i += 2)
+        {
+            REQUIRE(b[i].getDoubleValue()     == Approx(a[i].getDoubleValue()).epsilon(0.03).margin(3.0));   // time
+            REQUIRE(b[i + 1].getDoubleValue() == Approx(a[i + 1].getDoubleValue()).epsilon(0.03).margin(0.002)); // ratio
+        }
+    };
+    roundTrips("0,1,0,1,0,1,0,1,731,1");                       // BRASS 1 ALGO pitch env (flat)
+    roundTrips("0,1,120,1.2968,30,1.15,300,0.9441,200,1");     // synthetic pitch sweep (distinct levels)
+}
