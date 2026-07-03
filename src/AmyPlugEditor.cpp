@@ -625,11 +625,11 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     addOsc(fmOscB, 2); addOsc(fmOscB, 5);
     addOsc(fmOscC, 3); addOsc(fmOscC, 6);
     for (auto* p : { &fmOscA, &fmOscB, &fmOscC }) p->setCellSize(96, 92);
-    // DX7 2 / DX7 3 — per-operator DX7 4-rate / 4-level envelope, OP1-3 and OP4-6.
-    auto addEnv = [this] (ControlPanel& p, int op)
+    // DX7 2 / DX7 3 — per-operator DX7 4-rate / 4-level envelope, OP1-3 and OP4-6. The
+    // viewers sit in a labelled row at the top (EnvGraphRow); here we add only knobs.
+    auto addEnv = [] (ControlPanel& p, int op)
     {
         p.addSection("OP " + juce::String(op));
-        p.addGraph(fmEnvGraph[op - 1]);   // 200x130 envelope graph atop the knobs
         for (int e = 1; e <= 4; ++e)
             p.addKnob(params::id::fmOp(op, ("r" + juce::String(e)).toRawUTF8()), "R" + juce::String(e));
         for (int e = 1; e <= 4; ++e)
@@ -691,9 +691,9 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     junoViewport.setScrollBarsShown(true, false);
     fmOscViewport.setViewedComponent(&fmOscCols, false);
     fmOscViewport.setScrollBarsShown(true, false);
-    fmEnv1Viewport.setViewedComponent(&fmEnv1Panel, false);
+    fmEnv1Viewport.setViewedComponent(&fmEnv1Tab, false);
     fmEnv1Viewport.setScrollBarsShown(true, false);
-    fmEnv2Viewport.setViewedComponent(&fmEnv2Panel, false);
+    fmEnv2Viewport.setViewedComponent(&fmEnv2Tab, false);
     fmEnv2Viewport.setScrollBarsShown(true, false);
     fmModViewport.setViewedComponent(&fmModPanel, false);
     fmModViewport.setScrollBarsShown(true, false);
@@ -990,9 +990,10 @@ void AmyPlugEditor::resized()
     const int oscH = juce::jmax(fmOscA.preferredHeight(),
                                 juce::jmax(fmOscB.preferredHeight(), fmOscC.preferredHeight()));
     fmOscCols.setSize(contentW, oscH);
-    // DX7 2/3 envelopes + DX7 4 pitch: single full-width columns.
-    fmEnv1Panel.setSize(contentW, fmEnv1Panel.preferredHeight());
-    fmEnv2Panel.setSize(contentW, fmEnv2Panel.preferredHeight());
+    // DX7 2/3: a row of viewers atop the knob rows (EnvGraphRow sizes its inner panel).
+    fmEnv1Tab.setSize(contentW, fmEnv1Tab.preferredHeight());
+    fmEnv2Tab.setSize(contentW, fmEnv2Tab.preferredHeight());
+    // DX7 4 pitch/mod: single full-width column.
     fmModPanel.setSize(contentW, fmModPanel.preferredHeight());
 }
 } // namespace amyplug

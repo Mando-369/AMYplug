@@ -60,6 +60,48 @@ private:
     static constexpr int kTitleH = 20, kGap = 8, kGraphH = 130;
 };
 
+// A DX7 operator-envelope tab body: three labelled envelope viewers in one row
+// across the top, with the operators' R/L knob rows below. Keeps the graphs
+// together instead of stacking one above each knob row.
+class EnvGraphRow : public juce::Component
+{
+public:
+    EnvGraphRow(ControlPanel& panel, EnvelopeDisplay& g0, EnvelopeDisplay& g1, EnvelopeDisplay& g2,
+                const juce::String& n0, const juce::String& n1, const juce::String& n2)
+        : controls(panel), graphs { &g0, &g1, &g2 }
+    {
+        addAndMakeVisible(controls);
+        const juce::String names[3] { n0, n1, n2 };
+        for (int i = 0; i < 3; ++i)
+        {
+            addAndMakeVisible(*graphs[i]);
+            labels[i].setText(names[i], juce::dontSendNotification);
+            labels[i].setJustificationType(juce::Justification::centred);
+            labels[i].setFont(juce::FontOptions(12.0f, juce::Font::bold));
+            addAndMakeVisible(labels[i]);
+        }
+    }
+    int preferredHeight() const { return kRowH + controls.preferredHeight(); }
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        auto top = r.removeFromTop(kRowH).reduced(4);
+        const int w = top.getWidth() / 3;
+        for (int i = 0; i < 3; ++i)
+        {
+            auto cell = (i < 2) ? top.removeFromLeft(w) : top;
+            labels[i].setBounds(cell.removeFromTop(kLabelH));
+            graphs[i]->setBounds(cell.withSizeKeepingCentre(juce::jmin(200, cell.getWidth() - 8), kGraphH));
+        }
+        controls.setBounds(r);
+    }
+private:
+    ControlPanel&    controls;
+    EnvelopeDisplay* graphs[3];
+    juce::Label      labels[3];
+    static constexpr int kLabelH = 20, kGraphH = 130, kRowH = kLabelH + kGraphH + 12;
+};
+
 // The AMYboard (Hardware) tab: pick the board's MIDI-out, connect, toggle
 // Software/Hardware mode, and push the current patch to the board as SysEx.
 class HardwarePanel : public juce::Component,
@@ -224,10 +266,15 @@ private:
     ColumnPanels     fmOscCols { { &fmOscA, &fmOscB, &fmOscC } };
     juce::Viewport   fmOscViewport;
     Dx7TabComponent  dx7Tab1 { proc.apvts(), algoDiagram, fmOscViewport };
-    // DX7 2 / DX7 3 — operator envelopes, split OP1-3 and OP4-6, each with a graph.
+    // DX7 2 / DX7 3 — operator envelopes, split OP1-3 and OP4-6. Each tab shows the
+    // three operators' viewers in one row across the top, then the R/L knob rows.
     ControlPanel     fmEnv1Panel { proc.apvts() }, fmEnv2Panel { proc.apvts() };
     EnvelopeDisplay  fmEnvGraph[6] { { proc.apvts(), 1 }, { proc.apvts(), 2 }, { proc.apvts(), 3 },
                                      { proc.apvts(), 4 }, { proc.apvts(), 5 }, { proc.apvts(), 6 } };
+    EnvGraphRow      fmEnv1Tab { fmEnv1Panel, fmEnvGraph[0], fmEnvGraph[1], fmEnvGraph[2],
+                                 "OP 1", "OP 2", "OP 3" };
+    EnvGraphRow      fmEnv2Tab { fmEnv2Panel, fmEnvGraph[3], fmEnvGraph[4], fmEnvGraph[5],
+                                 "OP 4", "OP 5", "OP 6" };
     juce::Viewport   fmEnv1Viewport, fmEnv2Viewport;
     // DX7 4 — pitch & global mod.
     ControlPanel     fmModPanel { proc.apvts() };
