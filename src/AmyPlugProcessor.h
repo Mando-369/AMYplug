@@ -99,6 +99,11 @@ private:
     bool   wasSoftwareOwner = false;   // audio-thread edge detect: silent -> owning
 
     std::atomic<bool> panicRequested { false };
+    // Set on the message thread by rebuildEngineFromModel; consumed on the audio
+    // thread to flush the NoteRouter. A rebuild resets AMY's voices, so the tracker
+    // must be cleared too or held notes desync (phantom mono/legato notes). Routed
+    // through a flag because NoteRouter is not safe to touch off the audio thread.
+    std::atomic<bool> routerFlushRequested { false };
 
     // Master output DSP — runs on the rendered buffer after the backend, before
     // the audio leaves the plugin: bitcrusher (retro grit) -> WDF diode saturator

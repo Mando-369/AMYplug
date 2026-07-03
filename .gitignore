@@ -37,3 +37,6 @@ CMakeUserPresets.json
 
 # Local DX7 patch library for testing import (third-party, not distributed)
 dx7_sounds/
+
+# Local scratch audio captures (not source)
+testaudio/

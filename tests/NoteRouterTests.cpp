@@ -168,3 +168,31 @@ TEST_CASE("Mono mode still flushes on panic / transport stop (no hang)", "[route
     REQUIRE_FALSE(r.anyActive());
     REQUIRE(b.allNotesOffCount == 1);
 }
+
+// A structural rebuild (engine/patch/voice-mode switch) flushes the router the same
+// way panic does. This pins the invariant the processor's rebuild-flush relies on:
+// after the flush the mono held-stack is EMPTY, so a stale release resurrects nothing
+// and the next note starts clean — no phantom "stuck" note carried across the switch.
+TEST_CASE("allNotesOff clears the mono held-stack (no phantom note after a rebuild)", "[router][mono]")
+{
+    NoteRouter r; MockBackend b; r.setVoiceMode(1);    // Mono
+    r.process(noteOnBuf(1, 60, 100), b);               // 60 sounds
+    r.process(noteOnBuf(1, 64, 100), b);               // 64 steals; 60 held underneath
+    REQUIRE(r.anyActive());
+
+    r.allNotesOff(&b);                                 // <- the rebuild flush
+    REQUIRE_FALSE(r.anyActive());
+    REQUIRE(b.totalNetOn() == 0);
+
+    // Releasing the previously-stacked 60 must be a no-op (it's no longer held), NOT a
+    // resume that resurrects it as a sounding voice.
+    r.process(noteOffBuf(1, 60), b);
+    REQUIRE_FALSE(r.anyActive());
+    REQUIRE(b.totalNetOn() == 0);
+
+    // A brand-new note starts cleanly: exactly one voice sounding, nothing phantom.
+    r.process(noteOnBuf(1, 67, 100), b);
+    REQUIRE(r.anyActive());
+    REQUIRE(b.totalNetOn() == 1);                      // one on, no resurrected 60/64
+    REQUIRE(b.netOnFor(1, 67) == 1);
+}

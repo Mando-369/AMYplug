@@ -210,6 +210,12 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     if (panicRequested.exchange(false))
         router.allNotesOff(active);
 
+    // A structural rebuild reset AMY's voices; flush the note tracker to match, so a
+    // held note doesn't desync into a phantom (stuck) note across an engine/patch/
+    // voice-mode switch. (allNotesOff also fully clears the mono/legato stacks.)
+    if (routerFlushRequested.exchange(false))
+        router.allNotesOff(active);
+
     // Transport-aware hang prevention: stop -> flush.
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
@@ -330,6 +336,15 @@ void AmyPlugProcessor::rebuildEngineFromModel()
 {
     // Off audio-thread. Sync APVTS -> model, then project the model onto the backend.
     syncModelFromParams();
+    // The rebuild resets AMY's voices; ask the audio thread to flush the note tracker
+    // to match (avoids phantom held notes across a switch).
+    routerFlushRequested.store(true);
+    // A non-owning Software instance renders silence and never drains its wire FIFO,
+    // so pushing a rebuild here would only accumulate and eventually overflow the FIFO
+    // (dropping messages) — corrupting the patch it finally takes over with. Skip it;
+    // the take-over path does one clean rebuild once this instance owns the engine.
+    if (activeKind == IAmyBackend::Kind::Software && ! engineown::ownsSoftware(this))
+        return;
     if (active) active->rebuildFrom(model);
 }
 
