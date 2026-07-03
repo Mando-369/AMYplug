@@ -63,9 +63,17 @@ public:
     // truth (fully recalled). The master amp envelope reuses Synth::ampA..ampR.
     struct FmOp
     {
-        float ratio = 1.0f;       // operator freq = note freq x ratio
-        float level = 0.0f;       // output amplitude / modulation index (0..4)
-        float a = 0.005f, d = 0.3f, s = 0.7f, r = 0.4f;   // per-op envelope (seconds + sustain 0..1)
+        // Frequency: ratio (key-tracks) or fixed Hz (percussive/inharmonic operators).
+        bool  fixedFreq = false;
+        float ratio   = 1.0f;     // freq = note freq x ratio        (when !fixedFreq)
+        float fixedHz = 440.0f;   // absolute Hz, no key-tracking     (when fixedFreq)
+        float level   = 0.0f;     // output amplitude / modulation index (0..4) = amp const
+        // Per-op amp envelope. `peak` is the envelope's attack level — the TRUE
+        // modulation depth (DX7 operators peak well below 1.0; assuming 1.0 grossly
+        // over-modulates, e.g. MARIMBA). AMY emits `a<level>,0,0,1,0,0` + this env, so
+        // level x env(peak..sustain) is the operator's amplitude over time.
+        float peak = 1.0f;                                // attack level 0..1
+        float a = 0.005f, d = 0.3f, s = 0.7f, r = 0.4f;   // seconds + sustain level 0..1
     };
     static constexpr int kFmOps = 6;
     struct FmParams

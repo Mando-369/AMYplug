@@ -77,15 +77,20 @@ double egSeconds(int rate, double fromLvl, double toLvl)
 PatchModel::FmOp convertOp(const RawOp& op)
 {
     PatchModel::FmOp o;
-    if (op.mode == 0)   // ratio mode
+    if (op.mode == 0)   // ratio mode — key-tracks
         o.ratio = juce::jlimit(0.1f, 16.0f, (float) coarseFineRatio(op.coarse, op.fine, op.detune));
-    else                // fixed Hz — approximate as a note-relative ratio at A4 (won't key-track)
-        o.ratio = juce::jlimit(0.1f, 16.0f, (float) (coarseFineFixedHz(op.coarse, op.fine, op.detune) / 440.0));
+    else                // fixed frequency — a true fixed-Hz operator (no key-tracking)
+    {
+        o.fixedFreq = true;
+        o.fixedHz   = juce::jlimit(0.0f, 20000.0f, (float) coarseFineFixedHz(op.coarse, op.fine, op.detune));
+    }
 
     o.level = juce::jlimit(0.0f, 4.0f, (float) (2.0 * dx7LevelToLinear(op.outputLevel)));
 
-    // DX7 EG (R1..R4 / L1..L4) -> A/D/S/R. L4 is the start/release floor (usually 0).
+    // DX7 EG (R1..R4 / L1..L4) -> peak + A/D/S/R. L1 is the attack peak (the true
+    // modulation depth); L4 is the start/release floor (usually 0).
     const double L1 = op.levels[0], L2 = op.levels[1], L3 = op.levels[2], L4 = op.levels[3];
+    o.peak = juce::jlimit(0.0f, 1.0f, (float) dx7LevelToLinear(op.levels[0]));
     o.a = juce::jlimit(0.0f, 10.0f, (float) egSeconds(op.rates[0], L4, L1));
     o.d = juce::jlimit(0.0f, 10.0f, (float) (egSeconds(op.rates[1], L1, L2)
                                            + egSeconds(op.rates[2], L2, L3)));
@@ -285,6 +290,15 @@ void bpToAdsr(const juce::String& bp, float& a, float& d, float& s, float& r)
     s = juce::jlimit(0.0f, 1.0f, sus);
     r = juce::jmax(1.0f, rel) * 0.001f;
 }
+
+// Peak (max) level of an AMY breakpoint list — the operator's true modulation depth.
+float bpPeak(const juce::String& bp)
+{
+    juce::StringArray parts; parts.addTokens(bp, ",", "");
+    float peak = 0.0f;
+    for (int i = 1; i < parts.size(); i += 2) peak = juce::jmax(peak, parts[i].getFloatValue());
+    return peak <= 0.0f ? 1.0f : juce::jlimit(0.0f, 1.0f, peak);
+}
 } // namespace
 
 bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
@@ -321,9 +335,14 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
         if (it == oscs.end()) continue;
         const auto& f = it->second.f;
         auto& op = fm.ops[i];
-        if (f.count('I')) op.ratio = juce::jmax(0.0f, f.at('I').getFloatValue());
+        if (f.count('f'))                                   // fixed-frequency operator
+        {
+            op.fixedFreq = true;
+            op.fixedHz   = juce::jmax(0.0f, firstVal(f.at('f')));
+        }
+        else if (f.count('I')) op.ratio = juce::jmax(0.0f, f.at('I').getFloatValue());
         if (f.count('a')) op.level = juce::jlimit(0.0f, 4.0f, firstVal(f.at('a')));
-        if (f.count('A')) bpToAdsr(f.at('A'), op.a, op.d, op.s, op.r);
+        if (f.count('A')) { bpToAdsr(f.at('A'), op.a, op.d, op.s, op.r); op.peak = bpPeak(f.at('A')); }
         ++decoded;
     }
     if (decoded == 0) return false;

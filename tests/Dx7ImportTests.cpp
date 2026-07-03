@@ -170,6 +170,10 @@ TEST_CASE("Factory wire decode maps a DX7 preset onto OP1..6", "[dx7][factory]")
     REQUIRE(fm.ops[5].a == Approx(0.097f).margin(0.01));
     REQUIRE(fm.ops[5].s == Approx(0.5f).margin(0.05));
     REQUIRE(fm.ops[5].r == Approx(0.07f).margin(0.01));
+    // Envelope PEAK is preserved (osc2 peaks at 0.917, NOT assumed 1.0) — the fix for
+    // over-modulation. All BRASS 1 operators are ratio mode (none fixed).
+    REQUIRE(fm.ops[5].peak == Approx(0.917f).margin(0.01));
+    REQUIRE_FALSE(fm.ops[0].fixedFreq);
 }
 
 TEST_CASE("Factory wire decode rejects a non-FM (Juno) patch", "[dx7][factory]")

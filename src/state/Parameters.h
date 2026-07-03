@@ -285,6 +285,15 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
             ParameterID { id::fmOp(op, "sustain"), 1 }, "Op " + juce::String(op) + " Sustain", unit(), (op == 2 ? 0.3f : 0.7f)));
         layout.add(std::make_unique<AudioParameterFloat>(
             ParameterID { id::fmOp(op, "release"), 1 }, "Op " + juce::String(op) + " Release", secs(), 0.4f));
+        // Envelope attack PEAK = the operator's true modulation depth (DX7 ops peak
+        // well below 1.0). fixed = fixed-frequency mode; fixedhz = its absolute Hz.
+        layout.add(std::make_unique<AudioParameterFloat>(
+            ParameterID { id::fmOp(op, "peak"), 1 }, "Op " + juce::String(op) + " Peak", unit(), 1.0f));
+        layout.add(std::make_unique<AudioParameterBool>(
+            ParameterID { id::fmOp(op, "fixed"), 1 }, "Op " + juce::String(op) + " Fixed", false));
+        layout.add(std::make_unique<AudioParameterFloat>(
+            ParameterID { id::fmOp(op, "fixedhz"), 1 }, "Op " + juce::String(op) + " Fixed Hz",
+            NormalisableRange<float> { 1.0f, 20000.0f, 0.0f, 0.3f }, 440.0f));
     }
 
     return layout;

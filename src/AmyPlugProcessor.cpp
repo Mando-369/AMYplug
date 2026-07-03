@@ -40,6 +40,12 @@ AmyPlugProcessor::AmyPlugProcessor()
                       params::id::voiceMode,      // Mono/Legato rebuild the synth to 1 voice
                       params::id::unisonVoices }) // unison count changes the osc count → rebuild
         state.addParameterListener(id, this);
+    // FM operator freq mode: ratio<->fixed swaps the wire field (I vs f), so rebuild.
+    for (int op = 1; op <= PatchModel::kFmOps; ++op)
+    {
+        state.addParameterListener(params::id::fmOp(op, "fixed"),   this);
+        state.addParameterListener(params::id::fmOp(op, "fixedhz"), this);
+    }
     // NOTE: unisonDetune is deliberately NOT structural — it only re-tunes existing
     // oscillators, which streamAnalogParams does live (no rebuild → no dropout).
 }
@@ -121,6 +127,9 @@ void AmyPlugProcessor::cacheParamPointers()
         mFmD[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "decay"));
         mFmS[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "sustain"));
         mFmR[i].ptr     = state.getRawParameterValue(params::id::fmOp(op, "release"));
+        mFmPeak[i].ptr  = state.getRawParameterValue(params::id::fmOp(op, "peak"));
+        pFmFixed[i]     = state.getRawParameterValue(params::id::fmOp(op, "fixed"));
+        pFmFixedHz[i]   = state.getRawParameterValue(params::id::fmOp(op, "fixedhz"));
     }
 }
 
@@ -445,6 +454,9 @@ void AmyPlugProcessor::syncModelFromParams()
         if (mFmD[i].ptr)     op.d     = mFmD[i].ptr->load();
         if (mFmS[i].ptr)     op.s     = mFmS[i].ptr->load();
         if (mFmR[i].ptr)     op.r     = mFmR[i].ptr->load();
+        if (mFmPeak[i].ptr)  op.peak  = mFmPeak[i].ptr->load();
+        if (pFmFixed[i])     op.fixedFreq = pFmFixed[i]->load() > 0.5f;
+        if (pFmFixedHz[i])   op.fixedHz   = pFmFixedHz[i]->load();
     }
 }
 
@@ -643,17 +655,20 @@ void AmyPlugProcessor::streamFmParams()
                            active->streamWire(b, (int) std::strlen(b)); }
     };
 
-    // Re-send an A/D/S/R breakpoint set (letter 'A' = bp0) for one osc if it changed.
-    auto env = [this] (int osc, Macro& a, Macro& d, Macro& s, Macro& r)
+    // Re-send an operator amp envelope (bp0 'A') if its A/D/S/R or PEAK changed. Peak
+    // is the attack level (the true modulation depth), NOT a fixed 1.0.
+    auto env = [this] (int osc, Macro& pk, Macro& a, Macro& d, Macro& s, Macro& r)
     {
         if (! (a.ptr && d.ptr && s.ptr && r.ptr)) return;
+        const float pv = pk.ptr ? pk.ptr->load() : 1.0f;
         const float av=a.ptr->load(), dv=d.ptr->load(), sv=s.ptr->load(), rv=r.ptr->load();
-        if (av!=a.last || dv!=d.last || sv!=s.last || rv!=r.last)
+        const bool pkChanged = pk.ptr && pv != pk.last;
+        if (av!=a.last || dv!=d.last || sv!=s.last || rv!=r.last || pkChanged)
         {
-            a.last=av; d.last=dv; s.last=sv; r.last=rv;
-            char b[80]; std::snprintf(b, sizeof b, "i1v%dA%d,1,%d,%.3f,%d,0", osc,
-                (int) std::lround(av*1000.0f), (int) std::lround(dv*1000.0f), (double) sv,
-                (int) std::lround(rv*1000.0f));
+            a.last=av; d.last=dv; s.last=sv; r.last=rv; if (pk.ptr) pk.last=pv;
+            char b[80]; std::snprintf(b, sizeof b, "i1v%dA%d,%g,%d,%.3f,%d,0", osc,
+                (int) std::lround(av*1000.0f), (double) juce::jlimit(0.0f, 1.0f, pv),
+                (int) std::lround(dv*1000.0f), (double) sv, (int) std::lround(rv*1000.0f));
             active->streamWire(b, (int) std::strlen(b));
         }
     };
@@ -663,21 +678,26 @@ void AmyPlugProcessor::streamFmParams()
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const int osc = i + 1;
-        char rf[24], lf[44];
-        std::snprintf(rf, sizeof rf, "i1v%dI%%g", osc);                // ratio -> i1v<osc>I%g
-        std::snprintf(lf, sizeof lf, "i1v%da%%g,0,0,%%g,0,0", osc);    // level -> const + eg0 coef
-        one(mFmRatio[i], rf);
-        if (mFmLevel[i].ptr != nullptr)                                // level writes %g twice
+        // Ratio streams only in ratio mode; fixed-frequency uses the wire `f` field,
+        // applied structurally on rebuild (ratio<->fixed is a listener).
+        const bool fixed = pFmFixed[i] && pFmFixed[i]->load(std::memory_order_relaxed) > 0.5f;
+        if (! fixed)
+        {
+            char rf[24]; std::snprintf(rf, sizeof rf, "i1v%dI%%g", osc);
+            one(mFmRatio[i], rf);
+        }
+        // Level -> amp const, eg0 COEF 1 (the env carries the depth). Matches emitFm.
+        if (mFmLevel[i].ptr != nullptr)
         {
             const float v = mFmLevel[i].ptr->load(std::memory_order_relaxed);
             if (v != mFmLevel[i].last)
             {
                 mFmLevel[i].last = v;
-                char b[64]; std::snprintf(b, sizeof b, lf, (double) v, (double) v);
+                char b[64]; std::snprintf(b, sizeof b, "i1v%da%g,0,0,1,0,0", osc, (double) v);
                 active->streamWire(b, (int) std::strlen(b));
             }
         }
-        env(osc, mFmA[i], mFmD[i], mFmS[i], mFmR[i]);             // per-op envelope (owns release)
+        env(osc, mFmPeak[i], mFmA[i], mFmD[i], mFmS[i], mFmR[i]);   // per-op envelope
     }
 
     // No master amp env on the ALGO osc — the operator envelopes own the voice.
@@ -878,6 +898,9 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
         setP(params::id::fmOp(op, "decay"),   o.d);
         setP(params::id::fmOp(op, "sustain"), o.s);
         setP(params::id::fmOp(op, "release"), o.r);
+        setP(params::id::fmOp(op, "peak"),    o.peak);
+        setP(params::id::fmOp(op, "fixed"),   o.fixedFreq ? 1.0f : 0.0f);
+        setP(params::id::fmOp(op, "fixedhz"), o.fixedHz);
     }
 }
 

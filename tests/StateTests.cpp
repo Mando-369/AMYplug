@@ -182,8 +182,9 @@ TEST_CASE("FM engine builds the 6-operator ALGO voice", "[state][fm]")
     auto& fm = m.synths[0].fm;
     fm.algorithm = 22;
     fm.feedback  = 0.16f;
-    fm.ops[0].ratio = 1.0f;  fm.ops[0].level = 1.0f;
+    fm.ops[0].ratio = 1.0f;  fm.ops[0].level = 1.0f;  fm.ops[0].peak = 0.6f;  fm.ops[0].a = 0.0f;
     fm.ops[1].ratio = 2.0f;  fm.ops[1].level = 0.7f;
+    fm.ops[2].fixedFreq = true; fm.ops[2].fixedHz = 100.0f;   // fixed-frequency operator
     const auto w = m.toWireMessages();
 
     REQUIRE(anyContains(w, "in7"));        // 7 oscs per voice (0 = ALGO ctrl, 1..6 ops)
@@ -195,7 +196,9 @@ TEST_CASE("FM engine builds the 6-operator ALGO voice", "[state][fm]")
     REQUIRE(anyContains(w, "v6w0"));       // operator 6 = sine
     REQUIRE(anyContains(w, "I1.0000"));    // op1 ratio
     REQUIRE(anyContains(w, "I2.0000"));    // op2 ratio
-    REQUIRE(anyContains(w, "a1.0000,0,0,1.0000")); // op1 amp = level x (1 + eg0)
+    REQUIRE(anyContains(w, "a1.0000,0,0,1,0,0"));  // op1 amp: const=level, eg0 coef 1 (fm.py form)
+    REQUIRE(anyContains(w, "A0,0.6"));     // op1 env attack peaks at 0.6, NOT 1.0
+    REQUIRE(anyContains(w, "f100.0000"));  // op3 is fixed-frequency (f<hz>, not I<ratio>)
     REQUIRE_FALSE(anyContains(w, "K"));    // FM never loads a factory patch
 }
 

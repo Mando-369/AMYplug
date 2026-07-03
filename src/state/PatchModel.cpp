@@ -142,13 +142,22 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const auto& op = fm.ops[i];
-        // amp = level x (1 + eg0): const + eg0 coef both = level, so the operator's
-        // own A/D/S/R envelope shapes it and level 0 is truly silent. A pure-eg0 amp
-        // (const 0) leaves the operator inaudible in AMY, hence the const term.
+        // Frequency: ratio (key-tracks) or fixed Hz. Fixed MUST zero the note coef
+        // (f<hz>,0) — else the operator still key-tracks and a high note + high fixed
+        // Hz pushes log-freq past AMY's wavetable range (out-of-bounds -> abort).
+        const juce::String freq = op.fixedFreq
+            ? ("f" + F(juce::jlimit(1.0f, 20000.0f, op.fixedHz)) + ",0")
+            : ("I" + F(op.ratio));
+        // amp const = level, eg0 COEF 1 (matches fm.py): the operator's own bp0 env —
+        // which peaks at op.peak, NOT 1.0 — is the modulation depth over time. Using a
+        // fixed 1.0 peak grossly over-modulated (e.g. MARIMBA had a 0.16 peak vs level 2).
+        auto ms = [] (float sec) { return juce::String((int) std::lround(sec * 1000.0f)); };
+        const juce::String env = ms(op.a) + "," + F(juce::jlimit(0.0f, 1.0f, op.peak))
+            + "," + ms(op.d) + "," + F(juce::jlimit(0.0f, 1.0f, op.s)) + "," + ms(op.r) + ",0";
         out.emplace_back((pre + "v" + juce::String(i + 1) + "w0"
-            + "a" + F(op.level) + ",0,0," + F(op.level) + ",0,0"
-            + "I" + F(op.ratio)                      // freq = note x ratio
-            + "A" + adsrBp(op.a, op.d, op.s, op.r)
+            + "a" + F(op.level) + ",0,0,1,0,0"
+            + freq
+            + "A" + env
             + "Z").toStdString());
     }
 
@@ -317,6 +326,9 @@ juce::ValueTree PatchModel::toValueTree() const
             sv.setProperty(k + "d", op.d, nullptr);
             sv.setProperty(k + "s", op.s, nullptr);
             sv.setProperty(k + "r", op.r, nullptr);
+            sv.setProperty(k + "peak", op.peak, nullptr);
+            sv.setProperty(k + "fixed", op.fixedFreq, nullptr);
+            sv.setProperty(k + "fixedHz", op.fixedHz, nullptr);
         }
         juce::String joined;
         for (const auto& c : s.oscWireCommands) joined << juce::String(c) << "\n";
@@ -406,6 +418,9 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
             op.d = (float) sv.getProperty(k + "d", op.d);
             op.s = (float) sv.getProperty(k + "s", op.s);
             op.r = (float) sv.getProperty(k + "r", op.r);
+            op.peak      = (float) sv.getProperty(k + "peak", op.peak);
+            op.fixedFreq = (bool)  sv.getProperty(k + "fixed", op.fixedFreq);
+            op.fixedHz   = (float) sv.getProperty(k + "fixedHz", op.fixedHz);
         }
         auto lines = juce::StringArray::fromLines(sv.getProperty("oscWire").toString());
         for (auto& l : lines) if (l.isNotEmpty()) s.oscWireCommands.push_back(l.toStdString());

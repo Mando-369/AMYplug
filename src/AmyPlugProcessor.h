@@ -160,6 +160,9 @@ private:
     Macro mFmRatio[PatchModel::kFmOps], mFmLevel[PatchModel::kFmOps];
     Macro mFmA[PatchModel::kFmOps], mFmD[PatchModel::kFmOps];
     Macro mFmS[PatchModel::kFmOps], mFmR[PatchModel::kFmOps];
+    Macro mFmPeak[PatchModel::kFmOps];                          // envelope peak (mod depth)
+    std::atomic<float>* pFmFixed[PatchModel::kFmOps]   = {};    // fixed-frequency mode (structural)
+    std::atomic<float>* pFmFixedHz[PatchModel::kFmOps] = {};    // fixed frequency in Hz
 
     static constexpr int kMacroSynth = 1;        // M2: macros target synth 1
 
