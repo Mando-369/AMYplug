@@ -158,7 +158,7 @@ int ControlPanel::preferredHeight() const
 {
     int h = 8;
     for (int sec = 0; sec < sectionTitles.size(); ++sec)
-        h += kTitleH + (graphForSection.count(sec) ? kGraphH : 0) + rowH + kGap;
+        h += kTitleH + (graphForSection.count(sec) ? kGraphH : rowH) + kGap;   // taller body if it has a viewer
     return h;
 }
 
@@ -167,10 +167,10 @@ void ControlPanel::paint(juce::Graphics& g)
     auto r = getLocalBounds().reduced(4);
     for (int sec = 0; sec < sectionTitles.size(); ++sec)
     {
-        // Must mirror resized(): a section with a graph reserves kGraphH between its
-        // title and its knob row, so the title bands stay aligned with their controls.
+        // Must mirror resized(): a section with a viewer uses a taller body (kGraphH),
+        // so the title bands stay aligned with their controls.
         const bool hasGraph = graphForSection.count(sec) > 0;
-        auto box = r.removeFromTop(kTitleH + (hasGraph ? kGraphH : 0) + rowH);
+        auto box = r.removeFromTop(kTitleH + (hasGraph ? kGraphH : rowH));
         g.setColour(kPanel);   g.fillRoundedRectangle(box.toFloat(), 5.0f);
         auto tb = box.removeFromTop(kTitleH);
         g.setColour(kTitle);   g.fillRoundedRectangle(tb.toFloat(), 5.0f);
@@ -187,28 +187,35 @@ void ControlPanel::resized()
     for (int sec = 0; sec < sectionTitles.size(); ++sec)
     {
         const bool hasGraph = graphForSection.count(sec) > 0;
-        auto box = r.removeFromTop(kTitleH + (hasGraph ? kGraphH : 0) + rowH);
+        auto box = r.removeFromTop(kTitleH + (hasGraph ? kGraphH : rowH));
         box.removeFromTop(kTitleH);
+        // Viewer (if any) sits in a fixed-width slot on the LEFT of the section's row;
+        // the knobs share the remaining width to its right, so there's one title only.
         if (hasGraph)
-            graphForSection[sec]->setBounds(box.removeFromTop(kGraphH)
-                                               .withSizeKeepingCentre(200, kGraphH - 6));
+        {
+            auto gcell = box.removeFromLeft(kGraphW);
+            graphForSection[sec]->setBounds(gcell.reduced(4).withSizeKeepingCentre(
+                juce::jmin(200, gcell.getWidth() - 8), juce::jmin(120, gcell.getHeight() - 4)));
+            box.removeFromLeft(kGap);
+        }
 
         int count = 0;
         for (auto& c : controls) if (c->section == sec) ++count;
         if (count > 0)
         {
-            // Spread the section's controls evenly across its full width, each
-            // centred in its own equal slot (so a 3-knob row isn't bunched left).
+            // Spread the section's controls evenly across the remaining width, each
+            // centred (horizontally in its slot, vertically in the body row).
             const int slotW = box.getWidth() / count;
+            const int cellH = juce::jmin(rowH, box.getHeight()) - 8;
             int i = 0;
             for (auto& c : controls)
             {
                 if (c->section != sec) continue;
-                juce::Rectangle<int> slot(box.getX() + i * slotW, box.getY() + 4, slotW, rowH - 8);
+                juce::Rectangle<int> slot(box.getX() + i * slotW, box.getY(), slotW, box.getHeight());
                 // Combos fill their slot (menus like the FM algorithm need the width);
                 // knobs stay capped at cellW so they don't balloon when alone.
                 const int cw = c->combo ? (slotW - 4) : juce::jmin(cellW, slotW - 4);
-                auto cell = slot.withSizeKeepingCentre(cw, rowH - 8);
+                auto cell = slot.withSizeKeepingCentre(cw, cellH);
                 c->label.setBounds(cell.removeFromTop(16));
                 if (c->combo) c->combo->setBounds(cell.removeFromTop(28).reduced(0, 1));
                 else if (c->knob) c->knob->setBounds(cell.reduced(2, 0));
@@ -649,11 +656,12 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     addOsc(fmOscB, 2); addOsc(fmOscB, 5);
     addOsc(fmOscC, 3); addOsc(fmOscC, 6);
     for (auto* p : { &fmOscA, &fmOscB, &fmOscC }) p->setCellSize(96, 92);
-    // DX7 2 / DX7 3 — per-operator DX7 4-rate / 4-level envelope, OP1-3 and OP4-6. The
-    // viewers sit in a labelled row at the top (EnvGraphRow); here we add only knobs.
-    auto addEnv = [] (ControlPanel& p, int op)
+    // DX7 2 / DX7 3 — per-operator DX7 4-rate / 4-level envelope, OP1-3 and OP4-6. Each
+    // operator is one row: its viewer on the left, then the R/L knobs (single title).
+    auto addEnv = [this] (ControlPanel& p, int op)
     {
         p.addSection("OP " + juce::String(op));
+        p.addGraph(fmEnvGraph[op - 1]);   // viewer on the left of this operator's row
         for (int e = 1; e <= 4; ++e)
             p.addKnob(params::id::fmOp(op, ("r" + juce::String(e)).toRawUTF8()), "R" + juce::String(e));
         for (int e = 1; e <= 4; ++e)
@@ -720,9 +728,9 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     junoViewport.setScrollBarsShown(true, false);
     fmOscViewport.setViewedComponent(&fmOscCols, false);
     fmOscViewport.setScrollBarsShown(true, false);
-    fmEnv1Viewport.setViewedComponent(&fmEnv1Tab, false);
+    fmEnv1Viewport.setViewedComponent(&fmEnv1Panel, false);
     fmEnv1Viewport.setScrollBarsShown(true, false);
-    fmEnv2Viewport.setViewedComponent(&fmEnv2Tab, false);
+    fmEnv2Viewport.setViewedComponent(&fmEnv2Panel, false);
     fmEnv2Viewport.setScrollBarsShown(true, false);
     fmModViewport.setViewedComponent(&fmModPanel, false);
     fmModViewport.setScrollBarsShown(true, false);
@@ -1019,10 +1027,9 @@ void AmyPlugEditor::resized()
     const int oscH = juce::jmax(fmOscA.preferredHeight(),
                                 juce::jmax(fmOscB.preferredHeight(), fmOscC.preferredHeight()));
     fmOscCols.setSize(contentW, oscH);
-    // DX7 2/3: a row of viewers atop the knob rows (EnvGraphRow sizes its inner panel).
-    fmEnv1Tab.setSize(contentW, fmEnv1Tab.preferredHeight());
-    fmEnv2Tab.setSize(contentW, fmEnv2Tab.preferredHeight());
-    // DX7 4 pitch/mod: single full-width column.
+    // DX7 2/3 envelopes + DX7 4 pitch/mod: single full-width columns (viewers inline).
+    fmEnv1Panel.setSize(contentW, fmEnv1Panel.preferredHeight());
+    fmEnv2Panel.setSize(contentW, fmEnv2Panel.preferredHeight());
     fmModPanel.setSize(contentW, fmModPanel.preferredHeight());
 }
 } // namespace amyplug
