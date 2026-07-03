@@ -5,9 +5,24 @@
 #include "AmyPlugProcessor.h"
 #include <memory>
 #include <vector>
+#include <map>
 
 namespace amyplug
 {
+// Draws one DX7 operator's 4-rate/4-level envelope (attack -> L1, decays -> L2/L3,
+// sustain hold, release -> L4) as a small graph. Polls the params and repaints on
+// change so it tracks live edits and preset loads.
+class EnvelopeDisplay : public juce::Component, private juce::Timer
+{
+public:
+    EnvelopeDisplay(juce::AudioProcessorValueTreeState& s, int op);
+    void paint(juce::Graphics&) override;
+private:
+    void timerCallback() override;
+    std::atomic<float>* rateP[4] {};
+    std::atomic<float>* levelP[4] {};
+    float lastR[4] { -1, -1, -1, -1 }, lastL[4] { -1, -1, -1, -1 };
+};
 // A panel of labelled controls (rotaries + choice combos) grouped into titled
 // sections laid out in columns — used for the Juno engine tab and the FX rack.
 class ControlPanel : public juce::Component
@@ -18,6 +33,7 @@ public:
     void addSection(const juce::String& title);
     void addKnob(const juce::String& paramId, const juce::String& name);
     void addChoice(const juce::String& paramId, const juce::String& name);
+    void addGraph(juce::Component& g);   // reserve a graph area atop the current section
 
     void setCellSize(int w, int h) { cellW = w; rowH = h; }
     int  preferredHeight() const;     // total height needed for all sections
@@ -39,8 +55,9 @@ private:
     juce::AudioProcessorValueTreeState& apvts;
     juce::StringArray sectionTitles;
     std::vector<std::unique_ptr<Control>> controls;
+    std::map<int, juce::Component*> graphForSection;   // section index -> optional graph
     int cellW = 88, rowH = 100;
-    static constexpr int kTitleH = 20, kGap = 8;
+    static constexpr int kTitleH = 20, kGap = 8, kGraphH = 130;
 };
 
 // The AMYboard (Hardware) tab: pick the board's MIDI-out, connect, toggle
@@ -207,8 +224,10 @@ private:
     ColumnPanels     fmOscCols { { &fmOscA, &fmOscB, &fmOscC } };
     juce::Viewport   fmOscViewport;
     Dx7TabComponent  dx7Tab1 { proc.apvts(), algoDiagram, fmOscViewport };
-    // DX7 2 / DX7 3 — operator envelopes, split OP1-3 and OP4-6.
+    // DX7 2 / DX7 3 — operator envelopes, split OP1-3 and OP4-6, each with a graph.
     ControlPanel     fmEnv1Panel { proc.apvts() }, fmEnv2Panel { proc.apvts() };
+    EnvelopeDisplay  fmEnvGraph[6] { { proc.apvts(), 1 }, { proc.apvts(), 2 }, { proc.apvts(), 3 },
+                                     { proc.apvts(), 4 }, { proc.apvts(), 5 }, { proc.apvts(), 6 } };
     juce::Viewport   fmEnv1Viewport, fmEnv2Viewport;
     // DX7 4 — pitch & global mod.
     ControlPanel     fmModPanel { proc.apvts() };

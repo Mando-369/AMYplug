@@ -263,7 +263,10 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     for (int a = 1; a <= 32; ++a) algoLabels.add(juce::String(a));
     layout.add(std::make_unique<AudioParameterChoice>(
         ParameterID { id::fmAlgorithm, 1 }, "FM Algorithm", algoLabels, 0));
-    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::fmFeedback, 1 }, "FM Feedback", unit(), 0.0f));
+    // Feedback max = AMY's DX7 feedback-7 value (0.16). Above that the ALGO osc
+    // self-oscillates into NaN (a fuzzed 0..1 range hung/aborted pluginval).
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::fmFeedback, 1 }, "FM Feedback",
+        NormalisableRange<float> { 0.0f, 0.16f }, 0.0f));
     // Global pitch EG (R1..R4 / L1..L4, 0..99; L=50 is no shift, all-50 = flat).
     for (int e = 1; e <= 4; ++e)
     {
@@ -301,8 +304,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                 "Op " + juce::String(op) + " L" + juce::String(e), eg99(), lDef[e - 1]));
         }
         // fixed = fixed-frequency mode; fixedhz = its absolute Hz.
-        layout.add(std::make_unique<AudioParameterBool>(
-            ParameterID { id::fmOp(op, "fixed"), 1 }, "Op " + juce::String(op) + " Fixed", false));
+        layout.add(std::make_unique<AudioParameterChoice>(
+            ParameterID { id::fmOp(op, "fixed"), 1 }, "Op " + juce::String(op) + " Mode",
+            juce::StringArray { "Ratio", "Fixed" }, 0));
         layout.add(std::make_unique<AudioParameterFloat>(
             ParameterID { id::fmOp(op, "fixedhz"), 1 }, "Op " + juce::String(op) + " Fixed Hz",
             NormalisableRange<float> { 1.0f, 20000.0f, 0.0f, 0.3f }, 440.0f));

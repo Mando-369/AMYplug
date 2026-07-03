@@ -3,11 +3,76 @@
 #include "engine/HardwareBackend.h"
 #include "state/Parameters.h"
 #include "state/FmAlgorithms.h"
+#include "state/Dx7Envelope.h"
 #include "BuiltinPatchNames.h"
 #include <array>
 
 namespace amyplug
 {
+// ===========================================================================
+// EnvelopeDisplay
+// ===========================================================================
+EnvelopeDisplay::EnvelopeDisplay(juce::AudioProcessorValueTreeState& s, int op)
+{
+    for (int e = 0; e < 4; ++e)
+    {
+        rateP[e]  = s.getRawParameterValue(params::id::fmOp(op, ("r" + juce::String(e + 1)).toRawUTF8()));
+        levelP[e] = s.getRawParameterValue(params::id::fmOp(op, ("l" + juce::String(e + 1)).toRawUTF8()));
+    }
+    startTimerHz(12);
+}
+
+void EnvelopeDisplay::timerCallback()
+{
+    bool changed = false;
+    for (int e = 0; e < 4; ++e)
+    {
+        const float r = rateP[e]  ? rateP[e]->load()  : 99.0f;
+        const float l = levelP[e] ? levelP[e]->load() : 0.0f;
+        if (r != lastR[e] || l != lastL[e]) { lastR[e] = r; lastL[e] = l; changed = true; }
+    }
+    if (changed) repaint();
+}
+
+void EnvelopeDisplay::paint(juce::Graphics& g)
+{
+    auto b = getLocalBounds().toFloat().reduced(3.0f);
+    g.setColour(juce::Colour(0xff101418));
+    g.fillRoundedRectangle(b, 3.0f);
+    g.setColour(juce::Colour(0xff2a3138));
+    g.drawRoundedRectangle(b, 3.0f, 1.0f);
+
+    const auto plot = b.reduced(6.0f);
+    float L[4], R[4];
+    for (int e = 0; e < 4; ++e)
+    {
+        L[e] = levelP[e] ? levelP[e]->load() : 0.0f;
+        R[e] = rateP[e]  ? rateP[e]->load()  : 99.0f;
+    }
+    // Segment durations (sqrt-compressed so long tails stay visible but bounded), plus
+    // a fixed sustain hold. Shape: L4 -> L1 -> L2 -> L3 -> (hold) -> L4.
+    using namespace amyplug::dx7env;
+    const double t0 = std::sqrt(segSeconds(R[0], L[3], L[0], false));
+    const double t1 = std::sqrt(segSeconds(R[1], L[0], L[1], false));
+    const double t2 = std::sqrt(segSeconds(R[2], L[1], L[2], false));
+    const double t3 = std::sqrt(segSeconds(R[3], L[2], L[3], true));
+    const double sus = 0.4 * (t0 + t1 + t2 + t3 + 0.001);
+    const double total = t0 + t1 + t2 + t3 + sus + 1e-6;
+
+    auto X = [&] (double acc) { return plot.getX() + (float) (acc / total) * plot.getWidth(); };
+    auto Y = [&] (float lvl)  { return plot.getBottom() - (lvl / 99.0f) * plot.getHeight(); };
+
+    juce::Path p;
+    double acc = 0.0;
+    p.startNewSubPath(X(acc), Y(L[3]));               // start at release floor L4
+    acc += t0; p.lineTo(X(acc), Y(L[0]));             // attack -> L1
+    acc += t1; p.lineTo(X(acc), Y(L[1]));             // decay  -> L2
+    acc += t2; p.lineTo(X(acc), Y(L[2]));             // decay  -> L3 (sustain)
+    acc += sus; p.lineTo(X(acc), Y(L[2]));            // sustain hold
+    acc += t3; p.lineTo(X(acc), Y(L[3]));             // release -> L4
+    g.setColour(juce::Colour(0xff35a0d0));
+    g.strokePath(p, juce::PathStrokeType(1.8f));
+}
 namespace
 {
 const juce::Colour kBg     { 0xff1e2327 };
@@ -62,9 +127,18 @@ void ControlPanel::addChoice(const juce::String& paramId, const juce::String& na
     controls.push_back(std::move(c));
 }
 
+void ControlPanel::addGraph(juce::Component& gr)
+{
+    graphForSection[juce::jmax(0, sectionTitles.size() - 1)] = &gr;
+    addAndMakeVisible(gr);
+}
+
 int ControlPanel::preferredHeight() const
 {
-    return 8 + sectionTitles.size() * (kTitleH + rowH + kGap);
+    int h = 8;
+    for (int sec = 0; sec < sectionTitles.size(); ++sec)
+        h += kTitleH + (graphForSection.count(sec) ? kGraphH : 0) + rowH + kGap;
+    return h;
 }
 
 void ControlPanel::paint(juce::Graphics& g)
@@ -88,8 +162,12 @@ void ControlPanel::resized()
     auto r = getLocalBounds().reduced(4);
     for (int sec = 0; sec < sectionTitles.size(); ++sec)
     {
-        auto box = r.removeFromTop(kTitleH + rowH);
+        const bool hasGraph = graphForSection.count(sec) > 0;
+        auto box = r.removeFromTop(kTitleH + (hasGraph ? kGraphH : 0) + rowH);
         box.removeFromTop(kTitleH);
+        if (hasGraph)
+            graphForSection[sec]->setBounds(box.removeFromTop(kGraphH)
+                                               .withSizeKeepingCentre(200, kGraphH - 6));
 
         int count = 0;
         for (auto& c : controls) if (c->section == sec) ++count;
@@ -540,7 +618,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         p.addSection("OP " + juce::String(op));
         p.addKnob(params::id::fmOp(op, "ratio"),   "Ratio");
         p.addKnob(params::id::fmOp(op, "level"),   "Level");
-        p.addChoice(params::id::fmOp(op, "fixed"), "Fixed");
+        p.addChoice(params::id::fmOp(op, "fixed"), "Mode");   // Ratio / Fixed
         p.addKnob(params::id::fmOp(op, "fixedhz"), "Fix Hz");
     };
     addOsc(fmOscA, 1); addOsc(fmOscA, 4);
@@ -548,9 +626,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     addOsc(fmOscC, 3); addOsc(fmOscC, 6);
     for (auto* p : { &fmOscA, &fmOscB, &fmOscC }) p->setCellSize(96, 92);
     // DX7 2 / DX7 3 — per-operator DX7 4-rate / 4-level envelope, OP1-3 and OP4-6.
-    auto addEnv = [] (ControlPanel& p, int op)
+    auto addEnv = [this] (ControlPanel& p, int op)
     {
         p.addSection("OP " + juce::String(op));
+        p.addGraph(fmEnvGraph[op - 1]);   // 200x130 envelope graph atop the knobs
         for (int e = 1; e <= 4; ++e)
             p.addKnob(params::id::fmOp(op, ("r" + juce::String(e)).toRawUTF8()), "R" + juce::String(e));
         for (int e = 1; e <= 4; ++e)
