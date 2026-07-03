@@ -213,7 +213,11 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     // A structural rebuild reset AMY's voices; flush the note tracker to match, so a
     // held note doesn't desync into a phantom (stuck) note across an engine/patch/
     // voice-mode switch. (allNotesOff also fully clears the mono/legato stacks.)
-    if (routerFlushRequested.exchange(false))
+    // Skip the work when nothing is sounding: a param-fuzz storm rebuilds every block,
+    // and allNotesOff sends an AMY reset wire each time — pure overhead when there are
+    // no notes to flush. anyActive()==false guarantees nothing is tracked (a non-empty
+    // mono held-stack always keeps its top note sounding), so this is safe.
+    if (routerFlushRequested.exchange(false) && router.anyActive())
         router.allNotesOff(active);
 
     // Transport-aware hang prevention: stop -> flush.
