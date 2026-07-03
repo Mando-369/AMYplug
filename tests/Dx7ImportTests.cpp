@@ -181,6 +181,7 @@ TEST_CASE("Factory wire decode maps a DX7 preset onto OP1..6", "[dx7][factory]")
     REQUIRE(fm.lfoPms   == 7);
     REQUIRE(fm.lfoPmd   > 0.0f);
     REQUIRE(fm.lfoAmd   == Approx(0.0f).margin(1e-4));
+    REQUIRE(fm.transpose == 0);   // BRASS 1 ALGO freq const is 0 -> no transpose
     for (int i = 0; i < 6; ++i) REQUIRE(fm.ops[i].ampModSens == 0);
     // Re-emitting the decoded PMS+PMD reproduces the original vibrato depth (lossless).
     REQUIRE((float) dx7lfo::pitchLfoAmp(fm.lfoPms, fm.lfoPmd) == Approx(0.007298f).margin(1e-5));

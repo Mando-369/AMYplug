@@ -34,6 +34,7 @@ struct RawVoice
     int   lfoSpeed = 35, lfoDelay = 0, lfoPmd = 0, lfoAmd = 0;
     int   lfoKeySync = 1, lfoWave = 0, lfoPms = 3;
     int   oscKeySync = 1;
+    int   transpose  = 24;          // 0..48, centre 24 = no shift
     juce::String name;
 };
 
@@ -130,6 +131,7 @@ Dx7Voice convertVoice(const RawVoice& raw)
     v.fm.lfoDelay   = (float) juce::jlimit(0, 99, raw.lfoDelay);
     v.fm.lfoKeySync = juce::jlimit(0, 1, raw.lfoKeySync);
     v.fm.oscKeySync = juce::jlimit(0, 1, raw.oscKeySync);
+    v.fm.transpose  = juce::jlimit(0, 48, raw.transpose) - 24;   // 0..48 centre 24 -> -24..+24
     return v;
 }
 
@@ -171,6 +173,7 @@ RawVoice unpackPacked(const std::uint8_t* d)
     v.lfoKeySync =  d[116]       & 0x01;         // byte116: bit0 key-sync, bits1-3 wave, bits4-6 PMS
     v.lfoWave    = (d[116] >> 1) & 0x07;
     v.lfoPms     = (d[116] >> 4) & 0x07;
+    v.transpose  =  d[117];                      // 0..48, centre 24
     v.name       = readName(d + 118, 10);
     return v;
 }
@@ -202,6 +205,7 @@ RawVoice readVced(const std::uint8_t* d)
     v.lfoKeySync = d[141];
     v.lfoWave    = d[142];
     v.lfoPms     = d[143];
+    v.transpose  = d[144];                       // 0..48, centre 24
     v.name       = readName(d + 145, 10);
     return v;
 }
@@ -387,6 +391,8 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
             fm.lfoPms = dx7lfo::kFactoryDecodePms;
             fm.lfoPmd = (float) dx7lfo::pitchAmpToPmd(pitchLfo, fm.lfoPms);
         }
+        // Transpose = the freq const term (octaves) * 12, rounded to semitones.
+        fm.transpose = juce::jlimit(-24, 24, juce::roundToInt(nthCoef(algo.at('f'), 0) * 12.0f));
     }
 
     // Map oscillators to OP1..6 via the patch's O source list, positionally. The

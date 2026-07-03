@@ -679,6 +679,9 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fmModPanel.addSection("LFO -> OP (Tremolo)");
     for (int op = 1; op <= 6; ++op)
         fmModPanel.addChoice(params::id::fmOp(op, "ams"), "OP " + juce::String(op));
+    // GLOBAL: whole-voice transpose (semitones; ratio operators shift, fixed ops stay).
+    fmModPanel.addSection("GLOBAL");
+    fmModPanel.addKnob(params::id::fmTranspose, "Transpose");
     fmModPanel.setCellSize(110, 100);
 
     // --- global FX rack, top-to-bottom in AMY's actual processing order:

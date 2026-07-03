@@ -194,9 +194,13 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
     // freq mod-coef (index 5) = the LFO vibrato depth (pitch_lfo_amp from PMS+PMD),
     // mod_source = osc 1. O lists the operator oscs 7..2 (reverse) so DX7 OP1 == fm.ops[0].
     const float pitchLfo = (float) amyplug::dx7lfo::pitchLfoAmp(fm.lfoPms, fm.lfoPmd);
+    // Transpose: a constant added to the ALGO osc's log2 freq (semitones/12 = octaves).
+    // Ratio operators build on this base so they transpose together; fixed ops (f<hz>,0)
+    // ignore the note and stay put — matching the DX7.
+    const float transp = juce::jlimit(-24, 24, fm.transpose) / 12.0f;
     const juce::String pitchEnv = amyplug::dx7env::pitchEgToBreakpoints(fm.pitchEgRate, fm.pitchEgLevel);
     out.emplace_back((pre + "v0w8"
-        + "f0,1,0,1,0," + F(pitchLfo)    // const 0, note 1, EG0 (pitch env) 1, LFO vibrato
+        + "f" + F(transp) + ",1,0,1,0," + F(pitchLfo)  // const=transpose, note 1, EG0 (pitch env) 1, LFO vibrato
         + "a1,0,1,0,0,0"
         + "A" + pitchEnv                 // DX7 pitch envelope (all-50 default = flat = +1 octave)
         + "b" + F(fm.feedback)
@@ -350,6 +354,7 @@ juce::ValueTree PatchModel::toValueTree() const
         sv.setProperty("fm_lfoDelay",   fm.lfoDelay,   nullptr);
         sv.setProperty("fm_lfoKeySync", fm.lfoKeySync, nullptr);
         sv.setProperty("fm_oscKeySync", fm.oscKeySync, nullptr);
+        sv.setProperty("fm_transpose",  fm.transpose,  nullptr);
         for (int i = 0; i < kFmOps; ++i)
         {
             const auto& op = fm.ops[i];
@@ -456,6 +461,7 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
         fm.lfoDelay   = (float) sv.getProperty("fm_lfoDelay",   fm.lfoDelay);
         fm.lfoKeySync = (int)   sv.getProperty("fm_lfoKeySync", fm.lfoKeySync);
         fm.oscKeySync = (int)   sv.getProperty("fm_oscKeySync", fm.oscKeySync);
+        fm.transpose  = (int)   sv.getProperty("fm_transpose",  fm.transpose);
         for (int i = 0; i < kFmOps; ++i)
         {
             auto& op = fm.ops[i];

@@ -105,6 +105,7 @@ namespace id
     inline constexpr auto fmLfoPmd   = "fm_lfo_pmd";        // 0..99 pitch mod depth (vibrato)
     inline constexpr auto fmLfoAmd   = "fm_lfo_amd";        // 0..99 amp mod depth (tremolo)
     inline constexpr auto fmLfoPms   = "fm_lfo_pms";        // 0..7 pitch mod sensitivity
+    inline constexpr auto fmTranspose = "fm_transpose";    // -24..+24 semitones (0 = no shift)
 
     // Per-operator ids are generated (op = 1..6). field = ratio|level|attack|decay|sustain|release.
     inline juce::String fmOp(int op, const char* field)
@@ -296,6 +297,10 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         "LFO Amp Depth", NormalisableRange<float> { 0.0f, 99.0f, 1.0f }, 0.0f));
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::fmLfoPms, 1 },
         "LFO Pitch Sens", 0, 7, 3));
+    // Transpose: whole-voice semitone offset (DX7 stores 0..48 centre 24; we expose the
+    // signed offset). Structural — it re-emits the ALGO osc's freq const on change.
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::fmTranspose, 1 },
+        "Transpose", -24, 24, 0));
 
     // Per-operator: frequency ratio (multiple of the note), output level (= FM
     // modulation index for modulators), and a full A/D/S/R envelope. Defaults give

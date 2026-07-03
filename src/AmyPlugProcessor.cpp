@@ -41,6 +41,7 @@ AmyPlugProcessor::AmyPlugProcessor()
                       params::id::fmAlgorithm,    // FM: routing change → rebuild
                       params::id::fmLfoSpeed, params::id::fmLfoWave,   // FM LFO wiring → rebuild
                       params::id::fmLfoPmd,   params::id::fmLfoAmd, params::id::fmLfoPms,
+                      params::id::fmTranspose,    // FM: whole-voice transpose -> rebuild
                       params::id::voiceMode,      // Mono/Legato rebuild the synth to 1 voice
                       params::id::unisonVoices }) // unison count changes the osc count → rebuild
         state.addParameterListener(id, this);
@@ -148,6 +149,7 @@ void AmyPlugProcessor::cacheParamPointers()
     pFmLfoPmd   = state.getRawParameterValue(params::id::fmLfoPmd);
     pFmLfoAmd   = state.getRawParameterValue(params::id::fmLfoAmd);
     pFmLfoPms   = state.getRawParameterValue(params::id::fmLfoPms);
+    pFmTranspose = state.getRawParameterValue(params::id::fmTranspose);
 }
 
 bool AmyPlugProcessor::engineIsAnalog() const
@@ -472,6 +474,7 @@ void AmyPlugProcessor::syncModelFromParams()
     if (pFmLfoPmd)   fm.lfoPmd   = pFmLfoPmd->load();
     if (pFmLfoAmd)   fm.lfoAmd   = pFmLfoAmd->load();
     if (pFmLfoPms)   fm.lfoPms   = (int) std::lround(pFmLfoPms->load());
+    if (pFmTranspose) fm.transpose = (int) std::lround(pFmTranspose->load());
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         auto& op = fm.ops[i];
@@ -960,6 +963,7 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     setP(params::id::fmLfoPmd,   fm.lfoPmd);
     setP(params::id::fmLfoAmd,   fm.lfoAmd);
     setP(params::id::fmLfoPms,   (float) fm.lfoPms);
+    setP(params::id::fmTranspose, (float) fm.transpose);
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const int op = i + 1;

@@ -99,6 +99,11 @@ public:
         float lfoDelay   = 0.0f;    // 0..99  (recall only; AMY ignores)
         int   lfoKeySync = 1;       // 0..1   (recall only; AMY ignores)
         int   oscKeySync = 1;       // 0..1   reset op phase on note-on (recall only)
+        // Transpose: a fixed semitone offset applied to the whole voice (DX7 stores 0..48,
+        // centre 24; we store the signed offset -24..+24, 0 = no shift). Emitted as a
+        // constant added to the ALGO osc's log2 freq, so ratio operators transpose
+        // together while fixed-frequency operators stay put (matches the DX7).
+        int   transpose  = 0;       // -24..+24 semitones
     };
 
     struct Synth

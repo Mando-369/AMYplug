@@ -169,6 +169,7 @@ private:
     std::atomic<float>* pFmLfoPmd   = nullptr;
     std::atomic<float>* pFmLfoAmd   = nullptr;
     std::atomic<float>* pFmLfoPms   = nullptr;
+    std::atomic<float>* pFmTranspose = nullptr;
 
     static constexpr int kMacroSynth = 1;        // M2: macros target synth 1
 
