@@ -3,6 +3,7 @@
 #include "../engine/AmyWire.h"
 #include "Dx7Envelope.h"
 #include "Dx7Lfo.h"
+#include "Dx7Osc.h"
 #include <cmath>
 
 namespace amyplug
@@ -148,20 +149,23 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
     {
         const auto& op = fm.ops[i];
         const int osc = i + 2;   // operators live on oscs 2..7 (osc 1 is the LFO)
-        // Frequency: ratio (key-tracks) or fixed Hz. Fixed MUST zero the note coef
-        // (f<hz>,0) — else the operator still key-tracks and a high note + high fixed
-        // Hz pushes log-freq past AMY's wavetable range (out-of-bounds -> abort).
+        // Frequency from DX7 Coarse/Fine/Detune: a harmonic ratio, or an absolute Hz
+        // in fixed mode. Fixed MUST zero the note coef (f<hz>,0) — else the operator
+        // still key-tracks and a high note + high fixed Hz pushes log-freq past AMY's
+        // wavetable range (out-of-bounds -> abort).
         const juce::String freq = op.fixedFreq
-            ? ("f" + F(juce::jlimit(1.0f, 20000.0f, op.fixedHz)) + ",0")
-            : ("I" + F(op.ratio));
-        // amp const = level, eg0 COEF 1 (matches fm.py): the operator's own bp0 env is
-        // the modulation depth over time. mod-coef (index 5) = the LFO tremolo depth
-        // when this op's AMS > 0 (mod_source = osc 1, the LFO). The env is the DX7
-        // 4R/4L EG rendered to AMY's exact 5-breakpoint form (Dx7Envelope).
+            ? ("f" + F((float) juce::jlimit(0.001, 20000.0,
+                        amyplug::dx7osc::coarseFineFixedHz(op.coarse, op.fine, op.detune))) + ",0")
+            : ("I" + F((float) amyplug::dx7osc::coarseFineRatio(op.coarse, op.fine, op.detune)));
+        // amp const = Output Level -> amplitude (fm.py: 2*dx7level_to_linear, max 2.0),
+        // eg0 COEF 1: the operator's own bp0 env is the modulation depth over time.
+        // mod-coef (index 5) = the LFO tremolo depth when this op's AMS > 0 (mod_source
+        // = osc 1, the LFO). The env is the DX7 4R/4L EG in AMY's exact breakpoint form.
+        const float amp  = (float) amyplug::dx7osc::outputLevelToAmp(op.outputLevel);
         const float trem = (op.ampModSens > 0) ? ampLfo : 0.0f;
         const juce::String env = amyplug::dx7env::egToBreakpoints(op.egRate, op.egLevel);
         out.emplace_back((pre + "v" + juce::String(osc) + "w0"
-            + "a" + F(op.level) + ",0,0,1,0," + F(trem)
+            + "a" + F(amp) + ",0,0,1,0," + F(trem)
             + freq
             + "A" + env
             + "L1"                          // mod_source = osc 1 (the LFO)
@@ -359,15 +363,16 @@ juce::ValueTree PatchModel::toValueTree() const
         {
             const auto& op = fm.ops[i];
             const juce::String k = "fm_op" + juce::String(i + 1) + "_";
-            sv.setProperty(k + "ratio", op.ratio, nullptr);
-            sv.setProperty(k + "level", op.level, nullptr);
+            sv.setProperty(k + "coarse", op.coarse, nullptr);
+            sv.setProperty(k + "fine",   op.fine,   nullptr);
+            sv.setProperty(k + "detune", op.detune, nullptr);
+            sv.setProperty(k + "outlvl", op.outputLevel, nullptr);
             for (int e = 0; e < 4; ++e)
             {
                 sv.setProperty(k + "r" + juce::String(e + 1), op.egRate[e],  nullptr);
                 sv.setProperty(k + "l" + juce::String(e + 1), op.egLevel[e], nullptr);
             }
             sv.setProperty(k + "fixed", op.fixedFreq, nullptr);
-            sv.setProperty(k + "fixedHz", op.fixedHz, nullptr);
             sv.setProperty(k + "ams", op.ampModSens, nullptr);
         }
         juce::String joined;
@@ -466,15 +471,16 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
         {
             auto& op = fm.ops[i];
             const juce::String k = "fm_op" + juce::String(i + 1) + "_";
-            op.ratio = (float) sv.getProperty(k + "ratio", op.ratio);
-            op.level = (float) sv.getProperty(k + "level", op.level);
+            op.coarse      = (int)  sv.getProperty(k + "coarse", op.coarse);
+            op.fine        = (int)  sv.getProperty(k + "fine",   op.fine);
+            op.detune      = (int)  sv.getProperty(k + "detune", op.detune);
+            op.outputLevel = (int)  sv.getProperty(k + "outlvl", op.outputLevel);
             for (int e = 0; e < 4; ++e)
             {
                 op.egRate[e]  = (float) sv.getProperty(k + "r" + juce::String(e + 1), op.egRate[e]);
                 op.egLevel[e] = (float) sv.getProperty(k + "l" + juce::String(e + 1), op.egLevel[e]);
             }
             op.fixedFreq   = (bool)  sv.getProperty(k + "fixed", op.fixedFreq);
-            op.fixedHz     = (float) sv.getProperty(k + "fixedHz", op.fixedHz);
             op.ampModSens  = (int)   sv.getProperty(k + "ams", op.ampModSens);
         }
         auto lines = juce::StringArray::fromLines(sv.getProperty("oscWire").toString());

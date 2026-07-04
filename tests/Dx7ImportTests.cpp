@@ -8,6 +8,7 @@
 #include <catch2/catch_approx.hpp>
 #include "state/Dx7Import.h"
 #include "state/Dx7Lfo.h"
+#include "state/Dx7Osc.h"
 #include <vector>
 #include <cstdint>
 
@@ -87,12 +88,13 @@ TEST_CASE("DX7 VCED single voice converts with correct operator order", "[dx7]")
     REQUIRE(v.fm.algorithm == 5);
     REQUIRE(v.fm.feedback == Approx(0.16f).margin(0.001f));
 
-    // Our ops[i] == DX7 operator (i+1): coarse was set to the operator number, so
-    // ops[0] (DX7 OP1) -> ratio 1, ops[5] (DX7 OP6) -> ratio 6.
-    REQUIRE(v.fm.ops[0].ratio == Approx(1.0f));
-    REQUIRE(v.fm.ops[5].ratio == Approx(6.0f));
-    // output level 99 -> 2 * 2^((99-99)/8) = 2.0.
-    REQUIRE(v.fm.ops[0].level == Approx(2.0f));
+    // Our ops[i] == DX7 operator (i+1): coarse was set to the operator number, and is
+    // stored DX7-native (verbatim), so ops[0] (DX7 OP1) -> coarse 1, ops[5] -> coarse 6.
+    REQUIRE(v.fm.ops[0].coarse == 1);
+    REQUIRE(v.fm.ops[5].coarse == 6);
+    REQUIRE(v.fm.ops[0].fine == 0);
+    REQUIRE(v.fm.ops[0].detune == 7);
+    REQUIRE(v.fm.ops[0].outputLevel == 99);
 }
 
 TEST_CASE("DX7 packed bulk decodes identically to VCED (bit-offset cross-check)", "[dx7]")
@@ -110,8 +112,10 @@ TEST_CASE("DX7 packed bulk decodes identically to VCED (bit-offset cross-check)"
     REQUIRE(b.fm.feedback == Approx(a.fm.feedback));
     for (int i = 0; i < 6; ++i)
     {
-        REQUIRE(b.fm.ops[i].ratio == Approx(a.fm.ops[i].ratio));
-        REQUIRE(b.fm.ops[i].level == Approx(a.fm.ops[i].level));
+        REQUIRE(b.fm.ops[i].coarse      == a.fm.ops[i].coarse);
+        REQUIRE(b.fm.ops[i].fine        == a.fm.ops[i].fine);
+        REQUIRE(b.fm.ops[i].detune      == a.fm.ops[i].detune);
+        REQUIRE(b.fm.ops[i].outputLevel == a.fm.ops[i].outputLevel);
     }
 }
 
@@ -159,13 +163,18 @@ TEST_CASE("Factory wire decode maps a DX7 preset onto OP1..6", "[dx7][factory]")
     REQUIRE(fm.feedback == Approx(0.16f).margin(1e-4));
 
     // O2,3,4,5,6,7 -> ops[i] takes osc(src[5-i]); AMY lists algo_source 6->1 so our
-    // OP1 == DX7 operator 1 == osc7, OP6 == osc2.
-    REQUIRE(fm.ops[0].ratio == Approx(0.504375f).margin(1e-4));   // osc7
-    REQUIRE(fm.ops[0].level == Approx(1.834008f).margin(1e-4));
-    REQUIRE(fm.ops[2].ratio == Approx(0.9975f).margin(1e-4));     // osc5
-    REQUIRE(fm.ops[3].ratio == Approx(1.0f).margin(1e-4));        // osc4
-    REQUIRE(fm.ops[5].ratio == Approx(1.0f).margin(1e-4));        // osc2
-    REQUIRE(fm.ops[5].level == Approx(0.458502f).margin(1e-4));
+    // OP1 == DX7 operator 1 == osc7, OP6 == osc2. The wire's ratio/amp are decoded back
+    // to DX7 Coarse/Fine/Detune/Level; reconstructing them reproduces the wire values.
+    auto ratioOf = [] (const PatchModel::FmOp& o)
+    { return (float) dx7osc::coarseFineRatio(o.coarse, o.fine, o.detune); };
+    auto ampOf   = [] (const PatchModel::FmOp& o)
+    { return (float) dx7osc::outputLevelToAmp(o.outputLevel); };
+    REQUIRE(ratioOf(fm.ops[0]) == Approx(0.504375f).margin(1e-3));   // osc7
+    REQUIRE(ampOf(fm.ops[0])   == Approx(1.834008f).margin(0.02));
+    REQUIRE(ratioOf(fm.ops[2]) == Approx(0.9975f).margin(1e-3));     // osc5
+    REQUIRE(ratioOf(fm.ops[3]) == Approx(1.0f).margin(1e-3));        // osc4
+    REQUIRE(ratioOf(fm.ops[5]) == Approx(1.0f).margin(1e-3));        // osc2
+    REQUIRE(ampOf(fm.ops[5])   == Approx(0.458502f).margin(0.02));
 
     // Full DX7 4R/4L envelope decoded losslessly: L1 (attack peak) ~98, L3 (sustain)
     // ~91, L4 (release floor) 0. levelToLinear(98)=0.917, (91)=0.5, (0)~0.

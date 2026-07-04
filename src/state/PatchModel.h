@@ -63,11 +63,16 @@ public:
     // All values are the source of truth (fully recalled).
     struct FmOp
     {
-        // Frequency: ratio (key-tracks) or fixed Hz (percussive/inharmonic operators).
-        bool  fixedFreq = false;
-        float ratio   = 1.0f;     // freq = note freq x ratio        (when !fixedFreq)
-        float fixedHz = 440.0f;   // absolute Hz, no key-tracking     (when fixedFreq)
-        float level   = 0.0f;     // output amplitude / modulation index (0..4) = amp const
+        // Frequency + level stored the DX7 way (Dx7Osc converts to AMY at emit time).
+        // Mode: ratio (key-tracks) or fixed Hz (percussive/inharmonic operators). The
+        // same Coarse/Fine/Detune fields drive both, interpreted by mode — exactly the
+        // DX7. Using the DX7's ranges keeps every emitted freq/mod inside what AMY can
+        // render (arbitrary ranges could push AMY's oscillator tables out of bounds).
+        bool  fixedFreq   = false;
+        int   coarse      = 1;    // 0..31 ratio (0 = 0.5) / 0..3 fixed decade
+        int   fine        = 0;    // 0..99
+        int   detune      = 7;    // 0..14, centre 7 = no detune
+        int   outputLevel = 0;    // 0..99 (DX7 Output Level; 99 -> amp 2.0)
         // Amp envelope as the DX7 4-rate / 4-level EG (each 0..99), the native DX7
         // control. L1 is the attack peak (true modulation depth); L4 is the release
         // floor. Emitted as AMY's 5-breakpoint form via Dx7Envelope (lossless).

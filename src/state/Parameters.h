@@ -302,20 +302,22 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::fmTranspose, 1 },
         "Transpose", -24, 24, 0));
 
-    // Per-operator: frequency ratio (multiple of the note), output level (= FM
-    // modulation index for modulators), and a full A/D/S/R envelope. Defaults give
-    // a simple 2-operator tone (op1 carrier, op2 modulator) under algorithm 1.
-    auto ratioRange = [] { return NormalisableRange<float> { 0.5f, 16.0f, 0.0f, 0.4f }; };
-    auto levelRange = [] { return NormalisableRange<float> { 0.0f, 4.0f, 0.0f, 0.5f }; };
+    // Per-operator, the DX7 way: Coarse (0..31, 0 = 0.5x), Fine (0..99), Detune
+    // (0..14, 7 = centre), Output Level (0..99), a Ratio/Fixed mode, and the 4R/4L
+    // envelope. Using the DX7's own ranges keeps every emitted frequency + modulation
+    // inside what AMY can render. Default = the DX7 INIT VOICE: OP1 is a full-level
+    // sine carrier, OP2-6 silent, all ratio 1.0 (coarse 1 / fine 0 / detune 7).
     for (int op = 1; op <= kFmOps; ++op)
     {
-        const bool active = (op <= 2);                 // op1+op2 sound by default
-        const float lvl   = active ? 1.0f : 0.0f;
-        const float ratio = 1.0f;
-        layout.add(std::make_unique<AudioParameterFloat>(
-            ParameterID { id::fmOp(op, "ratio"), 1 }, "Op " + juce::String(op) + " Ratio", ratioRange(), ratio));
-        layout.add(std::make_unique<AudioParameterFloat>(
-            ParameterID { id::fmOp(op, "level"), 1 }, "Op " + juce::String(op) + " Level", levelRange(), lvl));
+        const int outLvl = (op == 1) ? 99 : 0;         // OP1 carrier audible by default
+        layout.add(std::make_unique<AudioParameterInt>(
+            ParameterID { id::fmOp(op, "coarse"), 1 }, "Op " + juce::String(op) + " Coarse", 0, 31, 1));
+        layout.add(std::make_unique<AudioParameterInt>(
+            ParameterID { id::fmOp(op, "fine"), 1 }, "Op " + juce::String(op) + " Fine", 0, 99, 0));
+        layout.add(std::make_unique<AudioParameterInt>(
+            ParameterID { id::fmOp(op, "detune"), 1 }, "Op " + juce::String(op) + " Detune", 0, 14, 7));
+        layout.add(std::make_unique<AudioParameterInt>(
+            ParameterID { id::fmOp(op, "outlvl"), 1 }, "Op " + juce::String(op) + " Level", 0, 99, outLvl));
         // DX7 4-rate / 4-level operator envelope (each 0..99) — the native DX7 EG.
         const float rDef[4] = { 95.0f, 60.0f, 40.0f, 55.0f };
         const float lDef[4] = { 99.0f, 80.0f, 65.0f,  0.0f };
@@ -329,13 +331,10 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                 ParameterID { id::fmOp(op, ("l" + juce::String(e)).toRawUTF8()), 1 },
                 "Op " + juce::String(op) + " L" + juce::String(e), eg99(), lDef[e - 1]));
         }
-        // fixed = fixed-frequency mode; fixedhz = its absolute Hz.
+        // Ratio/Fixed mode (fixed Hz is derived from Coarse/Fine, DX7-style).
         layout.add(std::make_unique<AudioParameterChoice>(
             ParameterID { id::fmOp(op, "fixed"), 1 }, "Op " + juce::String(op) + " Mode",
             juce::StringArray { "Ratio", "Fixed" }, 0));
-        layout.add(std::make_unique<AudioParameterFloat>(
-            ParameterID { id::fmOp(op, "fixedhz"), 1 }, "Op " + juce::String(op) + " Fixed Hz",
-            NormalisableRange<float> { 1.0f, 20000.0f, 0.0f, 0.3f }, 440.0f));
         // Amplitude Mod Sensitivity (0..3): gates the LFO tremolo into this operator.
         layout.add(std::make_unique<AudioParameterChoice>(
             ParameterID { id::fmOp(op, "ams"), 1 }, "Op " + juce::String(op) + " AMS",

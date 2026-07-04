@@ -2,6 +2,7 @@
 #include "Dx7Import.h"
 #include "Dx7Envelope.h"
 #include "Dx7Lfo.h"
+#include "Dx7Osc.h"
 #include <cmath>
 #include <algorithm>
 #include <map>
@@ -39,63 +40,20 @@ struct RawVoice
 };
 
 // --- fm.py conversion math (ported) ------------------------------------------
-// dx7level_to_linear: 0..99 -> linear amplitude, 99 -> 1.0.
-double dx7LevelToLinear(int lvl) { return std::pow(2.0, (lvl - 99) / 8.0); }
-
-// coarse_fine_ratio: harmonic ratio; coarse 0 is the 0.5 sub-octave special case.
-double coarseFineRatio(int coarse, int fine, int detune)
-{
-    coarse &= 31;
-    const double c = (coarse == 0) ? 0.5 : (double) coarse;
-    return c * (1.0 + (fine + (detune - 7) / 8.0) / 100.0);
-}
-// coarse_fine_fixed_hz: fixed-frequency operators (10^(coarse + cents)).
-double coarseFineFixedHz(int coarse, int fine, int detune)
-{
-    coarse &= 3;
-    return std::pow(10.0, coarse + (fine + (detune - 7) / 8.0) / 100.0);
-}
+// Operator frequency/level + EG conversions live in Dx7Osc.h / Dx7Envelope.h.
 // feedback 0..7 -> AMY float.
 double feedbackToFloat(int fb) { return 0.00125 * std::pow(2.0, (double) fb); }
-
-// calc_loglin_eg_breakpoints segment timing (amp-EG defaults): exponential attack,
-// linear decay. Returns seconds for one rate to move between two DX7 levels.
-constexpr double kMinLevel = 34.0, kAttackRange = 75.0;
-double attackTimeAtLevel(double level, double tConst)
-{
-    const double l = std::max(kMinLevel, level);
-    return -tConst * std::log((kMinLevel + kAttackRange - l) / kAttackRange);
-}
-double egAttackSeconds(int rate, double fromLvl, double toLvl)
-{
-    const double tConst = 0.008 * std::pow(2.0, (65 - rate) / 6.0);
-    return std::max(0.0, attackTimeAtLevel(toLvl, tConst) - attackTimeAtLevel(fromLvl, tConst));
-}
-double egDecaySeconds(int rate, double fromLvl, double toLvl)
-{
-    const double perSec = 0.5 + 0.5 * std::pow(2.0, rate / 6.0);   // rate_offset + rate_scale*2^(r/6)
-    double diff = std::abs(toLvl - fromLvl);
-    if (diff == 0.0) diff = 60.0;                                  // fm.py: release-from-rest fallback
-    return diff / perSec;
-}
-double egSeconds(int rate, double fromLvl, double toLvl)
-{
-    return (toLvl > fromLvl) ? egAttackSeconds(rate, fromLvl, toLvl)
-                             : egDecaySeconds(rate, fromLvl, toLvl);
-}
 
 PatchModel::FmOp convertOp(const RawOp& op)
 {
     PatchModel::FmOp o;
-    if (op.mode == 0)   // ratio mode — key-tracks
-        o.ratio = juce::jlimit(0.1f, 16.0f, (float) coarseFineRatio(op.coarse, op.fine, op.detune));
-    else                // fixed frequency — a true fixed-Hz operator (no key-tracking)
-    {
-        o.fixedFreq = true;
-        o.fixedHz   = juce::jlimit(0.0f, 20000.0f, (float) coarseFineFixedHz(op.coarse, op.fine, op.detune));
-    }
-
-    o.level = juce::jlimit(0.0f, 4.0f, (float) (2.0 * dx7LevelToLinear(op.outputLevel)));
+    // DX7-native: store Coarse/Fine/Detune/Output-Level verbatim from the cartridge;
+    // emitFm derives the ratio/Hz/amp (via Dx7Osc). No lossy pre-computation.
+    o.fixedFreq   = (op.mode != 0);
+    o.coarse      = juce::jlimit(0, 31, op.coarse);
+    o.fine        = juce::jlimit(0, 99, op.fine);
+    o.detune      = juce::jlimit(0, 14, op.detune);
+    o.outputLevel = juce::jlimit(0, 99, op.outputLevel);
 
     // Store the DX7 4-rate/4-level EG natively (lossless — no ADSR reduction).
     for (int i = 0; i < 4; ++i)
@@ -335,15 +293,6 @@ void bpToAdsr(const juce::String& bp, float& a, float& d, float& s, float& r)
     s = juce::jlimit(0.0f, 1.0f, sus);
     r = juce::jmax(1.0f, rel) * 0.001f;
 }
-
-// Peak (max) level of an AMY breakpoint list — the operator's true modulation depth.
-float bpPeak(const juce::String& bp)
-{
-    juce::StringArray parts; parts.addTokens(bp, ",", "");
-    float peak = 0.0f;
-    for (int i = 1; i < parts.size(); i += 2) peak = juce::jmax(peak, parts[i].getFloatValue());
-    return peak <= 0.0f ? 1.0f : juce::jlimit(0.0f, 1.0f, peak);
-}
 } // namespace
 
 bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
@@ -410,13 +359,18 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
         if (it == oscs.end()) continue;
         const auto& f = it->second.f;
         auto& op = fm.ops[i];
+        // Invert the wire's ratio/Hz/amp back to DX7-native Coarse/Fine/Detune/Level
+        // (factory values came from integer DX7 fields, so the inverse recovers them).
+        dx7osc::CoarseFineDetune cfd {};
         if (f.count('f'))                                   // fixed-frequency operator
         {
             op.fixedFreq = true;
-            op.fixedHz   = juce::jmax(0.0f, firstVal(f.at('f')));
+            cfd = dx7osc::fixedHzToCoarseFineDetune(juce::jmax(0.0f, firstVal(f.at('f'))));
         }
-        else if (f.count('I')) op.ratio = juce::jmax(0.0f, f.at('I').getFloatValue());
-        if (f.count('a')) op.level = juce::jlimit(0.0f, 4.0f, firstVal(f.at('a')));
+        else if (f.count('I'))
+            cfd = dx7osc::ratioToCoarseFineDetune(juce::jmax(0.0f, f.at('I').getFloatValue()));
+        op.coarse = cfd.coarse; op.fine = cfd.fine; op.detune = cfd.detune;
+        if (f.count('a')) op.outputLevel = dx7osc::ampToOutputLevel(firstVal(f.at('a')));
         if (f.count('A')) dx7env::breakpointsToEg(f.at('A'), op.egRate, op.egLevel);  // exact shape
         // Tremolo: amp mod-coef (index 5) != 0 means this op has AMS on; its value is
         // the shared LFO amp depth (amp_lfo_amp) -> AMD. fm.py only stores AMS on/off.

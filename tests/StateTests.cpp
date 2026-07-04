@@ -182,9 +182,10 @@ TEST_CASE("FM engine builds the 6-operator ALGO voice", "[state][fm]")
     auto& fm = m.synths[0].fm;
     fm.algorithm = 22;
     fm.feedback  = 0.16f;
-    fm.ops[0].ratio = 1.0f;  fm.ops[0].level = 1.0f;  fm.ops[0].egLevel[0] = 78.0f;  // L1 peak -> lin ~0.162
-    fm.ops[1].ratio = 2.0f;  fm.ops[1].level = 0.7f;
-    fm.ops[2].fixedFreq = true; fm.ops[2].fixedHz = 100.0f;   // fixed-frequency operator
+    // OP1: ratio 1.0 (coarse 1), full level (99 -> amp 2.0). OP2: ratio 2.0 (coarse 2).
+    fm.ops[0].coarse = 1; fm.ops[0].outputLevel = 99; fm.ops[0].egLevel[0] = 78.0f;  // L1 peak -> lin ~0.162
+    fm.ops[1].coarse = 2; fm.ops[1].outputLevel = 99;
+    fm.ops[2].fixedFreq = true; fm.ops[2].coarse = 2; fm.ops[2].fine = 0; fm.ops[2].detune = 7; // 10^2 = 100 Hz
     const auto w = m.toWireMessages();
 
     REQUIRE(anyContains(w, "in8"));        // 8 oscs per voice (0 = ALGO, 1 = LFO, 2..7 ops)
@@ -194,9 +195,9 @@ TEST_CASE("FM engine builds the 6-operator ALGO voice", "[state][fm]")
     REQUIRE(anyContains(w, "O7,6,5,4,3,2"));   // operator list on oscs 7..2 (AMY orders ops 6→1)
     REQUIRE(anyContains(w, "v2w0"));       // operator 1 = sine (now osc 2)
     REQUIRE(anyContains(w, "v7w0"));       // operator 6 = sine (now osc 7)
-    REQUIRE(anyContains(w, "I1.0000"));    // op1 ratio
-    REQUIRE(anyContains(w, "I2.0000"));    // op2 ratio
-    REQUIRE(anyContains(w, "a1.0000,0,0,1,0,0"));  // op1 amp: const=level, eg0 coef 1, no tremolo
+    REQUIRE(anyContains(w, "I1.0000"));    // op1 ratio = coarseFineRatio(1,0,7)
+    REQUIRE(anyContains(w, "I2.0000"));    // op2 ratio = coarseFineRatio(2,0,7)
+    REQUIRE(anyContains(w, "a2.0000,0,0,1,0,0"));  // op1 amp: outputLevel 99 -> amp 2.0, no tremolo
     REQUIRE(anyContains(w, "0.16210"));    // op1 env L1 peak = levelToLinear(78), NOT 1.0
     REQUIRE(anyContains(w, "f100.0000,0")); // op3 fixed-frequency (f<hz>,0 — note coef zeroed)
     REQUIRE(anyContains(w, "v1w4"));       // osc 1 = LFO (default wave 0 -> AMY TRIANGLE 4)
@@ -212,8 +213,8 @@ TEST_CASE("FM LFO: vibrato/tremolo emit as mod-coefs on the ALGO/operator oscs",
     fm.lfoSpeed = 37.0f;  fm.lfoWave = 4;      // 6.1667 Hz, DX7 Sine -> AMY SINE (w0)
     fm.lfoPms = 7;  fm.lfoPmd = 50.0f;         // strong vibrato
     fm.lfoAmd = 99.0f;                          // full tremolo depth
-    fm.ops[0].level = 1.0f;  fm.ops[0].ampModSens = 3;   // op1 (osc 2): tremolo on
-    fm.ops[1].level = 1.0f;  fm.ops[1].ampModSens = 0;   // op2 (osc 3): tremolo off
+    fm.ops[0].outputLevel = 99;  fm.ops[0].ampModSens = 3;   // op1 (osc 2): tremolo on
+    fm.ops[1].outputLevel = 99;  fm.ops[1].ampModSens = 0;   // op2 (osc 3): tremolo off
     const auto w = m.toWireMessages();
 
     REQUIRE(anyContains(w, "v1w0"));           // LFO wave = AMY SINE
@@ -222,8 +223,8 @@ TEST_CASE("FM LFO: vibrato/tremolo emit as mod-coefs on the ALGO/operator oscs",
     // pitchLfoAmp(7, 50) = 0.6 * 1.7^6 * 50 / 1188 = 0.6095. (const 0.0000 = no transpose.)
     REQUIRE(anyContains(w, "f0.0000,1,0,1,0,0.6095"));
     // Operator 1 (osc 2) has tremolo in its amp mod-coef; operator 2 (osc 3) does not.
-    REQUIRE(anyContains(w, "v2w0a1.0000,0,0,1,0,1"));   // amp_lfo_amp(99) = 1.0
-    REQUIRE(anyContains(w, "v3w0a1.0000,0,0,1,0,0"));   // AMS off -> mod-coef 0
+    REQUIRE(anyContains(w, "v2w0a2.0000,0,0,1,0,1"));   // outputLevel 99 -> amp 2.0; amp_lfo_amp(99) = 1.0
+    REQUIRE(anyContains(w, "v3w0a2.0000,0,0,1,0,0"));   // AMS off -> mod-coef 0
 }
 
 TEST_CASE("FM Transpose: whole-voice semitone offset in the ALGO freq const", "[state][fm]")
@@ -287,12 +288,13 @@ TEST_CASE("FM params survive the ValueTree round-trip", "[state][fm]")
     a.synths[0].engine = PatchModel::Engine::FM;
     a.synths[0].fm.algorithm = 17;
     a.synths[0].fm.feedback  = 0.33f;
-    a.synths[0].fm.ops[3].ratio = 4.5f;
-    a.synths[0].fm.ops[3].level = 2.2f;
+    a.synths[0].fm.ops[3].coarse      = 5;
+    a.synths[0].fm.ops[3].fine        = 42;
+    a.synths[0].fm.ops[3].detune      = 9;
+    a.synths[0].fm.ops[3].outputLevel = 88;
     a.synths[0].fm.ops[3].egLevel[2] = 55.0f;   // L3
     a.synths[0].fm.ops[3].egRate[0]  = 42.0f;   // R1
     a.synths[0].fm.ops[3].fixedFreq  = true;
-    a.synths[0].fm.ops[3].fixedHz    = 220.0f;
     a.synths[0].fm.ops[3].ampModSens = 2;
     a.synths[0].fm.lfoSpeed   = 42.0f;
     a.synths[0].fm.lfoWave    = 5;
@@ -308,12 +310,13 @@ TEST_CASE("FM params survive the ValueTree round-trip", "[state][fm]")
     REQUIRE(b.synths[0].engine == PatchModel::Engine::FM);
     REQUIRE(b.synths[0].fm.algorithm == 17);
     REQUIRE(b.synths[0].fm.feedback  == 0.33f);
-    REQUIRE(b.synths[0].fm.ops[3].ratio == 4.5f);
-    REQUIRE(b.synths[0].fm.ops[3].level == 2.2f);
+    REQUIRE(b.synths[0].fm.ops[3].coarse      == 5);
+    REQUIRE(b.synths[0].fm.ops[3].fine        == 42);
+    REQUIRE(b.synths[0].fm.ops[3].detune      == 9);
+    REQUIRE(b.synths[0].fm.ops[3].outputLevel == 88);
     REQUIRE(b.synths[0].fm.ops[3].egLevel[2] == 55.0f);
     REQUIRE(b.synths[0].fm.ops[3].egRate[0]  == 42.0f);
     REQUIRE(b.synths[0].fm.ops[3].fixedFreq);
-    REQUIRE(b.synths[0].fm.ops[3].fixedHz == 220.0f);
     REQUIRE(b.synths[0].fm.ops[3].ampModSens == 2);
     REQUIRE(b.synths[0].fm.lfoSpeed   == 42.0f);
     REQUIRE(b.synths[0].fm.lfoWave    == 5);

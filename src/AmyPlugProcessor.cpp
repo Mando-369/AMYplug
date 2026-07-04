@@ -8,6 +8,7 @@
 #include "state/Dx7Import.h"
 #include "state/Dx7Envelope.h"   // DX7 4R/4L EG -> AMY breakpoints (RT-safe C variant)
 #include "state/Dx7Lfo.h"        // DX7 LFO -> AMY (speed/wave/PMS+PMD/AMD conversions)
+#include "state/Dx7Osc.h"        // DX7 operator freq/level -> AMY (Coarse/Fine/Detune/Level)
 #include "BuiltinPatchNames.h"   // kBuiltinPatchCommands / kBuiltinPatchCount (generated)
 #include <cstdio>
 #include <cstring>
@@ -45,13 +46,14 @@ AmyPlugProcessor::AmyPlugProcessor()
                       params::id::voiceMode,      // Mono/Legato rebuild the synth to 1 voice
                       params::id::unisonVoices }) // unison count changes the osc count → rebuild
         state.addParameterListener(id, this);
-    // FM operator freq mode: ratio<->fixed swaps the wire field (I vs f), so rebuild.
-    // AMS gates the LFO tremolo into an operator (an amp-coef restructure), also structural.
+    // FM operator freq MODE: ratio<->fixed swaps the wire field (I vs f), so rebuild.
+    // AMS gates the LFO tremolo (an amp-coef restructure), also structural. Coarse/
+    // Fine/Detune and Output Level are NOT structural — they stream live (ratio/Hz and
+    // amp coef updates), so rapid automation/fuzz doesn't storm the rebuild path.
     for (int op = 1; op <= PatchModel::kFmOps; ++op)
     {
-        state.addParameterListener(params::id::fmOp(op, "fixed"),   this);
-        state.addParameterListener(params::id::fmOp(op, "fixedhz"), this);
-        state.addParameterListener(params::id::fmOp(op, "ams"),     this);
+        state.addParameterListener(params::id::fmOp(op, "fixed"),  this);
+        state.addParameterListener(params::id::fmOp(op, "ams"),    this);
     }
     // NOTE: unisonDetune is deliberately NOT structural — it only re-tunes existing
     // oscillators, which streamAnalogParams does live (no rebuild → no dropout).
@@ -133,15 +135,16 @@ void AmyPlugProcessor::cacheParamPointers()
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const int op = i + 1;
-        mFmRatio[i].ptr = state.getRawParameterValue(params::id::fmOp(op, "ratio"));
-        mFmLevel[i].ptr = state.getRawParameterValue(params::id::fmOp(op, "level"));
+        pFmCoarse[i] = state.getRawParameterValue(params::id::fmOp(op, "coarse"));
+        pFmFine[i]   = state.getRawParameterValue(params::id::fmOp(op, "fine"));
+        pFmDetune[i] = state.getRawParameterValue(params::id::fmOp(op, "detune"));
+        mFmOutLevel[i].ptr = state.getRawParameterValue(params::id::fmOp(op, "outlvl"));
         for (int e = 0; e < 4; ++e)
         {
             mFmEgRate[i][e].ptr  = state.getRawParameterValue(params::id::fmOp(op, ("r" + juce::String(e + 1)).toRawUTF8()));
             mFmEgLevel[i][e].ptr = state.getRawParameterValue(params::id::fmOp(op, ("l" + juce::String(e + 1)).toRawUTF8()));
         }
         pFmFixed[i]     = state.getRawParameterValue(params::id::fmOp(op, "fixed"));
-        pFmFixedHz[i]   = state.getRawParameterValue(params::id::fmOp(op, "fixedhz"));
         pFmAms[i]       = state.getRawParameterValue(params::id::fmOp(op, "ams"));
     }
     pFmLfoSpeed = state.getRawParameterValue(params::id::fmLfoSpeed);
@@ -478,15 +481,16 @@ void AmyPlugProcessor::syncModelFromParams()
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         auto& op = fm.ops[i];
-        if (mFmRatio[i].ptr) op.ratio = mFmRatio[i].ptr->load();
-        if (mFmLevel[i].ptr) op.level = mFmLevel[i].ptr->load();
+        if (pFmCoarse[i])      op.coarse      = (int) std::lround(pFmCoarse[i]->load());
+        if (pFmFine[i])        op.fine        = (int) std::lround(pFmFine[i]->load());
+        if (pFmDetune[i])      op.detune      = (int) std::lround(pFmDetune[i]->load());
+        if (mFmOutLevel[i].ptr) op.outputLevel = (int) std::lround(mFmOutLevel[i].ptr->load());
         for (int e = 0; e < 4; ++e)
         {
             if (mFmEgRate[i][e].ptr)  op.egRate[e]  = mFmEgRate[i][e].ptr->load();
             if (mFmEgLevel[i][e].ptr) op.egLevel[e] = mFmEgLevel[i][e].ptr->load();
         }
         if (pFmFixed[i])     op.fixedFreq = pFmFixed[i]->load() > 0.5f;
-        if (pFmFixedHz[i])   op.fixedHz   = pFmFixedHz[i]->load();
         if (pFmAms[i])       op.ampModSens = (int) std::lround(pFmAms[i]->load());  // choice 0..3
     }
 }
@@ -741,24 +745,37 @@ void AmyPlugProcessor::streamFmParams()
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const int osc = i + 2;   // operators live on oscs 2..7 (osc 1 is the LFO)
-        // Ratio streams only in ratio mode; fixed-frequency uses the wire `f` field,
-        // applied structurally on rebuild (ratio<->fixed is a listener).
-        const bool fixed = pFmFixed[i] && pFmFixed[i]->load(std::memory_order_relaxed) > 0.5f;
-        if (! fixed)
+        // Coarse/Fine/Detune -> the operator frequency: a ratio (I) or, in fixed mode,
+        // an absolute Hz (f<hz>,0). Streamed as a coef update on change (mode toggle
+        // itself is structural). Derived via the DX7 math so values stay in AMY's range.
         {
-            char rf[24]; std::snprintf(rf, sizeof rf, "i1v%dI%%g", osc);
-            one(mFmRatio[i], rf);
-        }
-        // Level -> amp const, eg0 COEF 1 (the env carries the depth), mod-coef = the LFO
-        // tremolo depth (preserved so a level sweep doesn't wipe it). Matches emitFm.
-        if (mFmLevel[i].ptr != nullptr)
-        {
-            const float v = mFmLevel[i].ptr->load(std::memory_order_relaxed);
-            if (v != mFmLevel[i].last)
+            const int coarse = pFmCoarse[i] ? (int) std::lround(pFmCoarse[i]->load(std::memory_order_relaxed)) : 1;
+            const int fine   = pFmFine[i]   ? (int) std::lround(pFmFine[i]->load(std::memory_order_relaxed))   : 0;
+            const int detune = pFmDetune[i] ? (int) std::lround(pFmDetune[i]->load(std::memory_order_relaxed)) : 7;
+            const bool fixed = pFmFixed[i] && pFmFixed[i]->load(std::memory_order_relaxed) > 0.5f;
+            const float f = fixed ? (float) juce::jlimit(0.001, 20000.0, dx7osc::coarseFineFixedHz(coarse, fine, detune))
+                                  : (float) dx7osc::coarseFineRatio(coarse, fine, detune);
+            if (f != mFmFreqLast[i])
             {
-                mFmLevel[i].last = v;
+                mFmFreqLast[i] = f;
+                char b[48];
+                if (fixed) std::snprintf(b, sizeof b, "i1v%df%g,0", osc, (double) f);
+                else       std::snprintf(b, sizeof b, "i1v%dI%g",   osc, (double) f);
+                active->streamWire(b, (int) std::strlen(b));
+            }
+        }
+        // Output Level -> amp const (DX7 0..99 -> amp via Dx7Osc), eg0 COEF 1 (the env
+        // carries the depth), mod-coef = the LFO tremolo depth (preserved so a level
+        // sweep doesn't wipe it). Matches emitFm.
+        if (mFmOutLevel[i].ptr != nullptr)
+        {
+            const float v = mFmOutLevel[i].ptr->load(std::memory_order_relaxed);
+            if (v != mFmOutLevel[i].last)
+            {
+                mFmOutLevel[i].last = v;
+                const double amp = dx7osc::outputLevelToAmp((int) std::lround(v));
                 char b[80]; std::snprintf(b, sizeof b, "i1v%da%g,0,0,1,0,%g",
-                                          osc, (double) v, (double) tremForOp(i));
+                                          osc, amp, (double) tremForOp(i));
                 active->streamWire(b, (int) std::strlen(b));
             }
         }
@@ -968,15 +985,16 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     {
         const int op = i + 1;
         const auto& o = fm.ops[i];
-        setP(params::id::fmOp(op, "ratio"),   o.ratio);
-        setP(params::id::fmOp(op, "level"),   o.level);
+        setP(params::id::fmOp(op, "coarse"), (float) o.coarse);
+        setP(params::id::fmOp(op, "fine"),   (float) o.fine);
+        setP(params::id::fmOp(op, "detune"), (float) o.detune);
+        setP(params::id::fmOp(op, "outlvl"), (float) o.outputLevel);
         for (int e = 0; e < 4; ++e)
         {
             setP(params::id::fmOp(op, ("r" + juce::String(e + 1)).toRawUTF8()), o.egRate[e]);
             setP(params::id::fmOp(op, ("l" + juce::String(e + 1)).toRawUTF8()), o.egLevel[e]);
         }
         setP(params::id::fmOp(op, "fixed"),   o.fixedFreq ? 1.0f : 0.0f);
-        setP(params::id::fmOp(op, "fixedhz"), o.fixedHz);
         setP(params::id::fmOp(op, "ams"),     (float) o.ampModSens);   // choice index 0..3
     }
 }

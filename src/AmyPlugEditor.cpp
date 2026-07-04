@@ -647,10 +647,11 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     auto addOsc = [] (ControlPanel& p, int op)
     {
         p.addSection("OP " + juce::String(op));
-        p.addKnob(params::id::fmOp(op, "ratio"),   "Ratio");
-        p.addKnob(params::id::fmOp(op, "level"),   "Level");
-        p.addChoice(params::id::fmOp(op, "fixed"), "Mode");   // Ratio / Fixed
-        p.addKnob(params::id::fmOp(op, "fixedhz"), "Fix Hz");
+        p.addChoice(params::id::fmOp(op, "fixed"), "Mode");    // Ratio / Fixed
+        p.addKnob(params::id::fmOp(op, "coarse"), "Coarse");   // DX7 Coarse 0..31 (0 = 0.5x)
+        p.addKnob(params::id::fmOp(op, "fine"),   "Fine");     // DX7 Fine 0..99
+        p.addKnob(params::id::fmOp(op, "detune"), "Detune");   // DX7 Detune 0..14 (7 = centre)
+        p.addKnob(params::id::fmOp(op, "outlvl"), "Level");    // DX7 Output Level 0..99
     };
     addOsc(fmOscA, 1); addOsc(fmOscA, 4);
     addOsc(fmOscB, 2); addOsc(fmOscB, 5);

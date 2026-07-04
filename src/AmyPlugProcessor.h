@@ -158,10 +158,15 @@ private:
     std::atomic<float>* pAlgorithm = nullptr;
     Macro mFmFeedback;
     Macro mFmPitchRate[4], mFmPitchLevel[4];   // global pitch EG (ALGO osc bp0)
-    Macro mFmRatio[PatchModel::kFmOps], mFmLevel[PatchModel::kFmOps];
+    // DX7-native operator freq: Coarse/Fine/Detune are structural (they change the
+    // emitted ratio or fixed Hz -> rebuild); Output Level streams as the amp coef.
+    std::atomic<float>* pFmCoarse[PatchModel::kFmOps] = {};
+    std::atomic<float>* pFmFine[PatchModel::kFmOps]   = {};
+    std::atomic<float>* pFmDetune[PatchModel::kFmOps] = {};
+    float mFmFreqLast[PatchModel::kFmOps] { };   // last streamed ratio/Hz per op (change detect)
+    Macro mFmOutLevel[PatchModel::kFmOps];
     Macro mFmEgRate[PatchModel::kFmOps][4], mFmEgLevel[PatchModel::kFmOps][4];  // DX7 4R/4L EG
     std::atomic<float>* pFmFixed[PatchModel::kFmOps]   = {};    // fixed-frequency mode (structural)
-    std::atomic<float>* pFmFixedHz[PatchModel::kFmOps] = {};    // fixed frequency in Hz
     std::atomic<float>* pFmAms[PatchModel::kFmOps]     = {};    // amp mod sensitivity (structural)
     // LFO (all structural — a change re-emits the LFO wiring on the async rebuild).
     std::atomic<float>* pFmLfoSpeed = nullptr;
