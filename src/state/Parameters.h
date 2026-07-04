@@ -296,7 +296,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::fmLfoAmd, 1 },
         "LFO Amp Depth", NormalisableRange<float> { 0.0f, 99.0f, 1.0f }, 0.0f));
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::fmLfoPms, 1 },
-        "LFO Pitch Sens", 0, 7, 3));
+        "LFO Pitch Sens", 0, 7, 0));
     // Transpose: whole-voice semitone offset (DX7 stores 0..48 centre 24; we expose the
     // signed offset). Structural — it re-emits the ALGO osc's freq const on change.
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { id::fmTranspose, 1 },

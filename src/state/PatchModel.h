@@ -104,7 +104,7 @@ public:
         int   lfoWave    = 0;       // 0 Tri, 1 SawDn, 2 SawUp, 3 Square, 4 Sine, 5 S&H
         float lfoPmd     = 0.0f;    // 0..99  pitch mod depth (vibrato)
         float lfoAmd     = 0.0f;    // 0..99  amp mod depth (tremolo)
-        int   lfoPms     = 3;       // 0..7   pitch mod sensitivity
+        int   lfoPms     = 0;       // 0..7   pitch mod sensitivity
         float lfoDelay   = 0.0f;    // 0..99  (recall only; AMY ignores)
         int   lfoKeySync = 1;       // 0..1   (recall only; AMY ignores)
         int   oscKeySync = 1;       // 0..1   reset op phase on note-on (recall only)
