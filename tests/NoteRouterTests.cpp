@@ -98,17 +98,23 @@ TEST_CASE("Sustain held at transport stop still flushes", "[router]")
     REQUIRE_FALSE(r.anyActive());
 }
 
-TEST_CASE("Notes on independent channels are tracked separately", "[router]")
+TEST_CASE("Notes route to the single AMY synth regardless of MIDI channel", "[router]")
 {
+    // We build only AMY synth 1, so notes on ANY MIDI channel must target synth 1 —
+    // emitting to an undefined synth (e.g. synth 2 for a channel-2 note) makes AMY
+    // access unallocated voice state (out-of-bounds). Lifecycle is still tracked per
+    // channel, but the backend only ever sees synth 1.
     NoteRouter r; MockBackend b;
     r.process(noteOnBuf(1, 60, 100), b);
-    r.process(noteOnBuf(2, 60, 100), b);        // same note, different synth
+    r.process(noteOnBuf(2, 62, 100), b);        // different channel -> STILL synth 1
+    REQUIRE(b.netOnFor(1, 60) == 1);
+    REQUIRE(b.netOnFor(1, 62) == 1);
+    REQUIRE(b.netOnFor(2, 60) == 0);            // channel 2 must NOT create synth 2
+    REQUIRE(b.netOnFor(2, 62) == 0);
     r.process(noteOffBuf(1, 60), b);
-    REQUIRE(r.anyActive());                     // ch2 still sounding
-    REQUIRE(b.netOnFor(2, 60) == 1);
-    r.process(noteOffBuf(2, 60), b);
-    REQUIRE_FALSE(r.anyActive());
+    r.process(noteOffBuf(2, 62), b);            // ch2 note-off also releases on synth 1
     REQUIRE(b.totalNetOn() == 0);
+    REQUIRE_FALSE(r.anyActive());
 }
 
 TEST_CASE("Mono mode: last-note priority with retrigger", "[router][mono]")
