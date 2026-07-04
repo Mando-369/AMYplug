@@ -268,16 +268,18 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         if (auto pos = ph->getPosition())
             router.updateTransport(pos->getIsPlaying(), *active);
 
+    // Apply any queued structural rebuild BEFORE anything else touches AMY. The rebuild
+    // begins with RESET_SYNTHS (it tears synth 1 down, then redefines it), so a note-on
+    // routed before it lands would target a momentarily-undefined synth — AMY then
+    // accesses unallocated voice state (out-of-bounds). Applying it first also means the
+    // live param deltas below stream on top of the fresh graph, not a stale one.
+    active->flushPending();
+
     // Keep the pitch-bend range current, then translate incoming MIDI into backend
-    // note/CC events (deterministic offs).
+    // note/CC events (deterministic offs) — now targeting the freshly-rebuilt synth.
     if (pBendRange != nullptr) router.setPitchBendRangeSemitones(pBendRange->load());
     if (pVoiceMode != nullptr) router.setVoiceMode((int) std::lround(pVoiceMode->load()));
     router.process(midi, *active);
-
-    // Apply any queued structural rebuild FIRST, then stream live param deltas on
-    // top — otherwise a rebuild (carrying slightly older values) can land after and
-    // clobber a fresh edit (e.g. an envelope change), which never gets re-sent.
-    active->flushPending();
 
     // Stream any changed automatable macros to AMY (RT-safe, no allocation).
     streamMacrosToBackend();
