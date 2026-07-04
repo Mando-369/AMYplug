@@ -67,4 +67,13 @@ inline CoarseFineDetune fixedHzToCoarseFineDetune(double hz)
     splitFineDetune((lg - r.coarse) * 100.0, r.fine, r.detune);
     return r;
 }
+
+// Key Velocity Sensitivity (0..7) -> AMY amp `vel` coef. AMY's amp works out to
+// amp = velocity^coef, so coef 1.0 is already a LINEAR velocity response. We scale by
+// kVelSensMax (< 1) for a gentler, more DX7-like feel: at max KVS a soft note stays
+// audible (velocity^0.5) instead of dropping off steeply, which also avoids the
+// fast-attack "onset delay" from AMY's amplitude floor.
+inline constexpr double kVelSensMax = 0.5;
+inline double velSensToCoef(int kvs) { return juce::jlimit(0, 7, kvs) / 7.0 * kVelSensMax; }
+inline int    coefToVelSens(double coef) { return juce::jlimit(0, 7, (int) std::lround(coef / kVelSensMax * 7.0)); }
 } // namespace amyplug::dx7osc

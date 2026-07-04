@@ -377,7 +377,7 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
         if (f.count('a'))
         {
             op.outputLevel = dx7osc::ampToOutputLevel(firstVal(f.at('a')));
-            op.velSens     = juce::jlimit(0, 7, juce::roundToInt(nthCoef(f.at('a'), 2) * 7.0f)); // amp vel coef
+            op.velSens     = dx7osc::coefToVelSens(nthCoef(f.at('a'), 2));   // amp vel coef -> KVS
         }
         if (f.count('A')) dx7env::breakpointsToEg(f.at('A'), op.egRate, op.egLevel);  // exact shape
         // Tremolo: amp mod-coef (index 5) != 0 means this op has AMS on; its value is

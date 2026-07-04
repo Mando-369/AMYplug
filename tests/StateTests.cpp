@@ -236,8 +236,8 @@ TEST_CASE("FM Velocity Sensitivity emits the amp vel coef (KVS/7)", "[state][fm]
     m.synths[0].fm.ops[1].outputLevel = 99;
     m.synths[0].fm.ops[1].velSens = 0;         // no velocity -> vel coef 0
     const auto w = m.toWireMessages();
-    // Amp coefs [const,note,vel,eg0,eg1,mod]: vel = KVS/7.
-    REQUIRE(anyContains(w, "v2w0a2.0000,0,1.0000,1,0,0.0000"));   // op1: KVS 7 -> vel 1.0
+    // Amp coefs [const,note,vel,eg0,eg1,mod]: vel = velSensToCoef(KVS) = KVS/7 * 0.5.
+    REQUIRE(anyContains(w, "v2w0a2.0000,0,0.5000,1,0,0.0000"));   // op1: KVS 7 -> vel 0.5 (gentle max)
     REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0,0.0000"));   // op2: KVS 0 -> vel 0
 }
 

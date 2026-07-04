@@ -784,7 +784,7 @@ void AmyPlugProcessor::streamFmParams()
             {
                 mFmOutLevel[i].last = lvl; mFmVelLast[i] = vs;
                 const double amp = dx7osc::outputLevelToAmp((int) std::lround(lvl));
-                const double vel = juce::jlimit(0, 7, (int) std::lround(vs)) / 7.0;
+                const double vel = dx7osc::velSensToCoef((int) std::lround(vs));
                 char b[80]; std::snprintf(b, sizeof b, "i1v%da%g,0,%g,1,0,%g",
                                           osc, amp, vel, (double) tremForOp(i));
                 active->streamWire(b, (int) std::strlen(b));

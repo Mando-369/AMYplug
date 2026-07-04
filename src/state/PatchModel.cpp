@@ -163,7 +163,7 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
         // = 1 (the operator's own bp0 env is the modulation depth over time); mod = the
         // LFO tremolo depth when AMS > 0 (mod_source = osc 1). Env = the DX7 4R/4L EG.
         const float amp  = (float) amyplug::dx7osc::outputLevelToAmp(op.outputLevel);
-        const float vel  = juce::jlimit(0, 7, op.velSens) / 7.0f;
+        const float vel  = (float) amyplug::dx7osc::velSensToCoef(op.velSens);
         const float trem = (op.ampModSens > 0) ? ampLfo : 0.0f;
         const juce::String env = amyplug::dx7env::egToBreakpoints(op.egRate, op.egLevel);
         out.emplace_back((pre + "v" + juce::String(osc) + "w0"
