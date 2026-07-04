@@ -46,17 +46,14 @@ AmyPlugProcessor::AmyPlugProcessor()
                       params::id::unisonVoices }) // unison count changes the osc count → rebuild
         state.addParameterListener(id, this);
     // FM operator freq MODE: ratio<->fixed swaps the wire field (I vs f), so rebuild.
-    // AMS gates the LFO tremolo (an amp-coef restructure) and Velocity Sensitivity bakes
-    // the amp vel coef — both are STRUCTURAL: we rebuild and let AMY apply each note's
-    // velocity at note-on, instead of rewriting a live voice's amp coefs mid-note (that
-    // hit AMY's revive path, disturbed the operator envelope, and never cleanly restored
-    // when set back to 0). Coarse/Fine/Detune and Output Level are NOT structural — they
-    // stream live (ratio/Hz and amp const updates), so automation/fuzz can't storm rebuild.
+    // AMS gates the LFO tremolo (an amp-coef restructure), so it's STRUCTURAL (rebuild).
+    // Coarse/Fine/Detune, Output Level and Velocity Sensitivity are NOT structural — they
+    // stream live (ratio/Hz and amp-const updates; Vel scales the operator level per the
+    // note-on velocity in streamFmParams), so adjusting them never drops audio.
     for (int op = 1; op <= PatchModel::kFmOps; ++op)
     {
         state.addParameterListener(params::id::fmOp(op, "fixed"),  this);
         state.addParameterListener(params::id::fmOp(op, "ams"),    this);
-        state.addParameterListener(params::id::fmOp(op, "vel"),    this);
     }
     // NOTE: unisonDetune is deliberately NOT structural — it only re-tunes existing
     // oscillators, which streamAnalogParams does live (no rebuild → no dropout).
