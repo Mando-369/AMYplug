@@ -10,6 +10,7 @@
 #include "state/PatchLibrary.h"
 #include "state/Parameters.h"
 #include <memory>
+#include <mutex>
 #include <cmath>
 
 namespace amyplug
@@ -90,6 +91,13 @@ private:
 
     juce::AudioProcessorValueTreeState state;
     PatchModel   model;
+    // Serializes every access to `model` (a std::vector-backed struct). It is touched
+    // only OFF the audio thread — the message thread (handleAsyncUpdate, editor) and
+    // the host thread (get/setStateInformation) both sync/rebuild from it, and
+    // pluginval's "Parameter thread safety" test drives those concurrently. The audio
+    // thread reads param atomics (never `model`), so this lock is RT-safe. Recursive
+    // because the model-touching methods nest (setState -> rebuild -> syncModel).
+    std::recursive_mutex modelMutex;
     PatchLibrary patchLib;
     NoteRouter   router;
 

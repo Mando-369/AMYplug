@@ -333,6 +333,7 @@ void AmyPlugProcessor::requestPanic()
 
 void AmyPlugProcessor::sendPatchToHardware()
 {
+    std::lock_guard<std::recursive_mutex> lk(modelMutex);
     syncModelFromParams();                              // capture live params
     if (auto* hw = hardwareBackend()) hw->rebuildFrom(model);
 }
@@ -382,6 +383,7 @@ void AmyPlugProcessor::takeOverSoftwareEngine()
 void AmyPlugProcessor::rebuildEngineFromModel()
 {
     // Off audio-thread. Sync APVTS -> model, then project the model onto the backend.
+    std::lock_guard<std::recursive_mutex> lk(modelMutex);
     syncModelFromParams();
     // The rebuild resets AMY's voices; ask the audio thread to flush the note tracker
     // to match (avoids phantom held notes across a switch).
@@ -397,6 +399,7 @@ void AmyPlugProcessor::rebuildEngineFromModel()
 
 void AmyPlugProcessor::syncModelFromParams()
 {
+    std::lock_guard<std::recursive_mutex> lk(modelMutex);
     if (model.synths.empty()) model.synths.push_back({});
     auto& s = model.synths[0];                       // M2: single synth (channel 1)
     if (auto* p = state.getRawParameterValue(params::id::patchA))    s.patchNumber = (int) p->load();
@@ -864,6 +867,7 @@ void AmyPlugProcessor::handleAsyncUpdate()
 
 void AmyPlugProcessor::saveUserPatch(const juce::String& name)
 {
+    std::lock_guard<std::recursive_mutex> lk(modelMutex);
     syncModelFromParams();          // capture the live preset into the model
     patchLib.save(name, model);
 }
@@ -1007,6 +1011,7 @@ bool AmyPlugProcessor::loadFactoryPatchIntoEditor(int patchNumber)
     if (patchNumber < 0 || patchNumber >= kBuiltinPatchCount) return false;
     const juce::String wire { kBuiltinPatchCommands[patchNumber] };
 
+    std::lock_guard<std::recursive_mutex> lk(modelMutex);
     syncModelFromParams();                       // capture current state (FX, etc.)
     if (model.synths.empty()) model.synths.push_back({});
     auto& s = model.synths[0];
@@ -1046,7 +1051,9 @@ void AmyPlugProcessor::parameterChanged(const juce::String&, float)
 void AmyPlugProcessor::getStateInformation(juce::MemoryBlock& dest)
 {
     // Make the model reflect the live parameter values, then persist BOTH the
-    // APVTS and the PatchModel so recall is complete.
+    // APVTS and the PatchModel so recall is complete. Locked: the host may call this
+    // concurrently with a message-thread rebuild (both touch `model`).
+    std::lock_guard<std::recursive_mutex> lk(modelMutex);
     syncModelFromParams();
     juce::ValueTree root { "AMYplugState" };
     root.appendChild(state.copyState(), nullptr);
@@ -1061,6 +1068,7 @@ void AmyPlugProcessor::setStateInformation(const void* data, int size)
 {
     if (auto xml = getXmlFromBinary(data, size))
     {
+        std::lock_guard<std::recursive_mutex> lk(modelMutex);   // fromValueTree + rebuild touch `model`
         auto root = juce::ValueTree::fromXml(*xml);
         if (auto apvtsTree = root.getChildWithName(state.state.getType()); apvtsTree.isValid())
             state.replaceState(apvtsTree);
