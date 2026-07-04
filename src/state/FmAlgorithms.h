@@ -88,4 +88,15 @@ inline AlgoTopology algorithmTopology(int a)
 
 // Carrier operator numbers (DX7 1..6, ascending) for algorithm a (1..32).
 inline juce::Array<int> algorithmCarriers(int a) { return algorithmTopology(a).carriers; }
+
+// Is DX7 operator `op` (1..6) a carrier in algorithm `a` (1..32)? Allocation-free
+// (direct table lookup — kAlgoFlags is ordered OP6..OP1, carrier = writes no bus),
+// so it is safe to call on the audio thread. A carrier's amplitude is loudness; a
+// modulator's amplitude is its FM index — velocity must only touch carriers, or it
+// randomly reshapes the timbre (AMY zeros modulator velocity for the same reason).
+inline bool isCarrier(int a, int op)
+{
+    a = juce::jlimit(1, 32, a); op = juce::jlimit(1, 6, op);
+    return (kAlgoFlags[a - 1][6 - op] & 0x03) == 0;
+}
 } // namespace amyplug::fm

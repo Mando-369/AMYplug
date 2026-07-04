@@ -227,18 +227,19 @@ TEST_CASE("FM LFO: vibrato/tremolo emit as mod-coefs on the ALGO/operator oscs",
     REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0,0.0000"));   // AMS off -> mod-coef 0
 }
 
-TEST_CASE("FM Velocity Sensitivity emits the amp vel coef (KVS/7)", "[state][fm]")
+TEST_CASE("FM Velocity Sensitivity: amp vel coef on CARRIERS only", "[state][fm]")
 {
     PatchModel m;
     m.synths[0].engine = PatchModel::Engine::FM;
-    m.synths[0].fm.ops[0].outputLevel = 99;   // amp 2.0
-    m.synths[0].fm.ops[0].velSens = 7;         // full velocity -> vel coef 1.0
-    m.synths[0].fm.ops[1].outputLevel = 99;
-    m.synths[0].fm.ops[1].velSens = 0;         // no velocity -> vel coef 0
+    m.synths[0].fm.algorithm = 1;              // algo 1 carriers = OP1, OP3; OP2 modulates OP1
+    m.synths[0].fm.ops[0].outputLevel = 99;    // OP1 (carrier)   amp 2.0
+    m.synths[0].fm.ops[0].velSens = 7;         //   KVS 7 -> vel coef 0.5
+    m.synths[0].fm.ops[1].outputLevel = 99;    // OP2 (modulator)
+    m.synths[0].fm.ops[1].velSens = 7;         //   KVS 7 but modulator -> vel MUST be 0
     const auto w = m.toWireMessages();
-    // Amp coefs [const,note,vel,eg0,eg1,mod]: vel = velSensToCoef(KVS) = KVS/7 * 0.5.
-    REQUIRE(anyContains(w, "v2w0a2.0000,0,0.5000,1,0,0.0000"));   // op1: KVS 7 -> vel 0.5 (gentle max)
-    REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0,0.0000"));   // op2: KVS 0 -> vel 0
+    // vel = velSensToCoef(KVS) = KVS/7 * 0.5, but only for carriers.
+    REQUIRE(anyContains(w, "v2w0a2.0000,0,0.5000,1,0,0.0000"));   // OP1 carrier: vel 0.5
+    REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0,0.0000"));   // OP2 modulator: vel 0 despite KVS 7
 }
 
 TEST_CASE("FM Transpose is applied as a note shift, NOT baked into the wire", "[state][fm]")

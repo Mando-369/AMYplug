@@ -9,6 +9,7 @@
 #include "state/Dx7Envelope.h"   // DX7 4R/4L EG -> AMY breakpoints (RT-safe C variant)
 #include "state/Dx7Lfo.h"        // DX7 LFO -> AMY (speed/wave/PMS+PMD/AMD conversions)
 #include "state/Dx7Osc.h"        // DX7 operator freq/level -> AMY (Coarse/Fine/Detune/Level)
+#include "state/FmAlgorithms.h"  // carrier/modulator topology (velocity only on carriers)
 #include "BuiltinPatchNames.h"   // kBuiltinPatchCommands / kBuiltinPatchCount (generated)
 #include <cstdio>
 #include <cstring>
@@ -751,6 +752,9 @@ void AmyPlugProcessor::streamFmParams()
         }
     }
 
+    // Algorithm (choice 0..31 -> 1..32) — decides carriers, which gate velocity below.
+    const int fmAlgo = pAlgorithm ? (int) std::lround(pAlgorithm->load(std::memory_order_relaxed)) + 1 : 1;
+
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const int osc = i + 2;   // operators live on oscs 2..7 (osc 1 is the LFO)
@@ -784,7 +788,9 @@ void AmyPlugProcessor::streamFmParams()
             {
                 mFmOutLevel[i].last = lvl; mFmVelLast[i] = vs;
                 const double amp = dx7osc::outputLevelToAmp((int) std::lround(lvl));
-                const double vel = dx7osc::velSensToCoef((int) std::lround(vs));
+                // Velocity only on carriers (a modulator's amp is its FM index).
+                const double vel = fm::isCarrier(fmAlgo, i + 1)
+                                     ? dx7osc::velSensToCoef((int) std::lround(vs)) : 0.0;
                 char b[80]; std::snprintf(b, sizeof b, "i1v%da%g,0,%g,1,0,%g",
                                           osc, amp, vel, (double) tremForOp(i));
                 active->streamWire(b, (int) std::strlen(b));
