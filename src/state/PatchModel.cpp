@@ -157,15 +157,17 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
             ? ("f" + F((float) juce::jlimit(0.001, 20000.0,
                         amyplug::dx7osc::coarseFineFixedHz(op.coarse, op.fine, op.detune))) + ",0")
             : ("I" + F((float) amyplug::dx7osc::coarseFineRatio(op.coarse, op.fine, op.detune)));
-        // amp const = Output Level -> amplitude (fm.py: 2*dx7level_to_linear, max 2.0),
-        // eg0 COEF 1: the operator's own bp0 env is the modulation depth over time.
-        // mod-coef (index 5) = the LFO tremolo depth when this op's AMS > 0 (mod_source
-        // = osc 1, the LFO). The env is the DX7 4R/4L EG in AMY's exact breakpoint form.
+        // amp coefs [const,note,vel,eg0,eg1,mod]: const = Output Level -> amplitude
+        // (fm.py: 2*dx7level_to_linear, max 2.0); vel = Key Velocity Sensitivity/7 (AMY
+        // scales amp by velocity in the log domain, coef 1 = full 60 dB, 0 = none); eg0
+        // = 1 (the operator's own bp0 env is the modulation depth over time); mod = the
+        // LFO tremolo depth when AMS > 0 (mod_source = osc 1). Env = the DX7 4R/4L EG.
         const float amp  = (float) amyplug::dx7osc::outputLevelToAmp(op.outputLevel);
+        const float vel  = juce::jlimit(0, 7, op.velSens) / 7.0f;
         const float trem = (op.ampModSens > 0) ? ampLfo : 0.0f;
         const juce::String env = amyplug::dx7env::egToBreakpoints(op.egRate, op.egLevel);
         out.emplace_back((pre + "v" + juce::String(osc) + "w0"
-            + "a" + F(amp) + ",0,0,1,0," + F(trem)
+            + "a" + F(amp) + ",0," + F(vel) + ",1,0," + F(trem)
             + freq
             + "A" + env
             + "L1"                          // mod_source = osc 1 (the LFO)
@@ -374,6 +376,7 @@ juce::ValueTree PatchModel::toValueTree() const
             }
             sv.setProperty(k + "fixed", op.fixedFreq, nullptr);
             sv.setProperty(k + "ams", op.ampModSens, nullptr);
+            sv.setProperty(k + "vel", op.velSens, nullptr);
         }
         juce::String joined;
         for (const auto& c : s.oscWireCommands) joined << juce::String(c) << "\n";
@@ -482,6 +485,7 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
             }
             op.fixedFreq   = (bool)  sv.getProperty(k + "fixed", op.fixedFreq);
             op.ampModSens  = (int)   sv.getProperty(k + "ams", op.ampModSens);
+            op.velSens     = (int)   sv.getProperty(k + "vel", op.velSens);
         }
         auto lines = juce::StringArray::fromLines(sv.getProperty("oscWire").toString());
         for (auto& l : lines) if (l.isNotEmpty()) s.oscWireCommands.push_back(l.toStdString());

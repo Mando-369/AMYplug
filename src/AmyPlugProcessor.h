@@ -172,6 +172,8 @@ private:
     std::atomic<float>* pFmFine[PatchModel::kFmOps]   = {};
     std::atomic<float>* pFmDetune[PatchModel::kFmOps] = {};
     float mFmFreqLast[PatchModel::kFmOps] { };   // last streamed ratio/Hz per op (change detect)
+    float mFmVelLast[PatchModel::kFmOps] { };    // last streamed Vel Sens per op (amp coef re-emit)
+    std::atomic<float>* pFmVel[PatchModel::kFmOps] = {};   // Key Velocity Sensitivity 0..7
     Macro mFmOutLevel[PatchModel::kFmOps];
     Macro mFmEgRate[PatchModel::kFmOps][4], mFmEgLevel[PatchModel::kFmOps][4];  // DX7 4R/4L EG
     std::atomic<float>* pFmFixed[PatchModel::kFmOps]   = {};    // fixed-frequency mode (structural)

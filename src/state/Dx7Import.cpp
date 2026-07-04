@@ -23,6 +23,7 @@ struct RawOp
     int fine    = 0;
     int detune  = 7;                // 0..14, centre 7
     int ams     = 0;                // amplitude mod sensitivity 0..3
+    int kvs     = 0;                // key velocity sensitivity 0..7
 };
 struct RawVoice
 {
@@ -54,6 +55,7 @@ PatchModel::FmOp convertOp(const RawOp& op)
     o.fine        = juce::jlimit(0, 99, op.fine);
     o.detune      = juce::jlimit(0, 14, op.detune);
     o.outputLevel = juce::jlimit(0, 99, op.outputLevel);
+    o.velSens     = juce::jlimit(0, 7, op.kvs);
 
     // Store the DX7 4-rate/4-level EG natively (lossless — no ADSR reduction).
     for (int i = 0; i < 4; ++i)
@@ -114,7 +116,8 @@ RawVoice unpackPacked(const std::uint8_t* d)
         RawOp& op = v.ops[k];
         for (int i = 0; i < 4; ++i) { op.rates[i] = o[i]; op.levels[i] = o[4 + i]; }
         op.detune      = (o[12] >> 3) & 0x0F;    // byte12: bits0-2 rate-scale, bits3-6 detune
-        op.ams         =  o[13] & 0x03;          // byte13: bits0-1 AMS, bits2-4 key-vel-sens
+        op.ams         =  o[13]       & 0x03;    // byte13: bits0-1 AMS, bits2-4 KVS
+        op.kvs         = (o[13] >> 2) & 0x07;
         op.outputLevel = o[14];
         op.mode        =  o[15] & 0x01;          // byte15: bit0 mode, bits1-5 coarse
         op.coarse      = (o[15] >> 1) & 0x1F;
@@ -146,6 +149,7 @@ RawVoice readVced(const std::uint8_t* d)
         RawOp& op = v.ops[k];
         for (int i = 0; i < 4; ++i) { op.rates[i] = o[i]; op.levels[i] = o[4 + i]; }
         op.ams         = o[14];                  // amplitude mod sensitivity 0..3
+        op.kvs         = o[15];                  // key velocity sensitivity 0..7
         op.outputLevel = o[16];
         op.mode        = o[17];                  // 0 = ratio, 1 = fixed
         op.coarse      = o[18];
@@ -370,7 +374,11 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out)
         else if (f.count('I'))
             cfd = dx7osc::ratioToCoarseFineDetune(juce::jmax(0.0f, f.at('I').getFloatValue()));
         op.coarse = cfd.coarse; op.fine = cfd.fine; op.detune = cfd.detune;
-        if (f.count('a')) op.outputLevel = dx7osc::ampToOutputLevel(firstVal(f.at('a')));
+        if (f.count('a'))
+        {
+            op.outputLevel = dx7osc::ampToOutputLevel(firstVal(f.at('a')));
+            op.velSens     = juce::jlimit(0, 7, juce::roundToInt(nthCoef(f.at('a'), 2) * 7.0f)); // amp vel coef
+        }
         if (f.count('A')) dx7env::breakpointsToEg(f.at('A'), op.egRate, op.egLevel);  // exact shape
         // Tremolo: amp mod-coef (index 5) != 0 means this op has AMS on; its value is
         // the shared LFO amp depth (amp_lfo_amp) -> AMD. fm.py only stores AMS on/off.

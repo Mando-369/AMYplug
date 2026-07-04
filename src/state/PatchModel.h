@@ -81,6 +81,10 @@ public:
         // Amplitude Modulation Sensitivity (DX7 0..3): how much the LFO's amp-mod
         // depth (AMD) reaches this operator. fm.py treats it as on/off (>0 = on).
         int   ampModSens = 0;
+        // Key Velocity Sensitivity (DX7 0..7): how much note velocity scales this
+        // operator's level. Emitted as AMY's amp `vel` coef = velSens/7 (0 = none,
+        // 7 = AMY's full default). Full-velocity notes are unchanged for any value.
+        int   velSens = 0;
     };
     static constexpr int kFmOps = 6;
     struct FmParams

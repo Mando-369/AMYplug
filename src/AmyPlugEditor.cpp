@@ -652,6 +652,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         p.addKnob(params::id::fmOp(op, "fine"),   "Fine");     // DX7 Fine 0..99
         p.addKnob(params::id::fmOp(op, "detune"), "Detune");   // DX7 Detune 0..14 (7 = centre)
         p.addKnob(params::id::fmOp(op, "outlvl"), "Level");    // DX7 Output Level 0..99
+        p.addKnob(params::id::fmOp(op, "vel"),    "Vel");      // DX7 Key Velocity Sensitivity 0..7
     };
     addOsc(fmOscA, 1); addOsc(fmOscA, 4);
     addOsc(fmOscB, 2); addOsc(fmOscB, 5);

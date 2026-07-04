@@ -32,6 +32,7 @@ std::vector<std::uint8_t> buildVced()
         const int opNum = 6 - k;              // OP6..OP1
         std::uint8_t* o = d.data() + k * 21;
         o[4] = o[5] = o[6] = o[7] = 99;       // EG levels all 99
+        o[15] = 5;                            // key velocity sensitivity
         o[16] = 99;                           // output level
         o[17] = 0;                            // mode = ratio
         o[18] = (std::uint8_t) opNum;         // coarse
@@ -54,6 +55,7 @@ std::vector<std::uint8_t> buildPackedVoice()
         std::uint8_t* o = d.data() + k * 17;
         o[4] = o[5] = o[6] = o[7] = 99;       // EG levels all 99
         o[12] = (std::uint8_t) (7 << 3);      // detune 7 in bits 3-6
+        o[13] = (std::uint8_t) (5 << 2);      // KVS 5 in bits2-4 (AMS bits0-1 = 0)
         o[14] = 99;                           // output level
         o[15] = (std::uint8_t) ((opNum << 1) | 0);  // coarse in bits1-5, mode bit0 = ratio
         o[16] = 0;                            // fine
@@ -95,6 +97,7 @@ TEST_CASE("DX7 VCED single voice converts with correct operator order", "[dx7]")
     REQUIRE(v.fm.ops[0].fine == 0);
     REQUIRE(v.fm.ops[0].detune == 7);
     REQUIRE(v.fm.ops[0].outputLevel == 99);
+    REQUIRE(v.fm.ops[0].velSens == 5);
 }
 
 TEST_CASE("DX7 packed bulk decodes identically to VCED (bit-offset cross-check)", "[dx7]")
@@ -116,6 +119,7 @@ TEST_CASE("DX7 packed bulk decodes identically to VCED (bit-offset cross-check)"
         REQUIRE(b.fm.ops[i].fine        == a.fm.ops[i].fine);
         REQUIRE(b.fm.ops[i].detune      == a.fm.ops[i].detune);
         REQUIRE(b.fm.ops[i].outputLevel == a.fm.ops[i].outputLevel);
+        REQUIRE(b.fm.ops[i].velSens     == a.fm.ops[i].velSens);
     }
 }
 

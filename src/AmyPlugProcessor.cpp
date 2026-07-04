@@ -146,6 +146,7 @@ void AmyPlugProcessor::cacheParamPointers()
         }
         pFmFixed[i]     = state.getRawParameterValue(params::id::fmOp(op, "fixed"));
         pFmAms[i]       = state.getRawParameterValue(params::id::fmOp(op, "ams"));
+        pFmVel[i]       = state.getRawParameterValue(params::id::fmOp(op, "vel"));
     }
     pFmLfoSpeed = state.getRawParameterValue(params::id::fmLfoSpeed);
     pFmLfoWave  = state.getRawParameterValue(params::id::fmLfoWave);
@@ -497,6 +498,7 @@ void AmyPlugProcessor::syncModelFromParams()
         }
         if (pFmFixed[i])     op.fixedFreq = pFmFixed[i]->load() > 0.5f;
         if (pFmAms[i])       op.ampModSens = (int) std::lround(pFmAms[i]->load());  // choice 0..3
+        if (pFmVel[i])       op.velSens    = (int) std::lround(pFmVel[i]->load());  // 0..7
     }
 }
 
@@ -769,18 +771,20 @@ void AmyPlugProcessor::streamFmParams()
                 active->streamWire(b, (int) std::strlen(b));
             }
         }
-        // Output Level -> amp const (DX7 0..99 -> amp via Dx7Osc), eg0 COEF 1 (the env
-        // carries the depth), mod-coef = the LFO tremolo depth (preserved so a level
-        // sweep doesn't wipe it). Matches emitFm.
-        if (mFmOutLevel[i].ptr != nullptr)
+        // Amp coefs [const,note,vel,eg0,eg1,mod]: const = Output Level -> amp, vel =
+        // Key Velocity Sensitivity/7, eg0 = 1 (env carries depth), mod = LFO tremolo.
+        // Re-emit the whole coef list when Output Level OR Vel Sens changes (both stream;
+        // the tremolo term is preserved so a sweep doesn't wipe it). Matches emitFm.
         {
-            const float v = mFmOutLevel[i].ptr->load(std::memory_order_relaxed);
-            if (v != mFmOutLevel[i].last)
+            const float lvl = mFmOutLevel[i].ptr ? mFmOutLevel[i].ptr->load(std::memory_order_relaxed) : 0.0f;
+            const float vs  = pFmVel[i] ? pFmVel[i]->load(std::memory_order_relaxed) : 0.0f;
+            if (mFmOutLevel[i].ptr && (lvl != mFmOutLevel[i].last || vs != mFmVelLast[i]))
             {
-                mFmOutLevel[i].last = v;
-                const double amp = dx7osc::outputLevelToAmp((int) std::lround(v));
-                char b[80]; std::snprintf(b, sizeof b, "i1v%da%g,0,0,1,0,%g",
-                                          osc, amp, (double) tremForOp(i));
+                mFmOutLevel[i].last = lvl; mFmVelLast[i] = vs;
+                const double amp = dx7osc::outputLevelToAmp((int) std::lround(lvl));
+                const double vel = juce::jlimit(0, 7, (int) std::lround(vs)) / 7.0;
+                char b[80]; std::snprintf(b, sizeof b, "i1v%da%g,0,%g,1,0,%g",
+                                          osc, amp, vel, (double) tremForOp(i));
                 active->streamWire(b, (int) std::strlen(b));
             }
         }
@@ -1002,6 +1006,7 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
         }
         setP(params::id::fmOp(op, "fixed"),   o.fixedFreq ? 1.0f : 0.0f);
         setP(params::id::fmOp(op, "ams"),     (float) o.ampModSens);   // choice index 0..3
+        setP(params::id::fmOp(op, "vel"),     (float) o.velSens);      // 0..7
     }
 }
 

@@ -339,6 +339,9 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add(std::make_unique<AudioParameterChoice>(
             ParameterID { id::fmOp(op, "ams"), 1 }, "Op " + juce::String(op) + " AMS",
             juce::StringArray { "Off", "1", "2", "3" }, 0));
+        // Key Velocity Sensitivity (0..7): velocity scales this operator's level.
+        layout.add(std::make_unique<AudioParameterInt>(
+            ParameterID { id::fmOp(op, "vel"), 1 }, "Op " + juce::String(op) + " Vel Sens", 0, 7, 0));
     }
 
     return layout;
