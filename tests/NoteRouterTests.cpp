@@ -117,6 +117,18 @@ TEST_CASE("Notes route to the single AMY synth regardless of MIDI channel", "[ro
     REQUIRE_FALSE(r.anyActive());
 }
 
+TEST_CASE("Note transpose shifts the AMY note but tracks the original", "[router]")
+{
+    NoteRouter r; MockBackend b;
+    r.setNoteTranspose(12);                     // +1 octave
+    r.process(noteOnBuf(1, 60, 100), b);        // play C4 -> AMY should get 72
+    REQUIRE(b.netOnFor(1, 72) == 1);            // transposed note reached the backend
+    REQUIRE(b.netOnFor(1, 60) == 0);            // NOT the untransposed note
+    r.process(noteOffBuf(1, 60), b);            // note-off (untransposed) must release 72
+    REQUIRE(b.totalNetOn() == 0);
+    REQUIRE_FALSE(r.anyActive());
+}
+
 TEST_CASE("Mono mode: last-note priority with retrigger", "[router][mono]")
 {
     NoteRouter r; MockBackend b; r.setVoiceMode(1);    // Mono

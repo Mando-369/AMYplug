@@ -53,7 +53,7 @@ void NoteRouter::noteOn(int ch, int note, float vel, IAmyBackend& b)
     if (voiceMode != 0) { monoOn(ch, note, vel, b); return; }
     if (! active[ch - 1].test(note)) { active[ch - 1].set(note); ++activeCount; }
     heldBySustain[ch - 1].reset(note);
-    b.noteOn(kAmySynth, note, vel);                        // single synth; tracking stays per-channel
+    b.noteOn(kAmySynth, note + noteTranspose, vel);        // single synth; tracking stays per-channel
 }
 
 void NoteRouter::noteOff(int ch, int note, IAmyBackend& b)
@@ -61,7 +61,7 @@ void NoteRouter::noteOff(int ch, int note, IAmyBackend& b)
     if (sustainDown[ch - 1]) { heldBySustain[ch - 1].set(note); return; } // defer
     if (voiceMode != 0) { monoOff(ch, note, b); return; }
     if (active[ch - 1].test(note)) { active[ch - 1].reset(note); --activeCount; }
-    b.noteOff(kAmySynth, note);
+    b.noteOff(kAmySynth, note + noteTranspose);
 }
 
 // --- Mono / Legato (last-note priority) ------------------------------------
@@ -82,10 +82,10 @@ void NoteRouter::monoSound(int ch, int note, float vel, IAmyBackend& b)
     // retriggering (so the envelope sustains across the slur).
     if (! legato && prev >= 0)
     {
-        b.noteOff(kAmySynth, prev);
+        b.noteOff(kAmySynth, prev + noteTranspose);
         if (active[ch - 1].test(prev)) { active[ch - 1].reset(prev); --activeCount; }
     }
-    b.noteOn(kAmySynth, note, vel);
+    b.noteOn(kAmySynth, note + noteTranspose, vel);
     if (prev >= 0 && prev != note && active[ch - 1].test(prev)) { active[ch - 1].reset(prev); --activeCount; }
     if (! active[ch - 1].test(note)) { active[ch - 1].set(note); ++activeCount; }
     sounding[ch - 1] = note;
@@ -109,7 +109,7 @@ void NoteRouter::monoOff(int ch, int note, IAmyBackend& b)
         monoSound(ch, heldStack[ch - 1][n - 1], heldVel[heldStack[ch - 1][n - 1]], b);  // resume newest held
     else
     {
-        b.noteOff(kAmySynth, note);
+        b.noteOff(kAmySynth, note + noteTranspose);
         if (active[ch - 1].test(note)) { active[ch - 1].reset(note); --activeCount; }
         sounding[ch - 1] = -1;
     }
@@ -124,7 +124,7 @@ void NoteRouter::allNotesOff(IAmyBackend* backend)
         // global all-notes-off ever misses (defensive).
         for (int ch = 0; ch < kNumChannels; ++ch)
             for (int n = 0; n < kNumNotes; ++n)
-                if (active[ch].test(n)) backend->noteOff(kAmySynth, n);
+                if (active[ch].test(n)) backend->noteOff(kAmySynth, n + noteTranspose);
     }
     for (auto& a : active)        a.reset();
     for (auto& h : heldBySustain) h.reset();

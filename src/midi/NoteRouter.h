@@ -55,6 +55,12 @@ public:
     // is truly monophonic — see AmyPlugProcessor::syncModelFromParams.)
     void setVoiceMode(int mode) { voiceMode = juce::jlimit(0, 2, mode); }
 
+    // Whole-voice transpose in semitones (DX7 Transpose): shifts the note we send to
+    // AMY, i.e. a keyboard transpose. Fixed-frequency operators ignore the note, so
+    // they stay put — exactly like the DX7. Note tracking stays on the untransposed
+    // note number (transpose is applied only at the AMY note-on/off).
+    void setNoteTranspose(int semitones) { noteTranspose = juce::jlimit(-48, 48, semitones); }
+
     bool anyActive() const { return activeCount > 0; }
 
 private:
@@ -76,6 +82,7 @@ private:
 
     // Mono/Legato note-priority state (per channel).
     int voiceMode = 0;
+    int noteTranspose = 0;   // semitone offset applied to the AMY note (DX7 Transpose)
     std::array<std::array<uint8_t, kNumNotes>, kNumChannels> heldStack {}; // order of held notes
     std::array<int, kNumChannels>  heldCount {};                            // depth of heldStack
     std::array<float, kNumNotes>   heldVel {};   // velocity per note (to resume)

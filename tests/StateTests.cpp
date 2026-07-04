@@ -220,8 +220,8 @@ TEST_CASE("FM LFO: vibrato/tremolo emit as mod-coefs on the ALGO/operator oscs",
     REQUIRE(anyContains(w, "v1w0"));           // LFO wave = AMY SINE
     REQUIRE(anyContains(w, "f6.1667"));        // LFO speed 37 -> 6.1667 Hz
     // ALGO freq coefs carry the vibrato depth in mod-coef slot (index 5):
-    // pitchLfoAmp(7, 50) = 0.6 * 1.7^6 * 50 / 1188 = 0.6095. (const 0.0000 = no transpose.)
-    REQUIRE(anyContains(w, "f0.0000,1,0,1,0,0.6095"));
+    // pitchLfoAmp(7, 50) = 0.6 * 1.7^6 * 50 / 1188 = 0.6095. (const 0 always.)
+    REQUIRE(anyContains(w, "f0,1,0,1,0,0.6095"));
     // Operator 1 (osc 2) has tremolo in its amp mod-coef; operator 2 (osc 3) does not.
     REQUIRE(anyContains(w, "v2w0a2.0000,0,0.0000,1,0,1.0000"));   // level 99 -> amp 2.0; amp_lfo_amp(99) = 1.0
     REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0,0.0000"));   // AMS off -> mod-coef 0
@@ -241,18 +241,20 @@ TEST_CASE("FM Velocity Sensitivity emits the amp vel coef (KVS/7)", "[state][fm]
     REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0,0.0000"));   // op2: KVS 0 -> vel 0
 }
 
-TEST_CASE("FM Transpose: whole-voice semitone offset in the ALGO freq const", "[state][fm]")
+TEST_CASE("FM Transpose is applied as a note shift, NOT baked into the wire", "[state][fm]")
 {
+    // AMY reads the freq const as an absolute Hz (logfreq_of_freq), so transpose must
+    // NOT go there — it is a keyboard transpose applied in NoteRouter. The ALGO freq
+    // const stays 0 for any transpose value.
     PatchModel m;
     m.synths[0].engine = PatchModel::Engine::FM;
-    m.synths[0].fm.transpose = 12;                 // +1 octave = +1.0 in log2
-    REQUIRE(anyContains(m.toWireMessages(), "f1.0000,1,0,1,0,0"));   // const=1, note 1, EG0 1
-
-    m.synths[0].fm.transpose = -7;                 // -7 semitones = -0.5833 octaves
-    REQUIRE(anyContains(m.toWireMessages(), "f-0.5833,1,0,1,0,0"));
-
-    m.synths[0].fm.transpose = 0;                  // no shift -> const 0.0000 (default)
-    REQUIRE(anyContains(m.toWireMessages(), "f0.0000,1,0,1,0,0"));
+    for (int t : { -12, 0, 7, 24 })
+    {
+        m.synths[0].fm.transpose = t;
+        const auto w = m.toWireMessages();
+        REQUIRE(anyContains(w, "f0,1,0,1,0,0"));                 // const always 0
+        REQUIRE_FALSE(anyContains(w, "f0.0833"));               // never a fractional-Hz const
+    }
 }
 
 TEST_CASE("FM algorithm carriers match the known DX7 topologies", "[state][fm]")

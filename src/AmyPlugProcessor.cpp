@@ -42,7 +42,6 @@ AmyPlugProcessor::AmyPlugProcessor()
                       params::id::fmAlgorithm,    // FM: routing change → rebuild
                       params::id::fmLfoSpeed, params::id::fmLfoWave,   // FM LFO wiring → rebuild
                       params::id::fmLfoPmd,   params::id::fmLfoAmd, params::id::fmLfoPms,
-                      params::id::fmTranspose,    // FM: whole-voice transpose -> rebuild
                       params::id::voiceMode,      // Mono/Legato rebuild the synth to 1 voice
                       params::id::unisonVoices }) // unison count changes the osc count → rebuild
         state.addParameterListener(id, this);
@@ -280,6 +279,9 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     // note/CC events (deterministic offs) — now targeting the freshly-rebuilt synth.
     if (pBendRange != nullptr) router.setPitchBendRangeSemitones(pBendRange->load());
     if (pVoiceMode != nullptr) router.setVoiceMode((int) std::lround(pVoiceMode->load()));
+    // DX7 Transpose = a keyboard transpose (FM only); shifts the AMY note, so fixed ops
+    // stay put and ratio ops move. 0 for the other engines.
+    router.setNoteTranspose(engineIsFM() && pFmTranspose ? (int) std::lround(pFmTranspose->load()) : 0);
     router.process(midi, *active);
 
     // Stream any changed automatable macros to AMY (RT-safe, no allocation).
