@@ -172,8 +172,14 @@ private:
     std::atomic<float>* pFmFine[PatchModel::kFmOps]   = {};
     std::atomic<float>* pFmDetune[PatchModel::kFmOps] = {};
     float mFmFreqLast[PatchModel::kFmOps] { };   // last streamed ratio/Hz per op (change detect)
-    float mFmVelLast[PatchModel::kFmOps] { };    // last streamed Vel Sens per op (amp coef re-emit)
-    std::atomic<float>* pFmVel[PatchModel::kFmOps] = {};   // Key Velocity Sensitivity 0..7
+    // Key Velocity Sensitivity 0..7. Streamed live (not baked): velocity scales the
+    // operator LEVEL at note-on (DX7 KVS). fmNoteVel = the latest note-on velocity that
+    // the operator amps are scaled by; broadcast across voices, so it's per-note-on
+    // (monophonic-exact; polyphonic uses the most recent hit).
+    std::atomic<float>* pFmVel[PatchModel::kFmOps] = {};
+    float mFmVelLast[PatchModel::kFmOps] { };    // last streamed velSens per op (change detect)
+    std::atomic<float> fmNoteVel { 1.0f };       // latest MIDI note-on velocity (0..1)
+    float mFmNoteVelLast = 1.0f;                  // last velocity the op amps were scaled by
     Macro mFmOutLevel[PatchModel::kFmOps];
     Macro mFmEgRate[PatchModel::kFmOps][4], mFmEgLevel[PatchModel::kFmOps][4];  // DX7 4R/4L EG
     std::atomic<float>* pFmFixed[PatchModel::kFmOps]   = {};    // fixed-frequency mode (structural)

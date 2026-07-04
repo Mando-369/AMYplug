@@ -4,9 +4,13 @@
 // ValueTree round-trip is lossless and that toWireMessages() rebuilds a fresh AMY
 // in the right order: reset -> patch -> macros -> global FX.
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include "state/PatchModel.h"
 #include "state/FmAlgorithms.h"
+#include "state/Dx7Osc.h"
 #include <algorithm>
+
+using Catch::Approx;
 
 using namespace amyplug;
 
@@ -227,19 +231,38 @@ TEST_CASE("FM LFO: vibrato/tremolo emit as mod-coefs on the ALGO/operator oscs",
     REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0,0.0000"));   // AMS off -> mod-coef 0
 }
 
-TEST_CASE("FM Velocity Sensitivity: amp vel coef on CARRIERS only", "[state][fm]")
+TEST_CASE("FM Velocity Sensitivity: operators bake NO COEF_VEL (velocity scales level live)", "[state][fm]")
 {
     PatchModel m;
     m.synths[0].engine = PatchModel::Engine::FM;
-    m.synths[0].fm.algorithm = 1;              // algo 1 carriers = OP1, OP3; OP2 modulates OP1
-    m.synths[0].fm.ops[0].outputLevel = 99;    // OP1 (carrier)   amp 2.0
-    m.synths[0].fm.ops[0].velSens = 7;         //   KVS 7 -> vel coef 0.5
-    m.synths[0].fm.ops[1].outputLevel = 99;    // OP2 (modulator)
-    m.synths[0].fm.ops[1].velSens = 7;         //   KVS 7 but modulator -> vel MUST be 0
+    m.synths[0].fm.algorithm = 1;
+    m.synths[0].fm.ops[0].outputLevel = 99;    // OP1 carrier
+    m.synths[0].fm.ops[0].velSens = 7;
+    m.synths[0].fm.ops[1].outputLevel = 99;    // OP2 modulator
+    m.synths[0].fm.ops[1].velSens = 7;
     const auto w = m.toWireMessages();
-    // vel = velSensToCoef(KVS) = KVS/7 * 0.5, but only for carriers.
-    REQUIRE(anyContains(w, "v2w0a2.0000,0,0.5000,1,0,0.0000"));   // OP1 carrier: vel 0.5
-    REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0,0.0000"));   // OP2 modulator: vel 0 despite KVS 7
+    // AMY never feeds note velocity to operator oscs, so a COEF_VEL there would zero the
+    // op. Velocity is DX7-style: it scales the operator LEVEL at note-on (streamFmParams,
+    // via velLevelScale), NOT baked into the wire. So the emitted amp coef's vel slot is
+    // 0 for every operator; the const is the full-level amp (2.0).
+    REQUIRE(anyContains(w, "v2w0a2.0000,0,0.0000,1,0"));   // OP1: vel slot 0
+    REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0"));   // OP2: vel slot 0
+}
+
+TEST_CASE("velLevelScale: DX7 KVS scales operator level by velocity", "[state][fm][dx7]")
+{
+    using amyplug::dx7osc::velLevelScale;
+    // velSens 0 -> no velocity effect: full level at any velocity.
+    REQUIRE(velLevelScale(1.0, 0) == Approx(1.0));
+    REQUIRE(velLevelScale(0.1, 0) == Approx(1.0));
+    // Any velSens: full velocity -> full level (1.0), so hard hits match the patch level.
+    REQUIRE(velLevelScale(1.0, 7) == Approx(1.0));
+    REQUIRE(velLevelScale(1.0, 4) == Approx(1.0));
+    // Higher velSens -> a soft note is attenuated more (louder-with-velocity / brighter).
+    REQUIRE(velLevelScale(0.2, 7) < velLevelScale(0.2, 3));
+    REQUIRE(velLevelScale(0.2, 3) < velLevelScale(0.2, 0));
+    // Never fully zero at max KVS (keeps a floor so soft notes still speak).
+    REQUIRE(velLevelScale(0.0, 7) > 0.0);
 }
 
 TEST_CASE("FM Transpose is applied as a note shift, NOT baked into the wire", "[state][fm]")

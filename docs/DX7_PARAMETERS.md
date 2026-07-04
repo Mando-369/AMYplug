@@ -137,13 +137,42 @@ AMY implements FM as the `ALGO` wave type. The DX7 → AMY correspondences:
   time-deltas + target values, so the DX7 rate/level pairs must be converted, not copied.
 - **Feedback** → AMY `feedback` (`b`) on the ALGO osc.
 - **LFO (speed/PMD/AMD/wave)** → a modulator osc + `mod_source`, or pitch/amp CtrlCoefs.
-- **Keyboard level/rate scaling, velocity sens** → CtrlCoefs (`note`, `vel`) and rate scaling.
+- **Keyboard level/rate scaling** → CtrlCoefs (`note`) and rate scaling.
 
 AMY ships a reference converter, `amy/fm.py`, that turns any DX7 `.syx` patch into an
-AMY patch — the canonical source of truth for the exact mapping and EG conversion math.
-Your `src/state/Dx7Import.cpp` should mirror its logic. The 155-parameter layout above
+AMY patch. `src/state/Dx7Import.cpp` mirrors its logic. The 155-parameter layout above
 is exactly what you parse from a `.syx` (packed 128-byte-per-voice bulk format; see the
 Dexed spec for the bit-packing).
+
+### Two deliberate deviations from `fm.py` (more DX7-accurate)
+
+`fm.py` is a convenient reference, not a faithful DX7. Two places where mirroring it
+sounds wrong, so AMYplug corrects them (see `src/state/Dx7Osc.h`):
+
+- **Detune magnitude (param 21).** `fm.py` maps detune as `(detune-7)/8` *percent* of the
+  ratio — about **±15 cents** at the extremes. The real DX7 detune is only **±2 cents**
+  (DX7II manual; [Dexed issue #88](https://github.com/asb2m10/dexed/issues/88)). Mirroring
+  `fm.py` turns micro-detuned patches (e.g. DX7 BRASS 2, which uses the full detune range
+  across four equal-level carriers) into a fast, deep amplitude *beating* the hardware
+  never had. `coarseFineRatio` applies the real ±2-cent curve as a proportional
+  `2^(cents/1200)` factor; `splitFineDetune` (factory-patch decode) attributes sub-percent
+  ratio offsets to *detune*, not a whole *fine* step, so the corrected curve actually
+  applies. Result: a slow, lush chorus (~0.4 Hz) instead of a ~2.5 Hz pump.
+
+- **Key Velocity Sensitivity (param 16).** `fm.py` reads `keyvelsens` and **discards it** —
+  AMY's DX7 patches have no per-operator velocity. And AMY can't add it via the amp `vel`
+  CtrlCoef: in the `ALGO` engine every operator is an `algo_source` that never receives the
+  note velocity (`amy.c` skips `SYNTH_IS_ALGO_SOURCE` for velocity), so a `vel` coef there
+  drives the operator's `amp_combine` to **zero** — the op vanishes even at full velocity.
+  Instead AMYplug does what the DX7 actually does: **velocity scales the operator's output
+  level** at note-on (`velLevelScale` + `AmyPlugProcessor::streamFmParams`, driven by the
+  captured note-on velocity). On a carrier that's loudness; on a **modulator** it's FM index
+  → **brightness** (harder = brighter), the core FM velocity feel. `velSens 0` is a no-op,
+  so factory/default patches are unchanged. (Carrier *loudness*-with-velocity also comes for
+  free per-voice via the ALGO controller's `a1,0,1,..` coef, which `render_algo` uses to
+  scale the carriers.) **Limitation:** the operator level is broadcast across a synth's
+  voices, so velocity→brightness is per-note-on — monophonically exact; polyphonically it
+  follows the most recent hit. Carrier loudness stays per-voice.
 
 ---
 

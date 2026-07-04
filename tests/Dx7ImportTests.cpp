@@ -173,10 +173,16 @@ TEST_CASE("Factory wire decode maps a DX7 preset onto OP1..6", "[dx7][factory]")
     { return (float) dx7osc::coarseFineRatio(o.coarse, o.fine, o.detune); };
     auto ampOf   = [] (const PatchModel::FmOp& o)
     { return (float) dx7osc::outputLevelToAmp(o.outputLevel); };
-    REQUIRE(ratioOf(fm.ops[0]) == Approx(0.504375f).margin(1e-3));   // osc7
+    // Detune decodes to the true DX7 value — osc7's 0.504375 fm.py ratio is coarse 0 +
+    // detune 14 (max), not a fine step — and re-emits with the real +/-2-cent curve, so
+    // the operator sits at a gentle 0.5006 instead of fm.py's inflated 0.504375. That is
+    // the fix that stops detuned patches (BRASS 2) beating like a fast tremolo.
+    REQUIRE(fm.ops[0].coarse == 0);
+    REQUIRE(fm.ops[0].detune == 14);
+    REQUIRE(ratioOf(fm.ops[0]) == Approx(0.500578f).margin(1e-4));   // osc7, +2 cents
     REQUIRE(ampOf(fm.ops[0])   == Approx(1.834008f).margin(0.02));
-    REQUIRE(ratioOf(fm.ops[2]) == Approx(0.9975f).margin(1e-3));     // osc5
-    REQUIRE(ratioOf(fm.ops[3]) == Approx(1.0f).margin(1e-3));        // osc4
+    REQUIRE(ratioOf(fm.ops[2]) == Approx(0.99967f).margin(1e-3));    // osc5 (coarse 1, detune 5)
+    REQUIRE(ratioOf(fm.ops[3]) == Approx(1.0f).margin(1e-3));        // osc4 (detune centre)
     REQUIRE(ratioOf(fm.ops[5]) == Approx(1.0f).margin(1e-3));        // osc2
     REQUIRE(ampOf(fm.ops[5])   == Approx(0.458502f).margin(0.02));
 

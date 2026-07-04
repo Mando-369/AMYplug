@@ -17,19 +17,28 @@
 
 namespace amyplug::dx7osc
 {
+// Detune -> a proportional pitch offset in cents. The REAL DX7 detune spans only
+// +/-2 cents over its +/-7 range (DX7II manual; Dexed issue #88), applied relative to
+// the note pitch. AMY's fm.py instead uses (detune-7)/8 *percent* (~+/-15 cents), which
+// turns micro-detuned patches (DX7 BRASS 2 uses the full range) into a heavy amplitude
+// beating the hardware never had. We model the hardware: a gentle chorus, not a pump.
+inline constexpr double kDetuneCentsMax = 2.0;   // cents at detune = +/-7 (real DX7)
+inline double detuneCents(int detune) { return (detune - 7) * (kDetuneCentsMax / 7.0); }
+
 // coarse_fine_ratio: harmonic ratio. Coarse 0 is the 0.5 sub-octave special case;
-// Fine is percent, Detune nudges by (detune-7)/8 percent.
+// Fine is percent; Detune is the real DX7 +/-2 cents (see above).
 inline double coarseFineRatio(int coarse, int fine, int detune)
 {
     coarse &= 31;
     const double c = (coarse == 0) ? 0.5 : (double) coarse;
-    return c * (1.0 + (fine + (detune - 7) / 8.0) / 100.0);
+    return c * (1.0 + fine / 100.0) * std::pow(2.0, detuneCents(detune) / 1200.0);
 }
-// coarse_fine_fixed_hz: fixed-frequency operators, 10^(coarse + cents). Coarse 0..3.
+// coarse_fine_fixed_hz: fixed-frequency operators, 10^(coarse + fine%) with the same
+// real-DX7 +/-2-cent detune applied on top. Coarse 0..3.
 inline double coarseFineFixedHz(int coarse, int fine, int detune)
 {
     coarse &= 3;
-    return std::pow(10.0, coarse + (fine + (detune - 7) / 8.0) / 100.0);
+    return std::pow(10.0, coarse + fine / 100.0) * std::pow(2.0, detuneCents(detune) / 1200.0);
 }
 // Output Level 0..99 -> operator amplitude (modulation index). fm.py uses
 // 2 * dx7level_to_linear(level); level 99 -> 2.0 (the DX7 maximum).
@@ -45,11 +54,16 @@ inline int    ampToOutputLevel(double amp)
 //     were produced from integer coarse/fine/detune, so the search recovers them.
 struct CoarseFineDetune { int coarse, fine, detune; };
 
-// Split the fractional "x = fine + (detune-7)/8" (percent units) into fine + detune.
+// Split the fractional "x = fine + (detune-7)/8" (percent units, as AMY's fm.py bakes
+// factory patches) into fine + detune. A DX7's micro-detuning belongs in DETUNE, not a
+// whole fine step, so keep fine at 0 whenever the offset fits detune's +/-7/8 percent
+// reach; fine takes only the surplus. (Recovers e.g. BRASS 2's detune 14 rather than
+// mis-reading it as fine 1 + detune 6 — which would dodge the real +/-2-cent curve.)
 inline void splitFineDetune(double x, int& fine, int& detune)
 {
-    fine   = juce::jlimit(0, 99, (int) std::lround(x));
-    detune = juce::jlimit(0, 14, (int) std::lround((x - fine) * 8.0) + 7);
+    const double f = (std::abs(x) <= 0.875 + 1e-6) ? 0.0 : std::round(x);
+    fine   = juce::jlimit(0, 99, (int) f);
+    detune = juce::jlimit(0, 14, (int) std::lround((x - f) * 8.0) + 7);
 }
 inline CoarseFineDetune ratioToCoarseFineDetune(double ratio)
 {
@@ -68,11 +82,26 @@ inline CoarseFineDetune fixedHzToCoarseFineDetune(double hz)
     return r;
 }
 
-// Key Velocity Sensitivity (0..7) -> AMY amp `vel` coef. AMY's amp works out to
-// amp = velocity^coef, so coef 1.0 is already a LINEAR velocity response. We scale by
-// kVelSensMax (< 1) for a gentler, more DX7-like feel: at max KVS a soft note stays
-// audible (velocity^0.5) instead of dropping off steeply, which also avoids the
-// fast-attack "onset delay" from AMY's amplitude floor.
+// Key Velocity Sensitivity (0..7) done the DX7 way: velocity scales the operator's
+// OUTPUT LEVEL (its amp constant), applied by us at note-on. We do NOT use AMY's amp
+// COEF_VEL — in the ALGO engine every operator is an algo_source that never receives
+// the note velocity (its COEF_VEL input is 0), so a velocity coef there collapses the
+// operator to silence. Scaling the level instead is exactly the DX7 model: on a carrier
+// it is loudness, on a MODULATOR it is FM index -> brightness (harder = brighter), the
+// core DX7 velocity feel. Returns a 0..1 multiplier on the baked operator amp:
+//   velSens 0 -> 1.0 always (no velocity effect); 7 -> full range (soft notes attenuate
+//   toward kVelFloor). velNorm is the MIDI velocity 0..1.
+inline constexpr double kVelFloor = 0.06;   // a max-KVS soft note keeps a little level
+inline double velLevelScale(double velNorm, int velSens)
+{
+    const double depth = juce::jlimit(0, 7, velSens) / 7.0;         // 0..1
+    velNorm = juce::jlimit(0.0, 1.0, velNorm);
+    const double soft = kVelFloor + (1.0 - kVelFloor) * velNorm;    // velNorm 0 -> floor
+    return (1.0 - depth) * 1.0 + depth * soft;                      // velSens 0 -> 1.0
+}
+
+// (Legacy: KVS <-> AMY amp vel coef. Kept only so decoding an old/edge patch that put a
+// value in COEF_VEL still round-trips a velSens number; emit no longer uses COEF_VEL.)
 inline constexpr double kVelSensMax = 0.5;
 inline double velSensToCoef(int kvs) { return juce::jlimit(0, 7, kvs) / 7.0 * kVelSensMax; }
 inline int    coefToVelSens(double coef) { return juce::jlimit(0, 7, (int) std::lround(coef / kVelSensMax * 7.0)); }

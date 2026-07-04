@@ -4,7 +4,6 @@
 #include "Dx7Envelope.h"
 #include "Dx7Lfo.h"
 #include "Dx7Osc.h"
-#include "FmAlgorithms.h"
 #include <cmath>
 
 namespace amyplug
@@ -164,10 +163,13 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
         // = 1 (the operator's own bp0 env is the modulation depth over time); mod = the
         // LFO tremolo depth when AMS > 0 (mod_source = osc 1). Env = the DX7 4R/4L EG.
         const float amp  = (float) amyplug::dx7osc::outputLevelToAmp(op.outputLevel);
-        // Velocity only on CARRIERS. A modulator's amp is its FM index, so velocity
-        // there reshapes the timbre chaotically (and AMY zeros modulator velocity).
-        const float vel  = amyplug::fm::isCarrier(fm.algorithm, i + 1)
-                             ? (float) amyplug::dx7osc::velSensToCoef(op.velSens) : 0.0f;
+        // NO velocity coef on operators. In AMY's ALGO engine every operator is an
+        // algo_source with velocity 0 (only the ALGO controller receives note velocity),
+        // so ANY vel coef here drives amp_combine to ~0 and the operator vanishes even at
+        // full velocity. Velocity reaches the voice through the controller osc below
+        // (a1,0,1,..) which scales the carriers -> velocity = loudness. Per-operator
+        // velocity (DX7 KVS/brightness) is not reachable this way; fm.py drops it too.
+        const float vel  = 0.0f;
         const float trem = (op.ampModSens > 0) ? ampLfo : 0.0f;
         const juce::String env = amyplug::dx7env::egToBreakpoints(op.egRate, op.egLevel);
         out.emplace_back((pre + "v" + juce::String(osc) + "w0"

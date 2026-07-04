@@ -9,7 +9,6 @@
 #include "state/Dx7Envelope.h"   // DX7 4R/4L EG -> AMY breakpoints (RT-safe C variant)
 #include "state/Dx7Lfo.h"        // DX7 LFO -> AMY (speed/wave/PMS+PMD/AMD conversions)
 #include "state/Dx7Osc.h"        // DX7 operator freq/level -> AMY (Coarse/Fine/Detune/Level)
-#include "state/FmAlgorithms.h"  // carrier/modulator topology (velocity only on carriers)
 #include "BuiltinPatchNames.h"   // kBuiltinPatchCommands / kBuiltinPatchCount (generated)
 #include <cstdio>
 #include <cstring>
@@ -47,13 +46,17 @@ AmyPlugProcessor::AmyPlugProcessor()
                       params::id::unisonVoices }) // unison count changes the osc count → rebuild
         state.addParameterListener(id, this);
     // FM operator freq MODE: ratio<->fixed swaps the wire field (I vs f), so rebuild.
-    // AMS gates the LFO tremolo (an amp-coef restructure), also structural. Coarse/
-    // Fine/Detune and Output Level are NOT structural — they stream live (ratio/Hz and
-    // amp coef updates), so rapid automation/fuzz doesn't storm the rebuild path.
+    // AMS gates the LFO tremolo (an amp-coef restructure) and Velocity Sensitivity bakes
+    // the amp vel coef — both are STRUCTURAL: we rebuild and let AMY apply each note's
+    // velocity at note-on, instead of rewriting a live voice's amp coefs mid-note (that
+    // hit AMY's revive path, disturbed the operator envelope, and never cleanly restored
+    // when set back to 0). Coarse/Fine/Detune and Output Level are NOT structural — they
+    // stream live (ratio/Hz and amp const updates), so automation/fuzz can't storm rebuild.
     for (int op = 1; op <= PatchModel::kFmOps; ++op)
     {
         state.addParameterListener(params::id::fmOp(op, "fixed"),  this);
         state.addParameterListener(params::id::fmOp(op, "ams"),    this);
+        state.addParameterListener(params::id::fmOp(op, "vel"),    this);
     }
     // NOTE: unisonDetune is deliberately NOT structural — it only re-tunes existing
     // oscillators, which streamAnalogParams does live (no rebuild → no dropout).
@@ -283,6 +286,15 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     // DX7 Transpose = a keyboard transpose (FM only); shifts the AMY note, so fixed ops
     // stay put and ratio ops move. 0 for the other engines.
     router.setNoteTranspose(engineIsFM() && pFmTranspose ? (int) std::lround(pFmTranspose->load()) : 0);
+    // FM velocity (DX7 KVS): capture this block's note-on velocity so streamFmParams
+    // scales the operator levels by it — velocity into brightness/loudness per operator.
+    if (engineIsFM())
+        for (const auto meta : midi)
+        {
+            const auto msg = meta.getMessage();
+            if (msg.isNoteOn())
+                fmNoteVel.store(msg.getFloatVelocity(), std::memory_order_relaxed);
+        }
     router.process(midi, *active);
 
     // Stream any changed automatable macros to AMY (RT-safe, no allocation).
@@ -752,8 +764,8 @@ void AmyPlugProcessor::streamFmParams()
         }
     }
 
-    // Algorithm (choice 0..31 -> 1..32) — decides carriers, which gate velocity below.
-    const int fmAlgo = pAlgorithm ? (int) std::lround(pAlgorithm->load(std::memory_order_relaxed)) + 1 : 1;
+    // Latest note-on velocity — the operator levels are scaled by it (DX7 KVS below).
+    const float noteVel = fmNoteVel.load(std::memory_order_relaxed);
 
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
@@ -777,27 +789,29 @@ void AmyPlugProcessor::streamFmParams()
                 active->streamWire(b, (int) std::strlen(b));
             }
         }
-        // Amp coefs [const,note,vel,eg0,eg1,mod]: const = Output Level -> amp, vel =
-        // Key Velocity Sensitivity/7, eg0 = 1 (env carries depth), mod = LFO tremolo.
-        // Re-emit the whole coef list when Output Level OR Vel Sens changes (both stream;
-        // the tremolo term is preserved so a sweep doesn't wipe it). Matches emitFm.
+        // Amp coefs [const,note,vel,eg0,eg1,mod]: const = Output Level scaled by
+        // velocity (DX7 KVS), vel = 0 (AMY never feeds velocity to operator oscs, so a
+        // COEF_VEL there would zero the op), eg0 = 1 (env carries depth), mod = LFO
+        // tremolo. Re-emit when Output Level, Vel Sens, OR the note-on velocity changes,
+        // so playing harder scales the operator level -> carriers louder, modulators
+        // brighter. velLevelScale(velSens 0) = 1.0, so default patches are unaffected.
         {
             const float lvl = mFmOutLevel[i].ptr ? mFmOutLevel[i].ptr->load(std::memory_order_relaxed) : 0.0f;
             const float vs  = pFmVel[i] ? pFmVel[i]->load(std::memory_order_relaxed) : 0.0f;
-            if (mFmOutLevel[i].ptr && (lvl != mFmOutLevel[i].last || vs != mFmVelLast[i]))
+            if (mFmOutLevel[i].ptr && (lvl != mFmOutLevel[i].last || vs != mFmVelLast[i]
+                                       || noteVel != mFmNoteVelLast))
             {
                 mFmOutLevel[i].last = lvl; mFmVelLast[i] = vs;
-                const double amp = dx7osc::outputLevelToAmp((int) std::lround(lvl));
-                // Velocity only on carriers (a modulator's amp is its FM index).
-                const double vel = fm::isCarrier(fmAlgo, i + 1)
-                                     ? dx7osc::velSensToCoef((int) std::lround(vs)) : 0.0;
-                char b[80]; std::snprintf(b, sizeof b, "i1v%da%g,0,%g,1,0,%g",
-                                          osc, amp, vel, (double) tremForOp(i));
+                const double base = dx7osc::outputLevelToAmp((int) std::lround(lvl));
+                const double amp  = base * dx7osc::velLevelScale(noteVel, (int) std::lround(vs));
+                char b[80]; std::snprintf(b, sizeof b, "i1v%da%g,0,0,1,0,%g",
+                                          osc, amp, (double) tremForOp(i));
                 active->streamWire(b, (int) std::strlen(b));
             }
         }
         env(osc, i);   // per-op DX7 4R/4L envelope
     }
+    mFmNoteVelLast = noteVel;   // one velocity drives all ops; update after the loop
 
     // No master amp env on the ALGO osc — the operator envelopes own the voice.
     streamGlobalFx();   // master volume + reverb/chorus/echo/EQ
