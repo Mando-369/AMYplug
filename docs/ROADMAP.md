@@ -71,8 +71,19 @@ strictness 7 (incl. editor/automation tests) PASS.
 - **Glide gated to Mono/Legato.** AMY portamento glides a *reused* voice, so in Poly
   (fresh voice per note) it does nothing and could sweep each note in from a stale
   pitch. `toWireMessages` + `streamGlobalFx` now force portamento 0 in Poly.
-- Note: AMY doesn't hard-retrigger a reused voice, so Mono and Legato both slur an
-  overlapping legato line (Mono still re-attacks across a gap).
+- **Legato slur + glide fixed ✅ (2026-07-05, from user recordings).** Legato was
+  wrongly *re-attacking* (the filter/amp env restarted on every slurred note) and glide
+  never worked. Two causes: (1) NoteRouter sent a full note-on for slurred notes, and any
+  velocity>0 note-on resets AMY's envelope clock → re-attack. New `IAmyBackend::changeNote`
+  sends a **pitch-only** `i<synth>n<note>` (no velocity), so the reused voice moves pitch
+  with the envelope still running (true legato); only the first note of a phrase strikes.
+  (2) portamento was streamed as synth-level `i<ch>m<ms>`, which on the analog voice lands
+  on osc0 (the VCF sink), not the audio oscs that make the pitch — so it never glided. Glide
+  now streams to the **audio oscs** `i<ch>v<osc>m<ms>` (osc 2..1+4U) for the analog engine
+  (FM/factory keep base `i1m`; osc0 is their note-follower). Mono and Poly are unchanged.
+  Regression tests: NoteRouter legato → `changeNote`; StateTests → per-osc `i1v2m200`;
+  EngineRenderTests renders a real analog voice and proves the pitch-only change holds the
+  envelope (no re-attack) and glides mid-slide.
 - **Detune dropout fixed:** `unisonDetune` is no longer structural — it only re-tunes
   existing oscillators, which streams live (no rebuild → no dropout on a sweep).
   `unisonVoices` (the osc *count*) still rebuilds, so changing the count still blips;

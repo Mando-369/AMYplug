@@ -286,12 +286,26 @@ std::vector<std::string> PatchModel::toWireMessages() const
     //    expose are pinned to AMY's defaults (xover 3000, chorus maxdelay 320,
     //    echo maxdelay 743).
     auto F = [] (float v) { return juce::String(v, 4); };
-    // Portamento (glide) — AMY-native, broadcast to every synth. Only bites in
-    // Mono/Legato (voiceMode != 0): AMY glides a reused voice, so Poly can't glide.
+    // Portamento (glide). AMY glides a REUSED voice, so it only bites in Mono/Legato
+    // (voiceMode != 0). Crucially it must sit on the oscs that GENERATE THE PITCH: on
+    // the analog engine those are the audio oscs (2..), NOT the synth base (osc0 = the
+    // VCF sink) — a synth-level `i<ch>m` would set portamento on the filter and the note
+    // would never glide. FM's base osc IS the note-follower, so the synth-level form
+    // works there (and for factory presets).
     const int glideMs = (voiceMode != 0) ? juce::roundToInt(glide) : 0;
     for (const auto& s : synths)
-    { WireBuilder w; w.synth(s.channel).raw(("m" + juce::String(glideMs)).toStdString().c_str());
-      out.emplace_back(w.str()); }
+    {
+        if (s.engine == Engine::Analog)
+        {
+            const int numAudio = 4 * juce::jlimit(1, 4, unisonVoices);   // OSC A/B/C/D x unison
+            for (int osc = 2; osc < 2 + numAudio; ++osc)
+            { WireBuilder w; w.synth(s.channel).raw(("v" + juce::String(osc) + "m" + juce::String(glideMs)).toStdString().c_str());
+              out.emplace_back(w.str()); }
+        }
+        else
+        { WireBuilder w; w.synth(s.channel).raw(("m" + juce::String(glideMs)).toStdString().c_str());
+          out.emplace_back(w.str()); }
+    }
     { WireBuilder w; w.volume(masterVolume); out.emplace_back(w.str()); }
     { WireBuilder w; w.raw("h").raw((F(reverb) + "," + F(reverbSize) + "," + F(reverbDamping) + ",3000").toStdString().c_str());
       out.emplace_back(w.str()); }

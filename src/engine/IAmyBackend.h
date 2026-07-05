@@ -45,6 +45,10 @@ public:
     // Convenience note-control used by NoteRouter (RT-safe).
     virtual void noteOn(int synth, int midiNote, float velocity) = 0;
     virtual void noteOff(int synth, int midiNote) = 0;
+    // Legato pitch change: move the sounding voice to a new note WITHOUT a note-on
+    // (no velocity), so the envelope keeps running (no re-attack) and the pitch glides
+    // when portamento is set. NoteRouter uses this for the Legato voice mode.
+    virtual void changeNote(int synth, int midiNote) = 0;
     virtual void allNotesOff() = 0;          // the anti-hang hammer
     // Pitch offset in OCTAVES (AMY's `s` unit). NoteRouter already applied the
     // pitch-bend range, so 0.1667 == +2 semitones. (HardwareBackend approximates.)

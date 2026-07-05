@@ -114,6 +114,51 @@ void amyBoot()
 }
 } // namespace
 
+TEST_CASE("Legato pitch-only change glides without retriggering (analog)", "[engine][mono]")
+{
+    auto estFreq = [] (int blocks) {
+        long cross = 0, n = 0; double prev = 0;
+        for (int b = 0; b < blocks; ++b) { const int16_t* buf = amy_simple_fill_buffer();
+            for (int i = 0; i < AMY_BLOCK_SIZE; ++i) { double s = (double) buf[2 * i] / 32768.0;
+                if (n > 0 && (s >= 0) != (prev >= 0)) ++cross; prev = s; ++n; } }
+        return (cross / 2.0) / ((double) n / (double) AMY_SAMPLE_RATE);
+    };
+    // The real emitAnalog voice, but with a SLOW amp attack so a retrigger is visible.
+    auto build = [] (bool porta) {
+        amyBoot();
+        amy_add_message((char*) "i1iv1in6Z");
+        amy_add_message((char*) "i1v0w20G1F2500,0,,,0,0R0.7a1,0,1,0,0,0B0,1,600,0.3,400,0c2L1Z");
+        amy_add_message((char*) "i1v1w4f4,0Z");
+        amy_add_message((char*) "i1v2w3a0.7,0,0,0.7,0,0A400,1,4000,0.8,300,0d0.5,,,,,0f440,,,,,0c3L1Z");
+        amy_add_message((char*) "i1v3w1a0.5,0,0,0.5,0,0A400,1,4000,0.8,300,0d0.5,,,,,0f440,,,,,0c4L1Z");
+        amy_add_message((char*) "i1v4w3a0,0,0,0,0,0A400,1,4000,0.8,300,0d0.5,,,,,0f440,,,,,0c5L1Z");
+        amy_add_message((char*) "i1v5w3a0,0,0,0,0,0A400,1,4000,0.8,300,0d0.5,,,,,0f440,,,,,0L1Z");
+        if (porta) for (int osc = 2; osc <= 5; ++osc)
+        { char m[16]; std::snprintf(m, sizeof m, "i1v%dm200Z", osc); amy_add_message(m); }
+    };
+    auto early = [] { renderStats(3); return renderStats(6).rms; };
+
+    build(false); amy_add_message((char*) "i1n48l1Z"); renderStats(160);
+    amy_add_message((char*) "i1n60l1Z");                          // full note-on -> retrigger
+    const double noteOnEarly = early();
+    amy_stop();
+
+    build(false); amy_add_message((char*) "i1n48l1Z"); renderStats(160);
+    amy_add_message((char*) "i1n60Z");                            // pitch-only (legato) -> no retrigger
+    const double pitchOnlyEarly = early();
+    amy_stop();
+
+    build(true); amy_add_message((char*) "i1n48l1Z"); renderStats(160);
+    amy_add_message((char*) "i1n60Z"); renderStats(4);           // pitch-only + portamento -> glide
+    const double glideFreq = estFreq(8);
+    amy_stop();
+
+    INFO("noteOnEarly=" << noteOnEarly << " pitchOnlyEarly=" << pitchOnlyEarly << " glideFreq=" << glideFreq);
+    REQUIRE(pitchOnlyEarly > noteOnEarly * 1.5);   // legato holds the envelope; note-on re-attacks
+    REQUIRE(glideFreq > 145.0);                    // partway between note 48 (~130 Hz)...
+    REQUIRE(glideFreq < 245.0);                    // ...and note 60 (~262 Hz): it's gliding, not jumping
+}
+
 TEST_CASE("FM operators reset phase per note-on -> note-to-note consistency", "[engine][fm]")
 {
     // A detuned 2-op FM voice. Play note 60, capture the attack waveform; note-off;

@@ -161,19 +161,24 @@ TEST_CASE("Mono mode: releasing a held (non-top) note keeps the top sounding", "
     REQUIRE_FALSE(r.anyActive());
 }
 
-TEST_CASE("Legato mode: overlapping notes do not retrigger", "[router][legato]")
+TEST_CASE("Legato mode: overlapping notes glide (changeNote), do not retrigger", "[router][legato]")
 {
     NoteRouter r; MockBackend b; r.setVoiceMode(2);    // Legato
-    r.process(noteOnBuf(1, 60, 100), b);
-    r.process(noteOnBuf(1, 64, 100), b);               // slur: no note-off between them
-    REQUIRE(b.notes.size() == 2);
-    REQUIRE((b.notes[0].on && b.notes[0].note == 60));
-    REQUIRE((b.notes[1].on && b.notes[1].note == 64)); // straight to 64, no off60 (AMY glides/reuses)
+    r.process(noteOnBuf(1, 60, 100), b);               // first note of the phrase = real note-on (attack)
+    r.process(noteOnBuf(1, 64, 100), b);               // slur: pitch-only change, NO note-on (no re-attack)
 
-    r.process(noteOffBuf(1, 64), b);                   // resume 60 (still no retrigger off)
+    REQUIRE(b.notes.size() == 1);                      // only the initial note-on was struck
+    REQUIRE((b.notes[0].on && b.notes[0].note == 60));
+    REQUIRE(b.pitchChanges.size() == 1);               // the slur is a changeNote (glide, envelope held)
+    REQUIRE(b.pitchChanges[0].second == 64);
+
+    r.process(noteOffBuf(1, 64), b);                   // release 64 -> glide back to the held 60 (changeNote)
+    REQUIRE(b.pitchChanges.size() == 2);
+    REQUIRE(b.pitchChanges[1].second == 60);
+
     r.process(noteOffBuf(1, 60), b);                   // final release frees the voice
     REQUIRE_FALSE(r.anyActive());                      // nothing left sounding -> no hang
-    REQUIRE_FALSE(b.notes.back().on);                  // last event is a note-off
+    REQUIRE_FALSE(b.notes.back().on);                  // last note event is a note-off
 }
 
 TEST_CASE("Mono mode still flushes on panic / transport stop (no hang)", "[router][mono]")

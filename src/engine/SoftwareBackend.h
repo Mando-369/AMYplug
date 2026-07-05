@@ -40,6 +40,7 @@ public:
     void flushPending() override { drainWireFifo(); }   // apply queued rebuild first
     void noteOn(int synth, int midiNote, float velocity) override;  // audio thread
     void noteOff(int synth, int midiNote) override;                 // audio thread
+    void changeNote(int synth, int midiNote) override;              // audio thread (legato)
     void allNotesOff() override;                                    // audio thread
     void pitchBend(float semitonesNormalized) override;            // audio thread
     void sustainPedal(int synth, bool down) override;             // audio thread

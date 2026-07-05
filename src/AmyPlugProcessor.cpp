@@ -879,17 +879,26 @@ void AmyPlugProcessor::streamGlobalFx()
     };
     one(mVolume, "V%g");
     // Glide (portamento) only bites in Mono/Legato: AMY glides a REUSED voice, so in
-    // Poly (a fresh voice per note) it does nothing useful and can sweep each note in
-    // from a stale pitch. Force 0 in Poly.
+    // Poly (a fresh voice per note) it does nothing useful. Force 0 in Poly. It must
+    // sit on the pitch-generating oscs: on the analog engine those are the AUDIO oscs
+    // (2..), not the base osc0 (VCF); FM's base osc IS the note-follower (synth-level ok).
     if (mGlide.ptr != nullptr)
     {
-        const bool mono = pVoiceMode && (int) std::lround(pVoiceMode->load(std::memory_order_relaxed)) != 0;
-        const float g = mono ? mGlide.ptr->load(std::memory_order_relaxed) : 0.0f;
+        const bool glideOn = pVoiceMode && (int) std::lround(pVoiceMode->load(std::memory_order_relaxed)) != 0;
+        const float g = glideOn ? mGlide.ptr->load(std::memory_order_relaxed) : 0.0f;
         if (g != mGlide.last)
         {
             mGlide.last = g;
-            char b[32]; std::snprintf(b, sizeof b, "i1m%g", (double) g);
-            active->streamWire(b, (int) std::strlen(b));
+            if (engineIsAnalog())
+            {
+                const int U = pUnisonVoices ? juce::jlimit(1, 4, (int) std::lround(pUnisonVoices->load(std::memory_order_relaxed))) : 1;
+                for (int osc = 2; osc < 2 + 4 * U; ++osc)
+                { char b[32]; std::snprintf(b, sizeof b, "i1v%dm%g", osc, (double) g);
+                  active->streamWire(b, (int) std::strlen(b)); }
+            }
+            else
+            { char b[32]; std::snprintf(b, sizeof b, "i1m%g", (double) g);
+              active->streamWire(b, (int) std::strlen(b)); }
         }
     }
 

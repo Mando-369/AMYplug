@@ -16,6 +16,7 @@ public:
     struct NoteEvent { int synth; int note; float vel; bool on; };
 
     std::vector<NoteEvent>  notes;          // every noteOn/noteOff, in order
+    std::vector<std::pair<int, int>> pitchChanges;   // (synth, note) from changeNote (legato)
     std::vector<std::string> wires;          // sendWire payloads
     int   allNotesOffCount = 0;
     float lastPitchBend    = 0.0f;
@@ -47,6 +48,7 @@ public:
     void streamWire(const char* msg, int len) override  { wires.emplace_back(msg, (size_t) len); }
     void noteOn(int synth, int note, float vel) override { notes.push_back({ synth, note, vel, true }); }
     void noteOff(int synth, int note) override          { notes.push_back({ synth, note, 0.0f, false }); }
+    void changeNote(int synth, int note) override        { pitchChanges.emplace_back(synth, note); }
     void allNotesOff() override                          { ++allNotesOffCount; }
     void pitchBend(float v) override                     { lastPitchBend = v; ++pitchBendCount; }
     void sustainPedal(int synth, bool down) override     { sustainEvents.emplace_back(synth, down); }

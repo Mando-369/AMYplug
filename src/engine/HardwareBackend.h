@@ -33,6 +33,7 @@ public:
     void streamWire(const char* msg, int len) override;          // -> SysEx (audio thread)
     void noteOn(int synth, int midiNote, float velocity) override;
     void noteOff(int synth, int midiNote) override;
+    void changeNote(int synth, int midiNote) override;
     void allNotesOff() override;
     void pitchBend(float semitonesNormalized) override;
     void sustainPedal(int synth, bool down) override;

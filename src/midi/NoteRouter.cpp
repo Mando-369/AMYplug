@@ -78,14 +78,17 @@ void NoteRouter::monoSound(int ch, int note, float vel, IAmyBackend& b)
     const bool legato = (voiceMode == 2) && (sounding[ch - 1] >= 0);
     const int  prev   = sounding[ch - 1];
     // Mono retrigger: release the old note so its envelope restarts on the new one.
-    // Legato: leave it sounding — AMY reuses the single voice and glides without
-    // retriggering (so the envelope sustains across the slur).
+    // Legato: leave it sounding — move the reused voice to the new note WITHOUT a
+    // note-on (changeNote), so the envelope keeps running (no re-attack) and the pitch
+    // glides when portamento is set. A note-on here would reset the envelope clock and
+    // re-strike the filter/amp attack (the "legato retriggers" bug).
     if (! legato && prev >= 0)
     {
         b.noteOff(kAmySynth, prev + noteTranspose);
         if (active[ch - 1].test(prev)) { active[ch - 1].reset(prev); --activeCount; }
     }
-    b.noteOn(kAmySynth, note + noteTranspose, vel);
+    if (legato) b.changeNote(kAmySynth, note + noteTranspose);      // glide, no re-attack
+    else        b.noteOn(kAmySynth, note + noteTranspose, vel);
     if (prev >= 0 && prev != note && active[ch - 1].test(prev)) { active[ch - 1].reset(prev); --activeCount; }
     if (! active[ch - 1].test(note)) { active[ch - 1].set(note); ++activeCount; }
     sounding[ch - 1] = note;

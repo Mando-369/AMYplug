@@ -78,6 +78,14 @@ void HardwareBackend::noteOff(int synth, int midiNote)
     enqueue(juce::MidiMessage::noteOff(juce::jlimit(1, 16, synth), midiNote));
 }
 
+void HardwareBackend::changeNote(int synth, int midiNote)
+{
+    // Legato pitch change. MIDI has no "move pitch without re-attack", so send AMY's
+    // wire as SysEx: a note with no velocity glides the board's sounding voice.
+    WireBuilder w; w.synth(juce::jlimit(1, 16, synth)).note((float) midiNote);
+    sendWire(w.str(), w.size());
+}
+
 void HardwareBackend::allNotesOff()
 {
     // Both CC123 (all-notes-off, honours release) and CC120 (all-sound-off, kills

@@ -222,6 +222,15 @@ void SoftwareBackend::noteOff(int synth, int midiNote)
     amyAddNow(w.str());
 }
 
+void SoftwareBackend::changeNote(int synth, int midiNote)
+{
+    // Pitch only — NO velocity. AMY moves the sounding voice to this note without a
+    // note-on, so the envelope keeps running (no re-attack) and the pitch glides when
+    // portamento is set on the melodic oscs. This is the Legato slur.
+    WireBuilder w; w.synth(synth).note((float) midiNote);
+    amyAddNow(w.str());
+}
+
 void SoftwareBackend::allNotesOff()
 {
     // Release every note on every synth (keeps the loaded patches intact).

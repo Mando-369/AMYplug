@@ -457,7 +457,11 @@ TEST_CASE("Analog Coarse/Fine tune the osc; Glide emits portamento; perf recalls
     };
     REQUIRE(oscHas("v2w", "f880"));      // OSC A folds +12 semis: 440 * 2^(12/12)
     REQUIRE(oscHas("v3w", "f220"));      // OSC B folds -12 semis
-    REQUIRE(anyContains(w, "i1m200"));   // portamento (glide) broadcast
+    // Portamento (glide) goes on the AUDIO oscs (2..5), NOT the synth base (osc0 = VCF),
+    // so the pitch actually glides. (A synth-level i1m would only set the filter osc.)
+    REQUIRE(anyContains(w, "i1v2m200"));
+    REQUIRE(anyContains(w, "i1v5m200"));
+    REQUIRE_FALSE(anyContains(w, "i1m200"));   // never the base-osc form for analog
 
     PatchModel b; b.fromValueTree(m.toValueTree());
     REQUIRE(b.synths[0].analog.aCoarse == 12);
