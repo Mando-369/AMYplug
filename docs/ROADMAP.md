@@ -53,6 +53,15 @@ chord → stop transport → instant silence; save/reload project → identical 
 automate cutoff → smooth, recorded, recalled.
 
 ## M3 — Patch system & editor v1
+**Editor v2 reskin ✅ (2026-07-05):** full visual redesign (spec in
+`visual/design_handoff_amyplug/`) — a vector `AmyLookAndFeel` (arc knobs, DSEG7 LCD
+readouts, custom combos/buttons/tabs), five bundled OFL fonts as `BinaryData`, accent
+colour-coded section cards with even fill/spacing, per-tab page titles, and the FX rack
+moved to its own **FX-MASTER** tab. Pure view change — no parameter/streaming edits.
+See `docs/UI.md`. Ships with a headless `amyplug_snapshot` PNG tool for UI iteration
+(`-DAMYPLUG_BUILD_SNAPSHOT=ON`). **DoD met:** ctest 62/62; `auval` PASS; pluginval
+strictness 7 (incl. editor/automation tests) PASS.
+
 **Voicing fixes ✅ (2026-07-01):**
 - **Amp-env hang with Unison.** Per-osc analog edits (amp env, level, tune, duty, LFO
   depth) streamed only to oscs 2/3, so with Unison>1 the extra copies kept their

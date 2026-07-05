@@ -83,9 +83,19 @@ juce_add_plugin(AMYplug
 
 juce_generate_juce_header(AMYplug)
 
+# Bundled OFL-licensed fonts (assets/fonts) -> BinaryData for the custom LookAndFeel.
+juce_add_binary_data(AmyPlugAssets SOURCES
+    assets/fonts/BarlowSemiCondensed-ExtraBold.ttf
+    assets/fonts/BarlowSemiCondensed-Bold.ttf
+    assets/fonts/BarlowCondensed-SemiBold.ttf
+    assets/fonts/IBMPlexMono-Regular.ttf
+    assets/fonts/DSEG7Classic-Regular.ttf)
+
 target_sources(AMYplug PRIVATE
     src/AmyPlugProcessor.cpp
     src/AmyPlugEditor.cpp
+    src/gui/AmyLookAndFeel.cpp
+    src/gui/AmyFonts.cpp
     src/engine/SoftwareBackend.cpp
     src/engine/HardwareBackend.cpp
     src/engine/AmyWire.cpp
@@ -106,12 +116,49 @@ target_compile_definitions(AMYplug PUBLIC
 
 target_link_libraries(AMYplug PRIVATE
     libamy
+    AmyPlugAssets
     juce::juce_audio_utils
     juce::juce_audio_plugin_client
     PUBLIC
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
+# Headless snapshot tool (UI dev): renders the editor to a PNG without a window.
+# Off by default; enable with -DAMYPLUG_BUILD_SNAPSHOT=ON.
+# ---------------------------------------------------------------------------
+option(AMYPLUG_BUILD_SNAPSHOT "Build the headless editor snapshot tool" OFF)
+if(AMYPLUG_BUILD_SNAPSHOT)
+    juce_add_console_app(amyplug_snapshot PRODUCT_NAME "amyplug_snapshot")
+    target_sources(amyplug_snapshot PRIVATE
+        tools/Snapshot.cpp
+        src/AmyPlugProcessor.cpp
+        src/AmyPlugEditor.cpp
+        src/gui/AmyLookAndFeel.cpp
+        src/gui/AmyFonts.cpp
+        src/engine/SoftwareBackend.cpp
+        src/engine/HardwareBackend.cpp
+        src/engine/AmyWire.cpp
+        src/engine/amy_platform_stubs.c
+        src/midi/NoteRouter.cpp
+        src/state/PatchModel.cpp
+        src/state/PatchLibrary.cpp
+        src/state/Dx7Import.cpp)
+    target_include_directories(amyplug_snapshot PRIVATE src "${AMYPLUG_GENERATED_DIR}")
+    add_dependencies(amyplug_snapshot amyplug_patch_names)
+    target_compile_definitions(amyplug_snapshot PRIVATE
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(amyplug_snapshot PRIVATE
+        libamy AmyPlugAssets
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags)
+    if(APPLE)
+        add_custom_command(TARGET amyplug_snapshot POST_BUILD
+            COMMAND codesign --force --sign - "$<TARGET_FILE:amyplug_snapshot>" VERBATIM)
+    endif()
+endif()
 
 # ---------------------------------------------------------------------------
 # Tests

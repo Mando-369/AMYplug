@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/dseg@0.46.0/css/dseg.css" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#0a0c0f;}
+  *{box-sizing:border-box;}
+</style>
+</helmet>
+
+<div style="width:1280px;height:800px;overflow:hidden;background:#0a0c0f;">
+<div style="width:2560px;height:1600px;transform:scale(0.5);transform-origin:top left;background:linear-gradient(180deg,#16191e,#101317);font-family:'Barlow Condensed',sans-serif;color:#e7ecf2;position:relative;overflow:hidden;border:1px solid #2a323c;display:flex;flex-direction:column;">
+
+  <!-- HEADER -->
+  <div style="flex:none;display:flex;align-items:flex-start;gap:48px;padding:28px 40px 22px;">
+
+    <!-- brand -->
+    <div style="flex:none;padding-top:2px;">
+      <div style="font:800 70px/0.82 'Barlow Semi Condensed';letter-spacing:.004em;color:#f2f5f8;">AMY<span style="color:#9aa5b2;">plug</span></div>
+      <div style="font:500 20px 'Barlow Condensed';letter-spacing:.22em;text-transform:uppercase;color:#6d7783;margin-top:9px;">AMY for your DAW · editor v2</div>
+    </div>
+
+    <!-- patch browser -->
+    <div style="flex:none;width:820px;display:flex;flex-direction:column;gap:11px;padding-top:4px;">
+      <div style="display:flex;align-items:center;gap:12px;width:100%;">
+        <span style="font:600 19px 'Barlow Condensed';letter-spacing:.22em;color:#6d7783;width:50px;">PATCH</span>
+        <div style="width:440px;display:flex;align-items:center;justify-content:space-between;height:48px;padding:0 18px;background:#0c1014;border:1px solid #2a333c;border-radius:8px;box-shadow:inset 0 2px 5px rgba(0,0,0,.5);">
+          <span style="font:600 25px 'Barlow Semi Condensed';color:#e7ecf2;">Juno A11 Brass Set 1</span>
+          <span style="color:#5a636e;font-size:18px;">▾</span>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <div style="width:120px;height:48px;display:flex;align-items:center;justify-content:center;background:#1a1f25;border:1px solid #2a333c;border-radius:8px;color:#9aa5b2;font-size:23px;">‹</div>
+          <div style="width:120px;height:48px;display:flex;align-items:center;justify-content:center;background:#1a1f25;border:1px solid #2a333c;border-radius:8px;color:#9aa5b2;font-size:23px;">›</div>
+        </div>
+        <div style="margin-left:auto;min-width:158px;height:48px;display:flex;align-items:center;justify-content:center;padding:0 20px;background:#1a1f25;border:1px solid #2a333c;border-radius:8px;font:600 19px 'Barlow Condensed';letter-spacing:.1em;color:#c3ccd6;text-transform:uppercase;">Import DX7…</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;width:100%;">
+        <span style="font:600 19px 'Barlow Condensed';letter-spacing:.22em;color:#6d7783;width:50px;">USER</span>
+        <div style="width:440px;display:flex;align-items:center;justify-content:space-between;height:48px;padding:0 18px;background:#0c1014;border:1px solid #2a333c;border-radius:8px;box-shadow:inset 0 2px 5px rgba(0,0,0,.5);">
+          <span style="font:400 23px 'Barlow Semi Condensed';color:#5a636e;">User patches</span>
+          <span style="color:#5a636e;font-size:18px;">▾</span>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <div style="width:120px;height:48px;display:flex;align-items:center;justify-content:center;background:#1a1f25;border:1px solid #2a333c;border-radius:8px;font:600 19px 'Barlow Condensed';letter-spacing:.1em;color:#c3ccd6;text-transform:uppercase;">Save</div>
+          <div style="width:120px;height:48px;display:flex;align-items:center;justify-content:center;background:#1a1f25;border:1px solid #2a333c;border-radius:8px;font:600 19px 'Barlow Condensed';letter-spacing:.1em;color:#c3ccd6;text-transform:uppercase;">Delete</div>
+        </div>
+        <div style="margin-left:auto;min-width:158px;height:48px;display:flex;align-items:center;justify-content:center;padding:0 20px;background:#1a1f25;border:1px solid #2a333c;border-radius:8px;font:600 19px 'Barlow Condensed';letter-spacing:.1em;color:#c3ccd6;text-transform:uppercase;">To Editor</div>
+      </div>
+    </div>
+
+    <!-- out gain -->
+    <div style="flex:none;display:flex;align-items:center;gap:18px;padding-left:8px;">
+      <div style="width:1px;height:104px;background:#2a333c;"></div>
+      <dc-import name="Knob" label="{{ outGain.label }}" readout="{{ outGain.readout }}" value="{{ outGain.value }}" accent="{{ outGain.accent }}" hint-size="88px,116px"></dc-import>
+    </div>
+
+    <!-- spacer -->
+    <div style="flex:1;min-width:24px;"></div>
+
+    <!-- status + actions -->
+    <div style="flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:15px;padding-top:6px;">
+      <div style="display:flex;align-items:center;gap:22px;font:600 20px 'Barlow Condensed';letter-spacing:.2em;text-transform:uppercase;">
+        <div onClick="{{ toggleSpec }}" style="{{ specBtnStyle }}">◱ SPEC</div>
+        <span style="display:flex;align-items:center;gap:9px;color:#5fd08a;"><span style="width:9px;height:9px;border-radius:50%;background:#5fd08a;box-shadow:0 0 8px #5fd08a;"></span>SOFTWARE</span>
+        <span style="display:flex;align-items:center;gap:9px;color:#37c2d4;"><span style="width:9px;height:9px;border-radius:50%;background:#37c2d4;box-shadow:0 0 8px #37c2d4;"></span>{{ engineName }}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="height:48px;display:flex;align-items:center;gap:14px;padding:0 18px;background:#0c1014;border:1px solid #2a333c;border-radius:8px;">
+          <span style="font:600 17px 'Barlow Condensed';letter-spacing:.2em;color:#6d7783;">ENGINE</span>
+          <span style="font:600 22px 'Barlow Semi Condensed';color:#e7ecf2;">{{ engineName }}</span>
+          <span style="color:#5a636e;font-size:18px;">▾</span>
+        </div>
+        <div style="height:48px;display:flex;align-items:center;padding:0 24px;background:#c23b36;border:1px solid #d85049;border-radius:8px;font:700 20px 'Barlow Semi Condensed';letter-spacing:.14em;color:#fff;box-shadow:0 0 12px rgba(194,59,54,.4);">PANIC</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TAB BAR -->
+  <div style="flex:none;display:flex;align-items:flex-end;gap:6px;padding:20px 34px 0;">
+    <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="7">
+      <div onClick="{{ t.on }}" style="{{ t.style }}">{{ t.name }}</div>
+    </sc-for>
+    <div style="flex:1;border-bottom:2px solid #2a333c;height:100%;"></div>
+  </div>
+
+  <!-- PANEL AREA -->
+  <div style="flex:1;margin:0 34px 30px;background:#14181d;border:1px solid #2a333c;border-top:none;border-radius:0 0 10px 10px;position:relative;overflow:hidden;">
+
+    <!-- JUNO (ANALOG) -->
+    <sc-if value="{{ isJuno }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;padding:24px 26px;display:flex;gap:20px;align-items:flex-start;">
+        <sc-for list="{{ junoCols }}" as="col" hint-placeholder-count="2">
+          <div style="flex:1;display:flex;flex-direction:column;gap:18px;min-width:0;">
+            <sc-for list="{{ col.sections }}" as="s" hint-placeholder-count="4">
+              <div style="background:#0f1318;border:1px solid #232c35;border-radius:10px;overflow:hidden;">
+                <div style="{{ s.headStyle }}">{{ s.name }}</div>
+                <div style="display:flex;align-items:flex-start;justify-content:space-around;gap:8px;padding:20px 16px;">
+                  <sc-for list="{{ s.controls }}" as="c" hint-placeholder-count="6">
+                    <div style="display:flex;flex-direction:column;align-items:center;">
+                      <sc-if value="{{ c.isKnob }}" hint-placeholder-val="{{ true }}">
+                        <dc-import name="Knob" label="{{ c.label }}" readout="{{ c.readout }}" value="{{ c.value }}" accent="{{ c.accent }}" hint-size="88px,110px"></dc-import>
+                      </sc-if>
+                      <sc-if value="{{ c.isSelect }}" hint-placeholder-val="{{ true }}">
+                        <div style="display:flex;flex-direction:column;align-items:center;gap:9px;width:104px;">
+                          <div style="font:600 20px 'Barlow Condensed';letter-spacing:.09em;text-transform:uppercase;color:#8a95a2;height:20px;">{{ c.label }}</div>
+                          <div style="width:100%;height:48px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 14px;background:#0a0d11;border:1px solid #2a333c;border-radius:6px;box-shadow:inset 0 2px 4px rgba(0,0,0,.4);font:600 20px 'Barlow Semi Condensed';letter-spacing:.04em;color:#cdd5de;">{{ c.value }}<span style="color:#5a636e;font-size:17px;">▾</span></div>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <!-- DX7 PAGE 1: ALGORITHM + OPERATOR TUNING -->
+    <sc-if value="{{ isDX7_1 }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;padding:24px 28px 44px;display:flex;flex-direction:column;gap:18px;">
+        <div style="display:flex;gap:22px;align-items:stretch;height:400px;">
+          <!-- algorithm diagram -->
+          <div style="flex:none;width:520px;background:#0f1318;border:1px solid #232c35;border-radius:10px;padding:18px 22px;position:relative;">
+            <div style="font:600 22px 'Barlow Condensed';letter-spacing:.14em;color:#8a95a2;text-transform:uppercase;">Algorithm <span style="color:#37c2d4;">{{ algoNum }}</span></div>
+            <div style="position:absolute;left:170px;top:54px;width:220px;height:300px;">
+              <div style="{{ opBox6 }}">6</div>
+              <div style="position:absolute;left:196px;top:-4px;font:700 16px 'IBM Plex Mono';color:#e8a13c;background:#2a2010;border:1px solid #e8a13c66;border-radius:3px;padding:2px 5px;">FB</div>
+              <div style="position:absolute;left:188px;top:8px;width:22px;height:2px;background:#e8a13c;"></div>
+              <div style="position:absolute;left:208px;top:8px;width:2px;height:26px;background:#e8a13c;"></div>
+              <div style="position:absolute;left:188px;top:34px;width:22px;height:2px;background:#e8a13c;"></div>
+              <div style="{{ opBox5 }}">5</div>
+              <div style="{{ opBox4 }}">4</div>
+              <div style="{{ opBox3 }}">3</div>
+              <div style="{{ opBox2 }}">2</div>
+              <div style="{{ opBox1 }}">1</div>
+              <div style="position:absolute;left:157px;top:52px;width:2px;height:20px;background:#3a4550;"></div>
+              <div style="position:absolute;left:157px;top:124px;width:2px;height:20px;background:#3a4550;"></div>
+              <div style="position:absolute;left:157px;top:196px;width:2px;height:20px;background:#3a4550;"></div>
+              <div style="position:absolute;left:29px;top:196px;width:2px;height:20px;background:#3a4550;"></div>
+              <div style="position:absolute;left:29px;top:268px;width:130px;height:2px;background:#37c2d4;"></div>
+              <div style="position:absolute;left:93px;top:268px;width:2px;height:20px;background:#37c2d4;"></div>
+              <div style="position:absolute;left:82px;top:286px;font:500 17px 'IBM Plex Mono';color:#37c2d4;">output</div>
+            </div>
+          </div>
+          <!-- algo select + feedback -->
+          <div style="flex:none;width:280px;background:#0f1318;border:1px solid #232c35;border-radius:10px;padding:20px 24px;display:flex;flex-direction:column;gap:22px;">
+            <div>
+              <div style="font:600 20px 'Barlow Condensed';letter-spacing:.14em;color:#8a95a2;text-transform:uppercase;margin-bottom:8px;">Algorithm</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 18px;background:#0a0d11;border:1px solid #2a333c;border-radius:6px;font:700 30px 'Barlow Semi Condensed';color:#37c2d4;">{{ algoNum }}<span style="color:#5a636e;font-size:20px;">▾</span></div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+              <div style="font:600 20px 'Barlow Condensed';letter-spacing:.14em;color:#8a95a2;text-transform:uppercase;align-self:flex-start;">Feedback</div>
+              <dc-import name="Knob" label="" readout="{{ fbReadout }}" value="{{ fbValue }}" accent="#e8a13c" hint-size="88px,110px"></dc-import>
+            </div>
+          </div>
+          <!-- dx badge -->
+          <div style="flex:1;background:#0f1318;border:1px solid #232c35;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;">
+            <div style="font:700 96px/0.8 'Barlow Semi Condensed';color:#9aa5b2;letter-spacing:.02em;">DX7</div>
+            <div style="font:700 30px 'Barlow Semi Condensed';color:#37c2d4;letter-spacing:.16em;">OPERATOR TUNING</div>
+            <div style="font:500 19px 'Barlow Condensed';letter-spacing:.2em;color:#5a636e;text-transform:uppercase;">6-operator FM · 32 algorithms</div>
+          </div>
+        </div>
+        <!-- operators grid -->
+        <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:16px;">
+          <sc-for list="{{ operators }}" as="op" hint-placeholder-count="6">
+            <div style="background:#0f1318;border:1px solid #232c35;border-radius:10px;padding:14px 18px;display:flex;flex-direction:column;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <div style="font:700 24px 'Barlow Semi Condensed';letter-spacing:.1em;color:#c3ccd6;">OP {{ op.n }}</div>
+                <div style="display:flex;align-items:center;gap:10px;height:34px;padding:0 14px;background:#0a0d11;border:1px solid #2a333c;border-radius:5px;font:500 19px 'Barlow Condensed';letter-spacing:.1em;color:#9aa5b2;text-transform:uppercase;">{{ op.mode }}<span style="color:#5a636e;font-size:16px;">▾</span></div>
+              </div>
+              <div style="flex:1;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                <sc-for list="{{ op.knobs }}" as="k" hint-placeholder-count="5">
+                  <dc-import name="Knob" label="{{ k.label }}" readout="{{ k.readout }}" value="{{ k.value }}" accent="{{ k.accent }}" hint-size="88px,110px"></dc-import>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- DX7 PAGES 2 & 3: OPERATOR ENVELOPES -->
+    <sc-if value="{{ isDX7_env }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;padding:20px 26px 22px;display:flex;flex-direction:column;gap:14px;">
+        <div style="flex:none;text-align:center;">
+          <div style="font:800 40px 'Barlow Semi Condensed';letter-spacing:.03em;color:#9aa5b2;">DX7 <span style="color:#37c2d4;">ENVELOPES</span></div>
+          <div style="font:500 18px 'Barlow Condensed';letter-spacing:.26em;color:#5a636e;text-transform:uppercase;margin-top:2px;">{{ dx7EnvTitle }}</div>
+        </div>
+        <sc-for list="{{ dx7env }}" as="op" hint-placeholder-count="3">
+          <div style="flex:1;background:#0f1318;border:1px solid #232c35;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;">
+            <div style="text-align:center;padding:8px;font:700 24px 'Barlow Semi Condensed';letter-spacing:.2em;color:#d4dbe2;background:#141a20;border-bottom:1px solid #232c35;">{{ op.name }}</div>
+            <div style="flex:1;display:flex;align-items:center;gap:30px;padding:14px 26px;">
+              <div style="flex:none;width:380px;height:200px;background:#0a0f14;border:1px solid #232c35;border-radius:8px;box-shadow:inset 0 2px 8px rgba(0,0,0,.5);">
+                <svg width="380" height="200" style="display:block;">
+                  <polyline points="{{ op.points }}" style="fill:none;stroke:#37c2d4;stroke-width:3px;stroke-linejoin:round;stroke-linecap:round;"></polyline>
+                </svg>
+              </div>
+              <div style="flex:1;display:flex;align-items:center;justify-content:space-around;gap:8px;">
+                <sc-for list="{{ op.knobs }}" as="k" hint-placeholder-count="8">
+                  <dc-import name="Knob" label="{{ k.label }}" readout="{{ k.readout }}" value="{{ k.value }}" accent="{{ k.accent }}" hint-size="88px,110px"></dc-import>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <!-- DX7 PAGE 4: PITCH EG + LFO + LFO ROUTING + GLOBAL -->
+    <sc-if value="{{ isDX7_4 }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;padding:20px 26px 22px;display:flex;flex-direction:column;gap:14px;">
+        <div style="flex:none;text-align:center;">
+          <div style="font:800 40px 'Barlow Semi Condensed';letter-spacing:.03em;color:#9aa5b2;">DX7 <span style="color:#37c2d4;">GLOBAL</span></div>
+          <div style="font:500 18px 'Barlow Condensed';letter-spacing:.26em;color:#5a636e;text-transform:uppercase;margin-top:2px;">Pitch EG · LFO · Routing · Transpose</div>
+        </div>
+        <!-- global pitch -->
+        <div style="flex:1;background:#0f1318;border:1px solid #232c35;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;">
+          <div style="text-align:center;padding:8px;font:700 24px 'Barlow Semi Condensed';letter-spacing:.2em;color:#d4dbe2;background:#141a20;border-bottom:1px solid #232c35;">GLOBAL PITCH</div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;">
+            <sc-for list="{{ transposeKnob }}" as="k" hint-placeholder-count="1">
+              <dc-import name="Knob" label="{{ k.label }}" readout="{{ k.readout }}" value="{{ k.value }}" accent="{{ k.accent }}" hint-size="88px,110px"></dc-import>
+            </sc-for>
+          </div>
+        </div>
+        <!-- pitch eg -->
+        <div style="flex:1;background:#0f1318;border:1px solid #232c35;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;">
+          <div style="text-align:center;padding:8px;font:700 24px 'Barlow Semi Condensed';letter-spacing:.2em;color:#d4dbe2;background:#141a20;border-bottom:1px solid #232c35;">PITCH EG</div>
+          <div style="flex:1;display:flex;align-items:center;gap:30px;padding:8px 26px;">
+            <div style="flex:none;width:340px;height:180px;background:#0a0f14;border:1px solid #232c35;border-radius:8px;box-shadow:inset 0 2px 8px rgba(0,0,0,.5);">
+              <svg width="340" height="180" viewBox="0 0 380 200" preserveAspectRatio="none" style="display:block;">
+                <polyline points="{{ pitchEg.points }}" style="fill:none;stroke:#37c2d4;stroke-width:3px;stroke-linejoin:round;stroke-linecap:round;"></polyline>
+              </svg>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:space-around;gap:8px;">
+              <sc-for list="{{ pitchEg.knobs }}" as="k" hint-placeholder-count="8">
+                <dc-import name="Knob" label="{{ k.label }}" readout="{{ k.readout }}" value="{{ k.value }}" accent="{{ k.accent }}" hint-size="88px,110px"></dc-import>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <!-- lfo -->
+        <div style="flex:1;background:#0f1318;border:1px solid #232c35;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;">
+          <div style="text-align:center;padding:8px;font:700 24px 'Barlow Semi Condensed';letter-spacing:.2em;color:#d4dbe2;background:#141a20;border-bottom:1px solid #232c35;">LFO</div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:space-around;gap:14px;padding:8px 40px;">
+            <sc-for list="{{ lfoControls }}" as="c" hint-placeholder-count="5">
+              <div style="display:flex;flex-direction:column;align-items:center;">
+                <sc-if value="{{ c.isKnob }}" hint-placeholder-val="{{ true }}">
+                  <dc-import name="Knob" label="{{ c.label }}" readout="{{ c.readout }}" value="{{ c.value }}" accent="{{ c.accent }}" hint-size="88px,110px"></dc-import>
+                </sc-if>
+                <sc-if value="{{ c.isSelect }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:9px;width:170px;">
+                    <div style="font:600 20px 'Barlow Condensed';letter-spacing:.09em;text-transform:uppercase;color:#8a95a2;height:20px;">{{ c.label }}</div>
+                    <div style="width:100%;height:48px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 16px;background:#0a0d11;border:1px solid #2a333c;border-radius:6px;box-shadow:inset 0 2px 4px rgba(0,0,0,.4);font:600 20px 'Barlow Semi Condensed';color:#cdd5de;">{{ c.value }}<span style="color:#5a636e;font-size:17px;">▾</span></div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <!-- lfo -> op -->
+        <div style="flex:1;background:#0f1318;border:1px solid #232c35;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;">
+          <div style="text-align:center;padding:8px;font:700 24px 'Barlow Semi Condensed';letter-spacing:.2em;color:#d4dbe2;background:#141a20;border-bottom:1px solid #232c35;">LFO → OP · TREMOLO</div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:space-around;gap:12px;padding:8px 30px;">
+            <sc-for list="{{ lfoOpControls }}" as="c" hint-placeholder-count="6">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:9px;width:180px;">
+                <div style="font:600 20px 'Barlow Condensed';letter-spacing:.12em;text-transform:uppercase;color:#8a95a2;height:20px;">{{ c.label }}</div>
+                <div style="width:100%;height:48px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 16px;background:#0a0d11;border:1px solid #2a333c;border-radius:6px;box-shadow:inset 0 2px 4px rgba(0,0,0,.4);font:600 20px 'Barlow Semi Condensed';color:#cdd5de;">{{ c.value }}<span style="color:#5a636e;font-size:17px;">▾</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- FX -->
+    <sc-if value="{{ isFX }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;padding:26px 28px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:20px;">
+        <div style="display:contents;">
+          <sc-for list="{{ fxCards }}" as="fx" hint-placeholder-count="4">
+            <div style="background:#0f1318;border:1px solid #232c35;border-radius:12px;padding:20px 26px;display:flex;flex-direction:column;">
+              <div style="{{ fx.headStyle }}">{{ fx.name }}</div>
+              <div style="flex:1;display:flex;align-items:center;justify-content:space-around;gap:14px;">
+                <sc-for list="{{ fx.knobs }}" as="k" hint-placeholder-count="4">
+                  <dc-import name="Knob" label="{{ k.label }}" readout="{{ k.readout }}" value="{{ k.value }}" accent="{{ k.accent }}" hint-size="88px,110px"></dc-import>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:contents;">
+          <div style="background:#0f1318;border:1px solid #232c35;border-radius:12px;padding:20px 30px;display:flex;flex-direction:column;">
+            <div style="display:flex;align-items:center;gap:14px;border-bottom:1px solid #232c35;padding-bottom:12px;margin-bottom:8px;">
+              <span style="width:9px;height:9px;border-radius:50%;background:#37c2d4;box-shadow:0 0 8px #37c2d4;"></span>
+              <div style="font:700 28px 'Barlow Semi Condensed';letter-spacing:.16em;color:#37c2d4;text-transform:uppercase;">BIT CRUSHER</div>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:space-around;gap:16px;">
+              <sc-for list="{{ bitCrusherKnobs }}" as="k" hint-placeholder-count="2">
+                <dc-import name="Knob" label="{{ k.label }}" readout="{{ k.readout }}" value="{{ k.value }}" accent="{{ k.accent }}" hint-size="88px,110px"></dc-import>
+              </sc-for>
+            </div>
+          </div>
+          <div style="background:#0f1318;border:1px solid #232c35;border-radius:12px;padding:20px 30px;display:flex;flex-direction:column;">
+            <div style="display:flex;align-items:center;gap:14px;border-bottom:1px solid #232c35;padding-bottom:12px;margin-bottom:8px;">
+              <span style="width:9px;height:9px;border-radius:50%;background:#d23b34;box-shadow:0 0 8px #d23b34;"></span>
+              <div style="font:700 28px 'Barlow Semi Condensed';letter-spacing:.16em;color:#d23b34;text-transform:uppercase;">DISTORTION</div>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:space-around;gap:16px;">
+              <sc-for list="{{ distortionKnobs }}" as="k" hint-placeholder-count="2">
+                <dc-import name="Knob" label="{{ k.label }}" readout="{{ k.readout }}" value="{{ k.value }}" accent="{{ k.accent }}" hint-size="88px,110px"></dc-import>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- AMYBOARD -->
+    <sc-if value="{{ isBoard }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;padding:26px 28px;">
+        <div style="height:100%;background:#0f1318;border:1px solid #232c35;border-radius:12px;padding:40px 44px;display:flex;flex-direction:column;">
+          <div style="font:700 30px 'Barlow Semi Condensed';letter-spacing:.04em;color:#e7ecf2;">AMYboard – Hardware Control</div>
+
+          <div style="margin-top:40px;display:flex;flex-direction:column;gap:24px;">
+            <!-- midi out -->
+            <div style="display:flex;align-items:center;gap:22px;">
+              <span style="font:600 21px 'Barlow Semi Condensed';color:#8a95a2;width:110px;">MIDI Out</span>
+              <div style="width:420px;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#0a0d11;border:1px solid #2a333c;border-radius:8px;box-shadow:inset 0 2px 4px rgba(0,0,0,.4);font:600 21px 'Barlow Semi Condensed';color:#e7ecf2;">IAC Driver Bus 1<span style="color:#5a636e;font-size:16px;">▾</span></div>
+              <div style="flex:1;"></div>
+              <div style="height:54px;display:flex;align-items:center;padding:0 30px;background:#1a1f25;border:1px solid #2a333c;border-radius:8px;font:600 19px 'Barlow Condensed';letter-spacing:.1em;color:#c3ccd6;text-transform:uppercase;">Refresh</div>
+            </div>
+            <!-- connect / disconnect -->
+            <div style="display:flex;gap:14px;padding-left:132px;">
+              <div style="height:54px;display:flex;align-items:center;padding:0 40px;background:#1e242b;border:1px solid #3a4652;border-radius:8px;font:700 21px 'Barlow Semi Condensed';letter-spacing:.05em;color:#f2f5f8;">Connect</div>
+              <div style="height:54px;display:flex;align-items:center;padding:0 40px;background:#12161b;border:1px solid #222a32;border-radius:8px;font:700 21px 'Barlow Semi Condensed';letter-spacing:.05em;color:#525c68;">Disconnect</div>
+            </div>
+            <!-- send patch -->
+            <div style="padding-left:132px;">
+              <div style="display:inline-flex;height:54px;align-items:center;padding:0 40px;background:#12161b;border:1px solid #222a32;border-radius:8px;font:700 21px 'Barlow Semi Condensed';letter-spacing:.05em;color:#525c68;">Send Patch to Board</div>
+            </div>
+            <!-- mode -->
+            <div style="margin-top:12px;padding-left:132px;font:600 22px 'Barlow Semi Condensed';color:#c3ccd6;">Mode: <span style="color:#5fd08a;">SOFTWARE</span> – plugin is sounding</div>
+          </div>
+
+          <div style="flex:1;"></div>
+          <div style="font:400 19px 'Barlow Condensed';letter-spacing:.02em;color:#5a636e;line-height:1.55;max-width:820px;">Connect the AMYboard's MIDI port to play the sound ON THE BOARD – the plugin goes silent and pushes the current patch. Disconnect to return to the plugin's own sound.</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- SPEC OVERLAY -->
+    <sc-if value="{{ spec }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;z-index:40;background:#0b0e12;padding:26px 30px;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:22px;">
+        <div style="grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;">
+          <div style="font:800 34px 'Barlow Semi Condensed';letter-spacing:.06em;color:#f2f5f8;">DESIGN SPEC <span style="color:#37c2d4;">· CustomLookAndFeel handoff</span></div>
+          <div style="font:500 20px 'Barlow Condensed';letter-spacing:.14em;color:#6d7783;text-transform:uppercase;">Artboard 1280 × 800 · 1× logical px · JUCE 8</div>
+        </div>
+        <!-- palette -->
+        <div style="background:#12161b;border:1px solid #232c35;border-radius:10px;padding:20px 24px;">
+          <div style="font:700 24px 'Barlow Semi Condensed';letter-spacing:.1em;color:#c3ccd6;text-transform:uppercase;margin-bottom:14px;">Colour tokens</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <sc-for list="{{ palette }}" as="p" hint-placeholder-count="10">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="{{ p.sw }}"></span>
+                <div><div style="font:600 19px 'Barlow Condensed';letter-spacing:.06em;color:#c3ccd6;text-transform:uppercase;">{{ p.name }}</div><div style="font:400 18px 'IBM Plex Mono';color:#7b8794;">{{ p.hex }}</div></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <!-- type -->
+        <div style="background:#12161b;border:1px solid #232c35;border-radius:10px;padding:20px 24px;">
+          <div style="font:700 24px 'Barlow Semi Condensed';letter-spacing:.1em;color:#c3ccd6;text-transform:uppercase;margin-bottom:14px;">Type scale</div>
+          <sc-for list="{{ typeScale }}" as="t" hint-placeholder-count="5">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1c232b;">
+              <div style="{{ t.demoStyle }}">{{ t.demo }}</div>
+              <div style="font:400 17px 'IBM Plex Mono';color:#7b8794;text-align:right;">{{ t.spec }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <!-- anatomy -->
+        <div style="background:#12161b;border:1px solid #232c35;border-radius:10px;padding:20px 24px;display:flex;gap:40px;align-items:center;">
+          <div style="font:700 24px 'Barlow Semi Condensed';letter-spacing:.1em;color:#c3ccd6;text-transform:uppercase;position:absolute;">Anatomy</div>
+          <div style="display:flex;gap:56px;width:100%;justify-content:center;padding-top:20px;">
+            <div style="position:relative;">
+              <div style="position:absolute;top:-6px;left:-46px;font:400 16px 'IBM Plex Mono';color:#37c2d4;">⌀ 36</div>
+              <div style="position:absolute;top:32px;left:-78px;font:400 16px 'IBM Plex Mono';color:#37c2d4;">ring 4.5</div>
+              <div style="position:absolute;top:-6px;right:-72px;font:400 16px 'IBM Plex Mono';color:#e8a13c;">270° arc</div>
+              <dc-import name="Knob" label="CUTOFF" readout="0.64" value="0.64" accent="#37c2d4" hint-size="88px,110px"></dc-import>
+            </div>
+            <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:9px;width:104px;">
+              <div style="position:absolute;top:20px;right:-70px;font:400 16px 'IBM Plex Mono';color:#37c2d4;">h 24 · r 3</div>
+              <div style="font:600 20px 'Barlow Condensed';letter-spacing:.09em;text-transform:uppercase;color:#8a95a2;height:20px;">WAVE</div>
+              <div style="width:100%;height:48px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 14px;background:#0a0d11;border:1px solid #2a333c;border-radius:6px;box-shadow:inset 0 2px 4px rgba(0,0,0,.4);font:600 20px 'Barlow Semi Condensed';color:#cdd5de;">Saw<span style="color:#5a636e;font-size:17px;">▾</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- LAF map -->
+        <div style="background:#12161b;border:1px solid #232c35;border-radius:10px;padding:20px 24px;">
+          <div style="font:700 24px 'Barlow Semi Condensed';letter-spacing:.1em;color:#c3ccd6;text-transform:uppercase;margin-bottom:12px;">Component → LookAndFeel</div>
+          <sc-for list="{{ lafMap }}" as="m" hint-placeholder-count="6">
+            <div style="display:flex;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid #1c232b;">
+              <div style="font:600 19px 'Barlow Condensed';letter-spacing:.05em;color:#c3ccd6;width:118px;flex:none;text-transform:uppercase;">{{ m.comp }}</div>
+              <div style="font:500 18px 'IBM Plex Mono';color:#37c2d4;flex:none;width:190px;">{{ m.method }}</div>
+              <div style="font:400 18px 'Barlow Condensed';color:#8a95a2;flex:1;">{{ m.note }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { tab: 0, spec: false };
+
+  knob(label, value, readout, accent) { return { label, value, readout, accent: accent || '#37c2d4' }; }
+
+  renderVals() {
+    const st = this.state;
+    const TAB_NAMES = ['JUNO', 'DX7 1', 'DX7 2', 'DX7 3', 'DX7 4', 'FX-MASTER', 'AMYBOARD'];
+    const tabs = TAB_NAMES.map((name, i) => {
+      const active = i === st.tab;
+      const base = 'padding:13px 26px;font:600 23px \'Barlow Semi Condensed\';letter-spacing:.06em;cursor:pointer;border-radius:8px 8px 0 0;border:1px solid #2a333c;border-bottom:none;transition:all .12s;';
+      const style = active
+        ? base + 'background:#14181d;color:#f2f5f8;box-shadow:inset 0 2px 0 #9aa5b2;position:relative;top:1px;'
+        : base + 'background:#0e1116;color:#7b8794;';
+      return { name, style, on: () => this.setState({ tab: i }) };
+    });
+
+    const isDX7 = st.tab >= 1 && st.tab <= 4;
+    const engineName = st.tab === 0 ? 'Analog' : 'FM';
+
+    // ---- JUNO (ANALOG ENGINE: 4 OSC + VCF + ENV + LFO + VOICE) ----
+    const jk = (label, value, readout, accent) => ({ isKnob: true, isSelect: false, label, value, readout, accent: accent || '#d23b34' });
+    const js = (label, value) => ({ isKnob: false, isSelect: true, label, value });
+    const RED = '#d23b34', BLUE = '#4f74e0', VIOLET = '#8a5cd6';
+    const head = (tone) => `text-align:center;padding:9px;font:700 23px 'Barlow Semi Condensed';letter-spacing:.16em;text-transform:uppercase;color:#fff;background:${tone};`;
+    const oscSec = (name, wave, fineVal, fineTxt, level) => ({
+      name, headStyle: head(RED),
+      controls: [
+        js('WAVE', wave),
+        jk('FREQ', 0.55, '440.0', RED), jk('COARSE', 0.5, '0', RED), jk('FINE', 0.5 + fineVal, fineTxt, RED),
+        jk('DUTY', 0.5, '0.50', RED), jk('LEVEL', level, level.toFixed(2), RED)
+      ]
+    });
+    const junoLeft = [
+      oscSec('OSC A', 'Saw', 0, '0', 0.70),
+      oscSec('OSC C', 'Saw', 0, '0', 0.31),
+      { name: 'VCF', headStyle: head(VIOLET), controls: [jk('FREQ', 0.82, '8.0k', VIOLET), jk('RESO', 0.7, '0.70', VIOLET), jk('KBD', 0, '0.00', VIOLET), jk('ENV', 0, '0.00', VIOLET), js('TYPE', 'LPF')] },
+      { name: 'LFO', headStyle: "text-align:center;padding:9px;font:700 23px 'Barlow Semi Condensed';letter-spacing:.16em;text-transform:uppercase;color:#0f2c1c;background:#83cc9c;", controls: [js('WAVE', 'Triangle'), jk('FREQ', 0.4, '4.00', '#83cc9c'), jk('PITCH', 0, '0.00', '#83cc9c'), jk('PWM', 0, '0.00', '#83cc9c'), jk('FILTER', 0, '0.00', '#83cc9c')] }
+    ];
+    const junoRight = [
+      oscSec('OSC B', 'Pulse', -0.05, '\u22123', 0.50),
+      oscSec('OSC D', 'Saw', 0, '0', 0.10),
+      { name: 'VCF ENV', headStyle: head(VIOLET), controls: [jk('A', 0, '0.00', VIOLET), jk('D', 0.6, '0.60', VIOLET), jk('S', 0.3, '0.30', VIOLET), jk('R', 0.4, '0.40', VIOLET)] },
+      { name: 'AMP ENV', headStyle: head(BLUE), controls: [jk('A', 0.05, '0.01', BLUE), jk('D', 0.1, '0.10', BLUE), jk('S', 0.7, '0.70', BLUE), jk('R', 0.25, '0.25', BLUE)] },
+      { name: 'VOICE', headStyle: "text-align:center;padding:9px;font:700 23px 'Barlow Semi Condensed';letter-spacing:.16em;text-transform:uppercase;color:#231605;background:#e8a13c;", controls: [js('MODE', 'Poly'), jk('GLIDE', 0, '0', '#e8a13c'), jk('UNISON', 0, '1', '#e8a13c'), jk('DETUNE', 0.6, '12.0', '#e8a13c')] }
+    ];
+    const junoCols = [{ sections: junoLeft }, { sections: junoRight }];
+
+    // ---- DX7 ----
+    const box = (x, y, carrier) => `position:absolute;left:${x}px;top:${y}px;width:60px;height:52px;display:flex;align-items:center;justify-content:center;font:700 26px 'Barlow Semi Condensed';border-radius:6px;` +
+      (carrier ? 'background:#0d2a30;color:#37c2d4;border:2px solid #37c2d4;box-shadow:0 0 12px #37c2d433;' : 'background:#1a222a;color:#c3ccd6;border:1px solid #38434e;');
+    const operators = [1, 2, 3, 4, 5, 6].map(n => ({
+      n, mode: 'RATIO',
+      knobs: [
+        this.knob('COARSE', 0.03 + n * 0.02, String(n), '#37c2d4'),
+        this.knob('FINE', 0.0, '0', '#37c2d4'),
+        this.knob('DETUNE', 0.5, '7', '#37c2d4'),
+        this.knob('LEVEL', n === 1 || n === 3 ? 0.99 : 0.4, n === 1 ? '99' : '82', '#37c2d4'),
+        this.knob('VEL', 0.2, '2', '#37c2d4')
+      ]
+    }));
+
+    // ---- DX7 ENVELOPE PAGES (tab 2 = OP1-3, tab 3 = OP4-6) ----
+    const eg = (Ls) => {
+      const w = 380, h = 200, p = 16;
+      const y = v => Math.round(p + (h - 2 * p) * (1 - v / 99));
+      const xs = [p, p + 44, p + 120, p + 222, p + 274, w - p];
+      const pts = [[p, h - p], [xs[1], y(Ls[0])], [xs[2], y(Ls[1])], [xs[3], y(Ls[2])], [xs[4], y(Ls[2])], [xs[5], y(Ls[3])]];
+      return pts.map(a => a.join(',')).join(' ');
+    };
+    const egKnobs = (Rs, Ls) => [
+      this.knob('R1', Rs[0] / 99, String(Rs[0]), '#37c2d4'), this.knob('R2', Rs[1] / 99, String(Rs[1]), '#37c2d4'),
+      this.knob('R3', Rs[2] / 99, String(Rs[2]), '#37c2d4'), this.knob('R4', Rs[3] / 99, String(Rs[3]), '#37c2d4'),
+      this.knob('L1', Ls[0] / 99, String(Ls[0]), '#37c2d4'), this.knob('L2', Ls[1] / 99, String(Ls[1]), '#37c2d4'),
+      this.knob('L3', Ls[2] / 99, String(Ls[2]), '#37c2d4'), this.knob('L4', Ls[3] / 99, String(Ls[3]), '#37c2d4')
+    ];
+    const envOp = (name, Rs, Ls) => ({ name, points: eg(Ls), knobs: egKnobs(Rs, Ls) });
+    const dx7env = st.tab === 2
+      ? [envOp('OP 1', [99, 66, 40, 55], [99, 80, 65, 0]), envOp('OP 2', [95, 60, 40, 55], [99, 80, 65, 0]), envOp('OP 3', [95, 60, 40, 55], [99, 80, 65, 0])]
+      : [envOp('OP 4', [95, 60, 40, 55], [99, 80, 65, 0]), envOp('OP 5', [95, 60, 40, 55], [99, 80, 65, 0]), envOp('OP 6', [95, 60, 40, 55], [99, 80, 65, 0])];
+
+    // ---- DX7 PAGE 4: PITCH EG + LFO + LFO->OP + GLOBAL ----
+    const jk2 = (label, value, readout) => ({ isKnob: true, isSelect: false, label, value, readout, accent: '#37c2d4' });
+    const js2 = (label, value) => ({ isKnob: false, isSelect: true, label, value });
+    const pitchEg = { name: 'PITCH EG', points: '16,99 364,99', knobs: egKnobs([99, 99, 99, 99], [50, 50, 50, 50]) };
+    const lfoControls = [jk2('SPEED', 0.35, '35'), js2('WAVE', 'Triangle'), jk2('VIBRATO', 0, '0'), jk2('VIB SENS', 0.33, '3'), jk2('TREMOLO', 0, '0')];
+    const lfoOpControls = [js2('OP 1', 'Off'), js2('OP 2', 'Off'), js2('OP 3', 'Off'), js2('OP 4', 'Off'), js2('OP 5', 'Off'), js2('OP 6', 'Off')];
+    const transposeKnob = [jk2('TRANSPOSE', 0.5, '0')];
+    const fxHead = (accent) => `font:700 28px 'Barlow Semi Condensed';letter-spacing:.14em;color:${accent};text-transform:uppercase;border-bottom:1px solid #232c35;padding-bottom:12px;margin-bottom:8px;`;
+    const fxCards = [
+      { name: 'EQ', headStyle: fxHead('#4f74e0'), knobs: [this.knob('LOW', 0.5, '0.0', '#4f74e0'), this.knob('MID', 0.5, '0.0', '#4f74e0'), this.knob('HIGH', 0.5, '0.0', '#4f74e0')] },
+      { name: 'CHORUS', headStyle: fxHead('#e8a13c'), knobs: [this.knob('LEVEL', 0.6, '0.60', '#e8a13c'), this.knob('RATE', 0.5, '0.50', '#e8a13c'), this.knob('DEPTH', 0.5, '0.50', '#e8a13c')] },
+      { name: 'ECHO', headStyle: fxHead('#8a5cd6'), knobs: [this.knob('LEVEL', 0.3, '0.30', '#8a5cd6'), this.knob('TIME', 0.45, '500', '#8a5cd6'), this.knob('F.BACK', 0.25, '0.25', '#8a5cd6'), this.knob('TONE', 0.5, '0.50', '#8a5cd6')] },
+      { name: 'REVERB', headStyle: fxHead('#83cc9c'), knobs: [this.knob('LEVEL', 0.4, '0.40', '#83cc9c'), this.knob('SIZE', 0.85, '0.85', '#83cc9c'), this.knob('DAMP', 0.5, '0.50', '#83cc9c')] }
+    ];
+
+    // ---- AMYBOARD ----
+    const bitCrusherKnobs = [
+      this.knob('FREQ', 0.9, '48k', '#37c2d4'),
+      this.knob('BIT', 1.0, '16', '#37c2d4')
+    ];
+    const distortionKnobs = [
+      this.knob('DRIVE', 0.0, '0.0', '#d23b34'),
+      this.knob('SYNTH VOL', 0.8, '1.00', '#d23b34')
+    ];
+    const outGain = this.knob('OUT GAIN', 0.5, '0.0', '#e8a13c');
+    const whiteKeys = Array.from({ length: 21 });
+    const whiteKeysStyle = 'position:absolute;inset:10px;display:flex;gap:4px;';
+    const blackPattern = [0, 1, 3, 4, 5]; // within each 7-white octave, black after these indices
+    const blackKeys = [];
+    const octaves = 3, perOct = 7;
+    for (let o = 0; o < octaves; o++) {
+      blackPattern.forEach(bi => {
+        const wIndex = o * perOct + bi;
+        if (wIndex >= 20) return;
+        const leftPct = ((wIndex + 1) / 21) * 100;
+        blackKeys.push({ style: `position:absolute;top:10px;height:58%;width:2.6%;background:linear-gradient(180deg,#2a2f36,#0c0f13);border-radius:0 0 4px 4px;box-shadow:0 3px 5px rgba(0,0,0,.6);left:calc(${leftPct}% - 1.3%);z-index:3;` });
+      });
+    }
+
+    // ---- SPEC ----
+    const swatch = (hex) => `width:36px;height:36px;border-radius:7px;flex:none;background:${hex};box-shadow:0 2px 5px rgba(0,0,0,.4),inset 0 0 0 1px rgba(255,255,255,.08);`;
+    const palette = [
+      { name: 'Shell base', hex: '#16191E', sw: swatch('#16191E') },
+      { name: 'Panel', hex: '#0F1318', sw: swatch('#0F1318') },
+      { name: 'Groove / inset', hex: '#080B0E', sw: swatch('#080B0E') },
+      { name: 'Hairline', hex: '#232C35', sw: swatch('#232C35') },
+      { name: 'Text primary', hex: '#E7ECF2', sw: swatch('#E7ECF2') },
+      { name: 'Text dim', hex: '#8A95A2', sw: swatch('#8A95A2') },
+      { name: 'Engine cyan', hex: '#37C2D4', sw: swatch('#37C2D4') },
+      { name: 'Juno red', hex: '#D23B34', sw: swatch('#D23B34') },
+      { name: 'Juno blue', hex: '#4F74E0', sw: swatch('#4F74E0') },
+      { name: 'Filter violet', hex: '#8A5CD6', sw: swatch('#8A5CD6') },
+      { name: 'LFO green', hex: '#83CC9C', sw: swatch('#83CC9C') },
+      { name: 'Amber / select', hex: '#E8A13C', sw: swatch('#E8A13C') },
+      { name: 'Fader cream', hex: '#E8E0CF', sw: swatch('#E8E0CF') },
+      { name: 'Status green', hex: '#5FD08A', sw: swatch('#5FD08A') }
+    ];
+    const typeScale = [
+      { demo: 'AMYplug', demoStyle: "font:800 34px 'Barlow Semi Condensed';color:#f2f5f8;", spec: 'Barlow Semi Condensed 800 · brand' },
+      { demo: 'OP 1 · VCF', demoStyle: "font:700 24px 'Barlow Semi Condensed';color:#c3ccd6;", spec: 'Barlow Semi Cond 700 · section 20' },
+      { demo: 'CUTOFF', demoStyle: "font:600 19px 'Barlow Condensed';letter-spacing:.09em;color:#8a95a2;", spec: 'Barlow Condensed 600 · label 14' },
+      { demo: '0.640  99  48k', demoStyle: "font:400 19px 'IBM Plex Mono';color:#a9c2cf;", spec: 'IBM Plex Mono 400 · readout 13' },
+      { demo: '1-1  32', demoStyle: "font:400 22px 'DSEG7 Classic','IBM Plex Mono';color:#8dff9e;", spec: 'DSEG7 Classic · LCD numerics' }
+    ];
+    const lafMap = [
+      { comp: 'Rotary knob', method: 'drawRotarySlider()', note: '⌀36, 4.5px arc ring, 270° sweep from 225°, 1.5px pointer' },
+      { comp: 'Section header', method: 'drawLabel() / custom', note: 'centred bar, tracked caps, #0B0F13 fill' },
+      { comp: 'Membrane btn', method: 'drawButtonBackground()', note: '5px radius, on=accent glow, off=inset panel' },
+      { comp: 'Toggle switch', method: 'drawToggleButton()', note: 'stacked positions, active = cyan pill' },
+      { comp: 'Combo / select', method: 'drawComboBox()', note: 'inset groove, ▾ caret, mono value' },
+      { comp: 'LCD readout', method: 'custom Component', note: 'DSEG7, #080B0E bg, cyan/green glow text' },
+      { comp: 'Tab', method: 'TabbedButtonBar LAF', note: 'active lifts +1px, cyan top-inset 2px' }
+    ];
+
+    return {
+      tabs, spec: st.spec,
+      toggleSpec: () => this.setState(s => ({ spec: !s.spec })),
+      specBtnStyle: 'padding:6px 14px;border-radius:5px;font:600 19px \'Barlow Condensed\';letter-spacing:.12em;cursor:pointer;' + (st.spec ? 'background:#37c2d4;color:#06222a;' : 'background:#1a1f25;color:#8a95a2;border:1px solid #333c46;'),
+      isJuno: st.tab === 0, isFX: st.tab === 5, isBoard: st.tab === 6,
+      isDX7_1: st.tab === 1, isDX7_env: st.tab === 2 || st.tab === 3, isDX7_4: st.tab === 4,
+      engineName,
+      dx7EnvTitle: st.tab === 3 ? 'OP 4 · OP 5 · OP 6' : 'OP 1 · OP 2 · OP 3',
+      dx7env, pitchEg, lfoControls, lfoOpControls, transposeKnob,
+      junoCols,
+      algoNum: '1', fbValue: 0.32, fbReadout: '0.32',
+      opBox6: box(128, 0, false), opBox5: box(128, 72, false),
+      opBox4: box(128, 144, false), opBox3: box(128, 216, true),
+      opBox2: box(0, 144, false), opBox1: box(0, 216, true),
+      operators,
+      fxCards, bitCrusherKnobs, distortionKnobs, outGain,
+      whiteKeys, whiteKeysStyle, blackKeys,
+      palette, typeScale, lafMap
+    };
+  }
+}
+</script>
+</body>
+</html>

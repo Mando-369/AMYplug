@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="display:flex;flex-direction:column;align-items:center;gap:9px;width:88px;">
+  <div style="font:600 20px/1 'Barlow Condensed',sans-serif;letter-spacing:.09em;text-transform:uppercase;color:#8a95a2;height:20px;white-space:nowrap;">{{ label }}</div>
+  <div style="position:relative;width:72px;height:72px;">
+    <div style="{{ arcStyle }}"></div>
+    <div style="position:absolute;inset:9px;border-radius:50%;background:radial-gradient(circle at 50% 34%,#2c333d,#141a20 72%);box-shadow:inset 0 1px 0 #3b4551,inset 0 -2px 4px rgba(0,0,0,.6),0 3px 7px rgba(0,0,0,.55);border:1px solid #0c1015;"></div>
+    <div style="{{ ptrStyle }}"></div>
+    <div style="position:absolute;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;background:#0c1015;box-shadow:inset 0 1px 1px rgba(255,255,255,.15);"></div>
+  </div>
+  <div style="min-width:56px;text-align:center;font:400 19px/1.3 'IBM Plex Mono',monospace;color:#a9c2cf;background:#080b0e;border:1px solid #212a33;border-radius:3px;padding:3px 5px;letter-spacing:.02em;">{{ readout }}</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:88,&quot;height&quot;:110},&quot;label&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;CUTOFF&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;readout&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;0.50&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;value&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:0.5,&quot;min&quot;:0,&quot;max&quot;:1,&quot;step&quot;:0.01,&quot;tsType&quot;:&quot;number&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#37c2d4&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#37c2d4&quot;,&quot;#e8a13c&quot;,&quot;#43b8a8&quot;,&quot;#d23b34&quot;]}}">
+class Component extends DCLogic {
+  renderVals() {
+    const v = Math.max(0, Math.min(1, this.props.value ?? 0.5));
+    const acc = this.props.accent || '#37c2d4';
+    const a = v * 270;
+    const arcStyle = `position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 225deg, ${acc} 0deg ${a}deg, #29323d ${a}deg 270deg, #0d1116 270deg 360deg);box-shadow:0 2px 8px rgba(0,0,0,.45);`;
+    const deg = -135 + v * 270;
+    const ptrStyle = `position:absolute;left:50%;top:50%;width:3px;height:25px;margin:-25px 0 0 -1.5px;transform-origin:50% 100%;transform:rotate(${deg}deg);background:${acc};border-radius:2px;box-shadow:0 0 7px ${acc}aa;`;
+    return {
+      label: this.props.label ?? 'PARAM',
+      readout: this.props.readout ?? '',
+      arcStyle, ptrStyle
+    };
+  }
+}
+</script>
+</body>
+</html>
