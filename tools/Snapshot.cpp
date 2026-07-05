@@ -20,6 +20,7 @@ int main(int argc, char** argv)
 
     const juce::String outPath = (argc > 1) ? juce::String(argv[1]) : juce::String("amyplug_snapshot.png");
     const int tab = (argc > 2) ? juce::String(argv[2]).getIntValue() : 0;
+    const int algo = (argc > 3) ? juce::String(argv[3]).getIntValue() : 0;   // optional DX7 algorithm
 
     amyplug::AmyPlugProcessor proc;
     proc.prepareToPlay(48000.0, 512);   // acquire the engine so the status reads "SOFTWARE"
@@ -31,6 +32,9 @@ int main(int argc, char** argv)
         const int eng = (tab == 0) ? 1 : (tab >= 1 && tab <= 4) ? 2 : 0;
         e->setValueNotifyingHost(e->convertTo0to1((float) eng));
     }
+    if (algo >= 1 && algo <= 32)
+        if (auto* a = proc.apvts().getParameter(amyplug::params::id::fmAlgorithm))
+            a->setValueNotifyingHost(a->convertTo0to1((float) (algo - 1)));   // 0-based choice index
 
     auto editor = std::make_unique<amyplug::AmyPlugEditor>(proc);
     editor->setBounds(0, 0, 1280, 800);

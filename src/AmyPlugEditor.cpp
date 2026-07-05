@@ -516,9 +516,15 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
         g.setColour(carrier ? kAccent : juce::Colour { 0xffc3ccd6 });
         g.setFont(fonts::header(13.0f));
         g.drawText(juce::String(op), bx, juce::Justification::centred);
+    }
 
-        if (topo.feedback[(size_t) op])   // mark the feedback operator with an "FB" tag
+    // Feedback "FB" tags LAST, so they always sit in front of the operator boxes —
+    // in some algorithms (8, 17, 18) the tag overlaps a neighbouring box that would
+    // otherwise be painted over it if drawn inside the box loop above.
+    for (int op = 1; op <= 6; ++op)
+        if (topo.feedback[(size_t) op])
         {
+            auto bx = boxOf(op);
             juce::Rectangle<int> tag { bx.getRight() - 15, bx.getY() - 9, 20, 13 };
             g.setColour(col::amber);
             g.fillRoundedRectangle(tag.toFloat(), 3.0f);
@@ -526,7 +532,6 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
             g.setFont(fonts::label(9.0f));
             g.drawText("FB", tag, juce::Justification::centred);
         }
-    }
 }
 
 // ===========================================================================
