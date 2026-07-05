@@ -103,6 +103,68 @@ TEST_CASE("Filter-cutoff macro audibly changes timbre (automation proof)", "[eng
     amy_stop();
 }
 
+namespace
+{
+void amyBoot()
+{
+    amy_config_t c = amy_default_config();
+    c.audio = AMY_AUDIO_IS_NONE; c.midi = AMY_MIDI_IS_NONE;
+    c.platform.multicore = 0; c.platform.multithread = 0;
+    amy_start(c);
+}
+} // namespace
+
+TEST_CASE("FM operators reset phase per note-on -> note-to-note consistency", "[engine][fm]")
+{
+    // A detuned 2-op FM voice. Play note 60, capture the attack waveform; note-off;
+    // let the operators free-run through silence; play note 60 again, capture again.
+    // If the operators DON'T reset phase (no P), the second attack differs from the
+    // first (the timbre "drifts inconsistently" note-to-note); with P0.25 they match.
+    auto twoAttacks = [] (bool withPhase, double* buf1, double* buf2, int nSamp)
+    {
+        const char* P = withPhase ? "P0.25" : "";
+        char op1[128], op2[128];
+        std::snprintf(op1, sizeof op1, "i1v1w0a1,0,0,1,0,0%sI1A5,1,4000,1,400,0Z", P);
+        std::snprintf(op2, sizeof op2, "i1v2w0a1,0,0,1,0,0%sI2.01A5,1,4000,1,400,0Z", P);
+        auto play = [&] (double* buf)
+        {
+            int got = 0;
+            while (got < nSamp)
+            {
+                const int16_t* b = amy_simple_fill_buffer();
+                for (int i = 0; i < AMY_BLOCK_SIZE && got < nSamp; ++i) buf[got++] = (double) b[2 * i] / 32768.0;
+            }
+        };
+        amyBoot();
+        amy_add_message((char*) "i1iv1in7Z");
+        amy_add_message(op1); amy_add_message(op2);
+        amy_add_message((char*) "i1v3w0a0,0,0,0,0,0I1A5,1,300,0,400,0Z");
+        amy_add_message((char*) "i1v4w0a0,0,0,0,0,0I1A5,1,300,0,400,0Z");
+        amy_add_message((char*) "i1v5w0a0,0,0,0,0,0I1A5,1,300,0,400,0Z");
+        amy_add_message((char*) "i1v6w0a0,0,0,0,0,0I1A5,1,300,0,400,0Z");
+        amy_add_message((char*) "i1v0w8f0,1a1,0,1,0,0,0b0.0000O6,5,4,3,2,1o1Z");
+        amy_add_message((char*) "i1n60l1Z"); play(buf1);
+        amy_add_message((char*) "i1n60l0Z"); renderStats(300);   // release + free-run drift
+        amy_add_message((char*) "i1n60l1Z"); play(buf2);
+        amy_stop();
+    };
+    auto meanAbsDiff = [] (const double* a, const double* b, int n)
+    {
+        double d = 0, e = 0; for (int i = 0; i < n; ++i) { d += std::fabs(a[i] - b[i]); e += std::fabs(a[i]); }
+        return e > 0 ? d / e : 0.0;
+    };
+
+    const int N = 2048;
+    static double a1[2048], a2[2048], b1[2048], b2[2048];
+    twoAttacks(false, a1, a2, N);   // no operator phase (current emitFm)
+    twoAttacks(true,  b1, b2, N);   // with P0.25 (factory / the fix)
+    const double noP = meanAbsDiff(a1, a2, N);
+    const double withP = meanAbsDiff(b1, b2, N);
+    INFO("note-to-note diff  noPhase=" << noP << "  withP0.25=" << withP);
+    REQUIRE(withP < 1e-6);        // P0.25 -> the two notes are identical (steady timbre)
+    REQUIRE(noP  > 0.05);         // without it -> they diverge (inconsistent timbre)
+}
+
 TEST_CASE("FM (ALGO) voice renders audible sound and silences on note-off", "[engine][fm]")
 {
     amy_config_t c = amy_default_config();

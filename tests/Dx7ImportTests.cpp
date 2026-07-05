@@ -11,6 +11,7 @@
 #include "state/Dx7Osc.h"
 #include <vector>
 #include <cstdint>
+#include <string>
 
 using namespace amyplug;
 using Catch::Approx;
@@ -156,7 +157,53 @@ constexpr const char* kBrass1 =
     "v7a1.834008,0,0,1,0,0P0.25A0,0.000188,7,1,3,0.385553,0,0.771105,52,0.000188L1I0.504375Z"
     "v1w0a1f6.166667P0.25Z"
     "v0w8a1,0,1,0,0,0f0,1,0,1,0,0.007298b0.16A0,1,0,1,0,1,0,1,731,1L1O2,3,4,5,6,7o22Z";
+
+// #129 "DX7 BRASS 2" — the drift/phasing report. Detuned operator ratios, inactive
+// LFO (ALGO + operator mod-coef index 5 == 0). Verbatim from patches.h.
+constexpr const char* kBrass2 =
+    "v2a0.385553,0,0,1,0,0P0.25A0,0.000188,0,1,21,0.917004,484,0.385553,48,0.000188L1I0.5Z"
+    "v3a2,0,0,1,0,0P0.25A0,0.000188,0,1,21,0.917004,822,0.210224,44,0.000188L1I0.500625Z"
+    "v4a2,0,0,1,0,0P0.25A0,0.000188,0,1,21,0.917004,822,0.210224,44,0.000188L1I0.49875Z"
+    "v5a2,0,0,1,0,0P0.25A0,0.000188,0,1,21,0.917004,822,0.210224,44,0.000188L1I0.498125Z"
+    "v6a0.545254,0,0,1,0,0P0.25A0,0.000188,0,1,21,0.917004,871,0.192776,43,0.000188L1I0.504375Z"
+    "v7a2,0,0,1,0,0P0.25A0,0.000188,0,1,21,0.917004,871,0.192776,43,0.000188L1I0.504375Z"
+    "v1w0a1f6.166667P0.25Z"
+    "v0w8a1,0,1,0,0,0f0,1,0,1,0,0b0.16A0,1,0,1,0,1,0,1,731,1L1O2,3,4,5,6,7o22Z";
 } // namespace
+
+TEST_CASE("BRASS 2 decode->emit reproduces the factory operators (ratio + phase)", "[dx7][factory]")
+{
+    // The report: Factory mode (raw patch) is stable, but "To Editor" (decode -> our
+    // FmParams -> emitFm) drifted/phased. TWO causes, both fixed here:
+    //  (1) our re-emit shrank the operator detune (a phaser-like slow beat) — emit now
+    //      matches fm.py, so the ratios come back EXACTLY as the factory baked them;
+    //  (2) our operators lacked the factory's per-op start phase (P0.25), so they
+    //      free-ran and every note sounded different — emitFm now bakes P0.25.
+    PatchModel m;
+    m.synths[0].engine = PatchModel::Engine::FM;
+    REQUIRE(factoryFmWireToParams(kBrass2, m.synths[0].fm));
+    const auto& fm = m.synths[0].fm;
+
+    // Factory ratios by osc (osc2..osc7); ops[i] takes osc(src[5-i]) via O2,3,4,5,6,7.
+    const double facByOsc[6] = { 0.5, 0.500625, 0.49875, 0.498125, 0.504375, 0.504375 };
+    for (int i = 0; i < 6; ++i)
+    {
+        const auto& op = fm.ops[i];
+        const double ours = dx7osc::coarseFineRatio(op.coarse, op.fine, op.detune);
+        REQUIRE(ours == Approx(facByOsc[5 - i]).margin(1e-6));
+    }
+    // BRASS 2's LFO is inactive: no baked vibrato (PMD) or tremolo (AMS/AMD).
+    REQUIRE(fm.lfoPmd == Approx(0.0f).margin(1e-6));
+    for (int i = 0; i < 6; ++i) REQUIRE(fm.ops[i].ampModSens == 0);
+
+    // Every emitted operator (oscs 2..7) carries the P0.25 start phase, like fm.py.
+    int opsWithPhase = 0;
+    for (const auto& s : m.toWireMessages())
+        for (int osc = 2; osc <= 7; ++osc)
+            if (s.rfind("i1v" + std::to_string(osc) + "w0", 0) == 0 && s.find("P0.25") != std::string::npos)
+                ++opsWithPhase;
+    REQUIRE(opsWithPhase == 6);
+}
 
 TEST_CASE("Factory wire decode maps a DX7 preset onto OP1..6", "[dx7][factory]")
 {
@@ -173,17 +220,18 @@ TEST_CASE("Factory wire decode maps a DX7 preset onto OP1..6", "[dx7][factory]")
     { return (float) dx7osc::coarseFineRatio(o.coarse, o.fine, o.detune); };
     auto ampOf   = [] (const PatchModel::FmOp& o)
     { return (float) dx7osc::outputLevelToAmp(o.outputLevel); };
-    // Detune decodes to the true DX7 value — osc7's 0.504375 fm.py ratio is coarse 0 +
-    // detune 14 (max), not a fine step — and re-emits with the real +/-2-cent curve, so
-    // the operator sits at a gentle 0.5006 instead of fm.py's inflated 0.504375. That is
-    // the fix that stops detuned patches (BRASS 2) beating like a fast tremolo.
+    // Detune decodes to the true DX7 value (osc7's 0.504375 is coarse 0 + detune 14,
+    // not a fine step) AND re-emits through the fm.py formula, so the ratio comes back
+    // EXACTLY as the factory baked it — "To Editor" reproduces Factory, no beat-rate
+    // shift. (A prior build re-emitted a gentler +/-2-cent detune here, which slowed the
+    // operator beat into a phaser-like drift; matching fm.py fixes that.)
     REQUIRE(fm.ops[0].coarse == 0);
     REQUIRE(fm.ops[0].detune == 14);
-    REQUIRE(ratioOf(fm.ops[0]) == Approx(0.500578f).margin(1e-4));   // osc7, +2 cents
+    REQUIRE(ratioOf(fm.ops[0]) == Approx(0.504375f).margin(1e-5));   // osc7, exact factory ratio
     REQUIRE(ampOf(fm.ops[0])   == Approx(1.834008f).margin(0.02));
-    REQUIRE(ratioOf(fm.ops[2]) == Approx(0.99967f).margin(1e-3));    // osc5 (coarse 1, detune 5)
-    REQUIRE(ratioOf(fm.ops[3]) == Approx(1.0f).margin(1e-3));        // osc4 (detune centre)
-    REQUIRE(ratioOf(fm.ops[5]) == Approx(1.0f).margin(1e-3));        // osc2
+    REQUIRE(ratioOf(fm.ops[2]) == Approx(0.9975f).margin(1e-4));     // osc5 (coarse 1, detune 5)
+    REQUIRE(ratioOf(fm.ops[3]) == Approx(1.0f).margin(1e-4));        // osc4 (detune centre)
+    REQUIRE(ratioOf(fm.ops[5]) == Approx(1.0f).margin(1e-4));        // osc2
     REQUIRE(ampOf(fm.ops[5])   == Approx(0.458502f).margin(0.02));
 
     // Full DX7 4R/4L envelope decoded losslessly: L1 (attack peak) ~98, L3 (sustain)

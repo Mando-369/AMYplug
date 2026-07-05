@@ -17,28 +17,32 @@
 
 namespace amyplug::dx7osc
 {
-// Detune -> a proportional pitch offset in cents. The REAL DX7 detune spans only
-// +/-2 cents over its +/-7 range (DX7II manual; Dexed issue #88), applied relative to
-// the note pitch. AMY's fm.py instead uses (detune-7)/8 *percent* (~+/-15 cents), which
-// turns micro-detuned patches (DX7 BRASS 2 uses the full range) into a heavy amplitude
-// beating the hardware never had. We model the hardware: a gentle chorus, not a pump.
-inline constexpr double kDetuneCentsMax = 2.0;   // cents at detune = +/-7 (real DX7)
-inline double detuneCents(int detune) { return (detune - 7) * (kDetuneCentsMax / 7.0); }
+// Coarse/Fine/Detune -> the fractional pitch offset, VERBATIM from AMY's fm.py
+// (`coarse_fine_ratio` / `coarse_fine_fixed_hz`): fine + (detune-7)/8, as a PERCENT.
+// This must match fm.py exactly, because fm.py generated AMY's baked factory bank:
+// decoding a factory preset and re-emitting through this reproduces its ratio
+// bit-for-bit, so "To Editor" sounds identical to Factory mode (the same holds for
+// .syx imports, whose integer coarse/fine/detune are the DX7's own).
+//
+// (A prior build modelled the DX7II's "true" +/-2-cent detune here instead. But that
+// diverged every micro-detuned factory patch — DX7 BRASS 2 uses the full detune range
+// — from the factory sound: ~8x less detune slows the operator beat into a phaser-like
+// drift. Matching fm.py is what the user hears as correct, so hardware-authenticity
+// yields to factory-parity.)
+inline double detuneFraction(int fine, int detune) { return (fine + (detune - 7) / 8.0) / 100.0; }
 
-// coarse_fine_ratio: harmonic ratio. Coarse 0 is the 0.5 sub-octave special case;
-// Fine is percent; Detune is the real DX7 +/-2 cents (see above).
+// coarse_fine_ratio: harmonic ratio. Coarse 0 is the 0.5 sub-octave special case.
 inline double coarseFineRatio(int coarse, int fine, int detune)
 {
     coarse &= 31;
     const double c = (coarse == 0) ? 0.5 : (double) coarse;
-    return c * (1.0 + fine / 100.0) * std::pow(2.0, detuneCents(detune) / 1200.0);
+    return c * (1.0 + detuneFraction(fine, detune));
 }
-// coarse_fine_fixed_hz: fixed-frequency operators, 10^(coarse + fine%) with the same
-// real-DX7 +/-2-cent detune applied on top. Coarse 0..3.
+// coarse_fine_fixed_hz: fixed-frequency operators, 10^(coarse + (fine + detune)%). Coarse 0..3.
 inline double coarseFineFixedHz(int coarse, int fine, int detune)
 {
     coarse &= 3;
-    return std::pow(10.0, coarse + fine / 100.0) * std::pow(2.0, detuneCents(detune) / 1200.0);
+    return std::pow(10.0, coarse + detuneFraction(fine, detune));
 }
 // Output Level 0..99 -> operator amplitude (modulation index). fm.py uses
 // 2 * dx7level_to_linear(level); level 99 -> 2.0 (the DX7 maximum).

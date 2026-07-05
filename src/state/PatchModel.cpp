@@ -184,6 +184,11 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
         const juce::String env = amyplug::dx7env::egToBreakpoints(op.egRate, op.egLevel);
         out.emplace_back((pre + "v" + juce::String(osc) + "w0"
             + "a" + F(amp) + ",0," + F(vel) + ",1,0," + F(trem)
+            + "P0.25"                       // reset the operator phase on every note-on
+                                            // (like fm.py/the factory bank). Without it
+                                            // the operators free-run, so each note catches
+                                            // them at a different phase -> the FM timbre
+                                            // differs note-to-note ("drifts inconsistently").
             + freq
             + "A" + env
             + "L1"                          // mod_source = osc 1 (the LFO)
