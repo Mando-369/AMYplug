@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later OR MIT
 #include "PatchModel.h"
 #include "../engine/AmyWire.h"
+#include "AnalogLfo.h"
 #include "Dx7Envelope.h"
 #include "Dx7Lfo.h"
 #include "Dx7Osc.h"
@@ -92,8 +93,17 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s,
         + "c2L1Z").toStdString());
 
     // osc 1 — LFO (note-coef 0 keeps it at lfoFreq regardless of the played note).
-    // TODO (M5 LFO modes): Free / Key / Sync. See ROADMAP M5.
-    out.emplace_back((pre + "v1w" + juce::String(a.lfoWave) + "f" + F(a.lfoFreq) + ",0Z").toStdString());
+    // Free/Sync phase-lock the per-voice LFO copies at build: a single P0 aligns
+    // every voice's osc1, and identical freq off the same clock keeps them in
+    // lockstep (one global LFO). Poly omits it (each copy free-runs); Key resets
+    // phase per note-on from the processor. Sync's freq is corrected live from the
+    // host tempo — lfoFreq is only the fallback baked here.
+    {
+        const bool phaseLock = (a.lfoMode == analoglfo::Free || a.lfoMode == analoglfo::Sync);
+        juce::String lfo = pre + "v1w" + juce::String(a.lfoWave) + "f" + F(a.lfoFreq) + ",0";
+        if (phaseLock) lfo += "P0";
+        out.emplace_back((lfo + "Z").toStdString());
+    }
 
     // Audio oscs (2..oscs-1): U copies of OSC A then OSC B, each detuned, chained.
     // amp = level via const+eg0 coef shaped by the amp env (A); freq folds tune +
@@ -343,6 +353,7 @@ juce::ValueTree PatchModel::toValueTree() const
             { "a_aLevel", a.aLevel }, { "a_bLevel", a.bLevel }, { "a_cLevel", a.cLevel }, { "a_dLevel", a.dLevel },
             { "a_lfoWave", (float) a.lfoWave }, { "a_lfoFreq", a.lfoFreq },
             { "a_lfoToPitch", a.lfoToPitch }, { "a_lfoToPwm", a.lfoToPwm }, { "a_lfoToFilter", a.lfoToFilter },
+            { "a_lfoMode", (float) a.lfoMode }, { "a_lfoSyncRate", (float) a.lfoSyncRate },
             { "a_filterType", (float) a.filterType }, { "a_vcfFreq", a.vcfFreq }, { "a_vcfReso", a.vcfReso },
             { "a_vcfKbd", a.vcfKbd }, { "a_vcfEnv", a.vcfEnv },
             { "a_vcfA", a.vcfA }, { "a_vcfD", a.vcfD }, { "a_vcfS", a.vcfS }, { "a_vcfR", a.vcfR },
@@ -450,6 +461,8 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
         a.lfoToPitch = (float) sv.getProperty("a_lfoToPitch", a.lfoToPitch);
         a.lfoToPwm = (float) sv.getProperty("a_lfoToPwm", a.lfoToPwm);
         a.lfoToFilter = (float) sv.getProperty("a_lfoToFilter", a.lfoToFilter);
+        a.lfoMode = (int) sv.getProperty("a_lfoMode", a.lfoMode);
+        a.lfoSyncRate = (int) sv.getProperty("a_lfoSyncRate", a.lfoSyncRate);
         a.filterType = (int) sv.getProperty("a_filterType", a.filterType);
         a.vcfFreq = (float) sv.getProperty("a_vcfFreq", a.vcfFreq); a.vcfReso = (float) sv.getProperty("a_vcfReso", a.vcfReso);
         a.vcfKbd = (float) sv.getProperty("a_vcfKbd", a.vcfKbd); a.vcfEnv = (float) sv.getProperty("a_vcfEnv", a.vcfEnv);

@@ -8,6 +8,7 @@
 #include "state/PatchModel.h"
 #include "state/FmAlgorithms.h"
 #include "state/Dx7Osc.h"
+#include "state/AnalogLfo.h"
 #include <algorithm>
 
 using Catch::Approx;
@@ -159,6 +160,7 @@ TEST_CASE("Analog params survive the ValueTree round-trip", "[state][analog]")
     a.synths[0].analog.lfoToFilter = 0.42f;
     a.synths[0].analog.cWave = 2; a.synths[0].analog.cLevel = 0.6f; a.synths[0].analog.cCoarse = -7;
     a.synths[0].analog.dFreq = 330.0f; a.synths[0].analog.dLevel = 0.3f;
+    a.synths[0].analog.lfoMode = analoglfo::Sync; a.synths[0].analog.lfoSyncRate = 3;
     a.eqLow = -3.0f;
 
     PatchModel b; b.fromValueTree(a.toValueTree());
@@ -166,6 +168,8 @@ TEST_CASE("Analog params survive the ValueTree round-trip", "[state][analog]")
     REQUIRE(b.synths[0].analog.vcfFreq == 1234.0f);
     REQUIRE(b.synths[0].analog.aWave   == 5);
     REQUIRE(b.synths[0].analog.lfoToFilter == 0.42f);
+    REQUIRE(b.synths[0].analog.lfoMode == analoglfo::Sync);
+    REQUIRE(b.synths[0].analog.lfoSyncRate == 3);
     REQUIRE(b.synths[0].analog.cWave   == 2);
     REQUIRE(b.synths[0].analog.cLevel  == 0.6f);
     REQUIRE(b.synths[0].analog.cCoarse == -7);
@@ -177,6 +181,54 @@ TEST_CASE("Analog params survive the ValueTree round-trip", "[state][analog]")
     PatchModel def;
     REQUIRE(def.synths[0].analog.cLevel == 0.0f);
     REQUIRE(def.synths[0].analog.dLevel == 0.0f);
+    // LFO mode defaults to Poly (the pre-M5 behaviour): a patch saved before LFO
+    // modes existed carries no a_lfoMode and must recall as Poly, not change sound.
+    REQUIRE(def.synths[0].analog.lfoMode == analoglfo::Poly);
+    juce::ValueTree legacy ("Patch");   // an old tree with no LFO-mode properties
+    { auto sv = legacy.getOrCreateChildWithName ("Synth", nullptr);
+      sv.setProperty ("engine", (int) PatchModel::Engine::Analog, nullptr); }
+    PatchModel old; old.fromValueTree (legacy);
+    REQUIRE(old.synths[0].analog.lfoMode == analoglfo::Poly);
+    REQUIRE(old.synths[0].analog.lfoSyncRate == 7);   // 1/4
+}
+
+TEST_CASE("Analog LFO Free/Sync phase-lock the per-voice LFO (P0); Poly/Key do not", "[state][analog][lfo]")
+{
+    auto osc1Of = [] (const PatchModel& m) -> std::string {
+        for (const auto& s : m.toWireMessages()) if (s.find("v1w") != std::string::npos) return s;
+        return {};
+    };
+
+    PatchModel poly; poly.synths[0].engine = PatchModel::Engine::Analog;
+    poly.synths[0].analog.lfoMode = analoglfo::Poly;
+    REQUIRE(osc1Of(poly).find("P0") == std::string::npos);   // free-running per voice
+
+    PatchModel key = poly; key.synths[0].analog.lfoMode = analoglfo::Key;
+    REQUIRE(osc1Of(key).find("P0") == std::string::npos);    // retrigger is streamed on note-on, not baked
+
+    PatchModel freeM = poly; freeM.synths[0].analog.lfoMode = analoglfo::Free;
+    REQUIRE(osc1Of(freeM).find("P0") != std::string::npos);  // one global LFO: all voices aligned
+
+    PatchModel sync = poly; sync.synths[0].analog.lfoMode = analoglfo::Sync;
+    REQUIRE(osc1Of(sync).find("P0") != std::string::npos);   // Sync also phase-locks
+}
+
+TEST_CASE("Analog LFO tempo-sync converts note division + BPM to Hz", "[state][analog][lfo]")
+{
+    using namespace amyplug::analoglfo;
+    const int i4  = defaultRateIndex();                 // 1/4
+    REQUIRE(std::string(rates[i4].name) == "1/4");
+    // 1/4 = one cycle per beat: at 120 BPM that's 2 Hz; at 60 BPM, 1 Hz.
+    REQUIRE(syncHz(i4, 120.0) == Approx(2.0));
+    REQUIRE(syncHz(i4, 60.0)  == Approx(1.0));
+    // A whole note (1/1 = 4 beats) is a quarter of the 1/4 rate.
+    auto idxOf = [] (const char* n) { for (int i = 0; i < kNumRates; ++i)
+        if (std::string(rates[i].name) == n) return i; return -1; };
+    REQUIRE(syncHz(idxOf("1/1"), 120.0) == Approx(0.5));
+    REQUIRE(syncHz(idxOf("1/8"), 120.0) == Approx(4.0));
+    // Clamped into AMY's renderable range.
+    REQUIRE(syncHz(idxOf("4/1"), 1.0) >= 0.01);
+    REQUIRE(syncHz(idxOf("1/32"), 100000.0) <= 100.0);
 }
 
 TEST_CASE("FM engine builds the 6-operator ALGO voice", "[state][fm]")

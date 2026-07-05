@@ -250,11 +250,21 @@ session onto the board.
   with separate Dark(LPF)+Thin(HPF) feedback filters (+ ping-pong / tempo sync), a
   proper reverb, and click-free level automation. Leaves AMY doing synthesis only.
 - Full modulation editor (CtrlCoefs, dual EGs, mod routings, LFOs).
-- **LFO modes** (M3b ships per-voice/free only; add a mode selector):
-  - **Free** — global, free-running (one shared LFO, not retriggered).
-  - **Key** — retrigger phase on each note-on.
-  - **Poly** — per-voice independent LFO (current M3b behaviour).
-  - **Sync** — lock LFO rate to host tempo (uses the DAW transport BPM).
+- **LFO modes — Juno ✅ (2026-07-05); DX7 deferred.** The Juno LFO tab now has a
+  **Mode** selector (+ a **Sync** rate divider). AMY's LFO (osc1) is per-voice and
+  free-running with no native sync, so the modes are synthesised in the processor's
+  streaming path (no rebuild): a `P0` phase-warp — broadcast to every voice — both
+  aligns and retriggers, since `retrigger_mod_source` is only a stale header
+  declaration with no C body. `src/state/AnalogLfo.h` holds the mode/rate names +
+  sync math (single source of truth for params, streaming, tests).
+  - **Poly** *(default)* — per-voice independent LFO (the pre-M5 behaviour, so old
+    patches recall bit-identical: a patch with no stored mode falls back to Poly).
+  - **Free** — one global LFO, all voices phase-locked (a single `P0` at build).
+  - **Key** — LFO phase retriggers on each note-on (`P0` streamed per note-on).
+  - **Sync** — rate locked to host tempo: `freq = (bpm/60) / quartersPerCycle`; the
+    manual Freq knob is superseded, and a rebuild re-asserts the tempo-derived Hz.
+  - **Deferred:** the same selector for the DX7 LFO (its `lfoKeySync` is stored but
+    AMY/fm.py ignore it) — a follow-up once the Juno modes bake in.
 - MPE; per-note expression; sequencer/clock sync option.
 - Wavetable loading (waveeditonline), sampler (`load_sample`/`disk_sample`).
 - Preset pack; resizable/scalable UI; metering.

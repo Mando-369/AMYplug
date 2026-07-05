@@ -9,6 +9,7 @@
 #include "state/Dx7Envelope.h"   // DX7 4R/4L EG -> AMY breakpoints (RT-safe C variant)
 #include "state/Dx7Lfo.h"        // DX7 LFO -> AMY (speed/wave/PMS+PMD/AMD conversions)
 #include "state/Dx7Osc.h"        // DX7 operator freq/level -> AMY (Coarse/Fine/Detune/Level)
+#include "state/AnalogLfo.h"     // Juno LFO modes (Poly/Free/Key/Sync) + tempo-sync math
 #include "BuiltinPatchNames.h"   // kBuiltinPatchCommands / kBuiltinPatchCount (generated)
 #include <cstdio>
 #include <cstring>
@@ -87,6 +88,8 @@ void AmyPlugProcessor::cacheParamPointers()
     mLfoPitch.ptr  = state.getRawParameterValue(params::id::lfoToPitch);
     mLfoPwm.ptr    = state.getRawParameterValue(params::id::lfoToPwm);
     mLfoFilter.ptr = state.getRawParameterValue(params::id::lfoToFilter);
+    pLfoMode       = state.getRawParameterValue(params::id::lfoMode);
+    pLfoSyncRate   = state.getRawParameterValue(params::id::lfoSyncRate);
     mOscADuty.ptr  = state.getRawParameterValue(params::id::oscADuty);
     mOscALevel.ptr = state.getRawParameterValue(params::id::oscALevel);
     mOscBDuty.ptr  = state.getRawParameterValue(params::id::oscBDuty);
@@ -264,10 +267,14 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     if (routerFlushRequested.exchange(false) && router.anyActive())
         router.allNotesOff(active);
 
-    // Transport-aware hang prevention: stop -> flush.
+    // Transport-aware hang prevention: stop -> flush. Also refresh the host tempo
+    // for the analog LFO's Sync mode (falls back to the last-seen BPM if absent).
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
+        {
             router.updateTransport(pos->getIsPlaying(), *active);
+            if (auto bpm = pos->getBpm(); bpm && *bpm > 0.0) curBpm = *bpm;
+        }
 
     // Apply any queued structural rebuild BEFORE anything else touches AMY. The rebuild
     // begins with RESET_SYNTHS (it tears synth 1 down, then redefines it), so a note-on
@@ -283,15 +290,21 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     // DX7 Transpose = a keyboard transpose (FM only); shifts the AMY note, so fixed ops
     // stay put and ratio ops move. 0 for the other engines.
     router.setNoteTranspose(engineIsFM() && pFmTranspose ? (int) std::lround(pFmTranspose->load()) : 0);
-    // FM velocity (DX7 KVS): capture this block's note-on velocity so streamFmParams
-    // scales the operator levels by it — velocity into brightness/loudness per operator.
-    if (engineIsFM())
-        for (const auto meta : midi)
-        {
-            const auto msg = meta.getMessage();
-            if (msg.isNoteOn())
-                fmNoteVel.store(msg.getFloatVelocity(), std::memory_order_relaxed);
-        }
+    // Capture this block's note-on(s) before routing consumes the buffer: FM uses the
+    // velocity (DX7 KVS → per-operator level in streamFmParams); the analog LFO's Key
+    // mode uses the note-on edge to retrigger the LFO phase in streamAnalogParams.
+    analogNoteOn = false;
+    {
+        const bool fm = engineIsFM(), an = engineIsAnalog();
+        if (fm || an)
+            for (const auto meta : midi)
+            {
+                const auto msg = meta.getMessage();
+                if (! msg.isNoteOn()) continue;
+                if (fm) fmNoteVel.store(msg.getFloatVelocity(), std::memory_order_relaxed);
+                if (an) analogNoteOn = true;
+            }
+    }
     router.process(midi, *active);
 
     // Stream any changed automatable macros to AMY (RT-safe, no allocation).
@@ -457,6 +470,8 @@ void AmyPlugProcessor::syncModelFromParams()
     a.lfoWave = (int) rd(params::id::lfoWave, 4); a.lfoFreq = rd(params::id::lfoFreq, 4.0f);
     a.lfoToPitch = rd(params::id::lfoToPitch, 0.0f); a.lfoToPwm = rd(params::id::lfoToPwm, 0.0f);
     a.lfoToFilter = rd(params::id::lfoToFilter, 0.0f);
+    a.lfoMode = (int) rd(params::id::lfoMode, (float) analoglfo::Poly);
+    a.lfoSyncRate = (int) rd(params::id::lfoSyncRate, (float) analoglfo::defaultRateIndex());
     a.filterType = (int) rd(params::id::vcfType, 1);
     a.vcfKbd = rd(params::id::vcfKbd, 0.0f); a.vcfEnv = rd(params::id::vcfEnv, 0.0f);
     a.vcfA = rd(params::id::vcfAttack, 0.0f); a.vcfD = rd(params::id::vcfDecay, 0.6f);
@@ -595,8 +610,44 @@ void AmyPlugProcessor::streamAnalogParams()
     // Four base oscs A/B/C/D per unison copy: osc = 2 + copy*4 + which (0=A..3=D).
     auto oscFor = [] (int which, int k) { return 2 + k * 4 + which; };
 
-    // LFO osc1 freq, and its mod depth onto every copy's pitch (idx5) / PWM (idx5).
-    one(mLfoFreq, "i1v1f%g,0");
+    // ---- LFO mode (Poly / Free / Key / Sync) --------------------------------
+    // AMY's LFO (osc1) is per-voice and free-running. We synthesise the modes by
+    // choosing WHEN to phase-reset (P0, which broadcasts to every voice and warps
+    // the live phase — so it both aligns and retriggers) and, in Sync, WHAT freq to
+    // stream. See AnalogLfo.h.
+    const int  lfoMode  = pLfoMode     ? juce::jlimit(0, 3, (int) std::lround(pLfoMode->load()))
+                                       : analoglfo::Poly;
+    const int  syncRate = pLfoSyncRate ? (int) std::lround(pLfoSyncRate->load())
+                                       : analoglfo::defaultRateIndex();
+    const bool resync   = lfoResyncPending.exchange(false, std::memory_order_relaxed)
+                          || lfoMode != lastLfoMode || syncRate != lastSyncRate;
+    lastLfoMode = lfoMode; lastSyncRate = syncRate;
+
+    auto lfoP0 = [this] { const char* p = "i1v1P0"; active->streamWire(p, 6); };
+
+    if (lfoMode == analoglfo::Free || lfoMode == analoglfo::Sync)
+    {   if (resync) lfoP0(); }                     // one global LFO: align all voices
+    else if (lfoMode == analoglfo::Key)
+    {   if (analogNoteOn) lfoP0(); }               // restart the LFO on every note-on
+    // Poly: never reset — each voice's LFO free-runs (the pre-M5 behaviour).
+
+    // LFO osc1 freq (mod depths onto every copy's pitch/PWM handled below).
+    if (lfoMode == analoglfo::Sync)
+    {
+        const double hz = analoglfo::syncHz(syncRate, curBpm);
+        if (resync || hz != lastSyncHz)
+        {
+            lastSyncHz = hz;
+            char b[48]; std::snprintf(b, sizeof b, "i1v1f%g,0", hz);
+            active->streamWire(b, (int) std::strlen(b));
+        }
+        mLfoFreq.last = std::nanf("");             // leaving Sync re-asserts the manual freq
+    }
+    else
+    {
+        one(mLfoFreq, "i1v1f%g,0");                // manual freq (Poly / Free / Key)
+        lastSyncHz = -1.0;
+    }
     auto lfoDepth = [&] (Macro& m, char letter)   // letter 'f' (pitch) or 'd' (pwm)
     {
         if (m.ptr == nullptr) return;
@@ -888,6 +939,9 @@ void AmyPlugProcessor::handleAsyncUpdate()
                         ? IAmyBackend::Kind::Hardware : IAmyBackend::Kind::Software;
     if (wanted != activeKind) setMode(wanted);
     else                      rebuildEngineFromModel();
+    // A rebuild re-emits osc1 with the baked (manual) LFO freq. In Sync mode that's
+    // only a fallback — force streamAnalogParams to re-assert the tempo-derived Hz.
+    lfoResyncPending.store(true, std::memory_order_relaxed);
 }
 
 void AmyPlugProcessor::saveUserPatch(const juce::String& name)
@@ -977,6 +1031,7 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     setP(params::id::lfoWave, (float) a.lfoWave);  setP(params::id::lfoFreq, a.lfoFreq);
     setP(params::id::lfoToPitch, a.lfoToPitch);    setP(params::id::lfoToPwm, a.lfoToPwm);
     setP(params::id::lfoToFilter, a.lfoToFilter);
+    setP(params::id::lfoMode, (float) a.lfoMode);  setP(params::id::lfoSyncRate, (float) a.lfoSyncRate);
     setP(params::id::vcfType, (float) a.filterType);
     setP(params::id::vcfKbd, a.vcfKbd);            setP(params::id::vcfEnv, a.vcfEnv);
     setP(params::id::vcfAttack, a.vcfA);  setP(params::id::vcfDecay, a.vcfD);

@@ -9,6 +9,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "FmAlgorithms.h"
+#include "AnalogLfo.h"
 
 namespace amyplug::params
 {
@@ -80,6 +81,8 @@ namespace id
     inline constexpr auto lfoToPitch    = "lfo_to_pitch";
     inline constexpr auto lfoToPwm      = "lfo_to_pwm";
     inline constexpr auto lfoToFilter   = "lfo_to_filter";
+    inline constexpr auto lfoMode       = "lfo_mode";       // Poly/Free/Key/Sync
+    inline constexpr auto lfoSyncRate   = "lfo_sync_rate";  // tempo-sync division (Sync mode)
     inline constexpr auto vcfType       = "vcf_type";
     inline constexpr auto vcfKbd        = "vcf_kbd";
     inline constexpr auto vcfEnv        = "vcf_env";
@@ -248,6 +251,12 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::lfoToPitch, 1 }, "LFO→Pitch", unit(), 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::lfoToPwm, 1 }, "LFO→PWM", unit(), 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::lfoToFilter, 1 }, "LFO→Filter", unit(), 0.0f));
+    // LFO mode: Poly (per-voice, the pre-M5 default) / Free (global) / Key (retrigger)
+    // / Sync (tempo-locked). Sync rate is a note division used only in Sync mode.
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::lfoMode, 1 }, "LFO Mode",
+        analoglfo::modeNames(), analoglfo::Poly));
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::lfoSyncRate, 1 }, "LFO Sync",
+        analoglfo::rateNames(), analoglfo::defaultRateIndex()));
 
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { id::vcfType, 1 }, "VCF Type", filtNames, 1));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::vcfKbd, 1 }, "VCF Kbd", unit(), 0.0f));

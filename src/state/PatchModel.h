@@ -47,6 +47,11 @@ public:
         int   lfoWave = 4;                 // Triangle
         float lfoFreq = 4.0f;              // Hz
         float lfoToPitch = 0.0f, lfoToPwm = 0.0f, lfoToFilter = 0.0f;
+        // LFO mode (amyplug::analoglfo::Mode): 0 Poly / 1 Free / 2 Key / 3 Sync.
+        // Free/Sync phase-lock the per-voice LFO copies (emit adds P0); Sync also
+        // overrides lfoFreq from the host tempo (applied live in the processor).
+        int   lfoMode = 0;                 // Poly (pre-M5 behaviour)
+        int   lfoSyncRate = 7;             // 1/4 (index into analoglfo::rates)
         // VCF (osc 0).
         int   filterType = 1;              // amy::Filter (LPF)
         float vcfFreq = 2500.0f, vcfReso = 0.7f, vcfKbd = 0.0f, vcfEnv = 0.0f;

@@ -809,8 +809,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     junoPanelL.addKnob(params::id::vcfEnv, "Env");
     junoPanelL.addChoice(params::id::vcfType, "Type");
     junoPanelL.addSection("LFO", col::lfoGreen);
+    junoPanelL.addChoice(params::id::lfoMode, "Mode");
     junoPanelL.addChoice(params::id::lfoWave, "Wave");
     junoPanelL.addKnob(params::id::lfoFreq, "Freq");
+    junoPanelL.addChoice(params::id::lfoSyncRate, "Sync");
     junoPanelL.addKnob(params::id::lfoToPitch, "Pitch");
     junoPanelL.addKnob(params::id::lfoToPwm, "PWM");
     junoPanelL.addKnob(params::id::lfoToFilter, "Filter");

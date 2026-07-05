@@ -154,6 +154,19 @@ private:
     Macro mGlide;                                           // portamento (i<ch>m), all engines
     Macro mUnisonDetune;                                    // unison spread (cents)
     std::atomic<float>* pUnisonVoices = nullptr;            // stacked analog osc copies
+    // Analog LFO mode (Poly/Free/Key/Sync). Behavioural, not structural: the mode
+    // only changes WHEN we phase-reset the LFO (P0) and, in Sync, WHAT freq we
+    // stream — all handled live in streamAnalogParams (no rebuild). These are
+    // audio-thread-only; the atomics carry the param values, the ints/doubles are
+    // last-seen state for change detection.
+    std::atomic<float>* pLfoMode     = nullptr;
+    std::atomic<float>* pLfoSyncRate = nullptr;
+    int    lastLfoMode  = -1;                    // detect mode-enter (phase-lock/retrigger)
+    int    lastSyncRate = -1;
+    double lastSyncHz   = -1.0;                  // last streamed Sync freq (Hz; -1 = none)
+    double curBpm       = 120.0;                 // host tempo, refreshed each block
+    bool   analogNoteOn = false;                 // a note-on landed this block (Key mode)
+    std::atomic<bool> lfoResyncPending { true }; // a rebuild happened → re-assert Sync freq
     Macro mVcfA, mVcfD, mVcfS, mVcfR;            // VCF envelope (bp1)
     Macro mEqLow, mEqMid, mEqHigh;
     // Deeper effect params (streamed as full h/k/M lists in streamGlobalFx).
