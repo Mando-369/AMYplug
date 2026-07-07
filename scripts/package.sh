@@ -22,11 +22,15 @@ echo "==> Staging release in $STAGE"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 
+ARTFX="$ROOT/build/mac-release/AMYplugFX_artefacts/Release"
 copied=0
-for b in "$ART/AU/AMYplug.component" "$ART/VST3/AMYplug.vst3" "$ART/Standalone/AMYplug.app"; do
+for b in \
+  "$ART/AU/AMYplug.component"        "$ART/VST3/AMYplug.vst3"   "$ART/Standalone/AMYplug.app" \
+  "$ARTFX/AU/AMYplugFX.component"    "$ARTFX/VST3/AMYplugFX.vst3"
+do
   if [[ -d "$b" ]]; then cp -R "$b" "$STAGE/"; echo "  + $(basename "$b")"; copied=$((copied+1)); fi
 done
-[[ "$copied" -gt 0 ]] || { echo "error: no plug-in bundles found in $ART" >&2; exit 1; }
+[[ "$copied" -gt 0 ]] || { echo "error: no plug-in bundles found (build first)" >&2; exit 1; }
 
 cp "$SCRIPT_DIR/install.sh" "$STAGE/"; chmod +x "$STAGE/install.sh"
 cp "$ROOT/README.md" "$STAGE/"

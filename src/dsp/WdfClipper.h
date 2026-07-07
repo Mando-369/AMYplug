@@ -61,10 +61,15 @@ public:
     }
 
     // THD / Drive in dB. Negative = cleaner (signal pulled below the diode knee),
-    // positive = more saturation. The post-divide keeps the level steady.
+    // positive = more saturation. With gain compensation ON (default) the post-divide
+    // keeps the level steady (Kalos behavior); OFF, drive pushes level straight into
+    // the diodes and out — clipping hotter and louder, like running a synth's output
+    // volume into a clipper. The AMYplug instrument leaves it ON; AMYplugFX turns it OFF.
     void setDriveDb(float dB)   { driveDb = dB; }
     // Output ceiling in dB (<= 0). The diode clip never exceeds it.
     void setOutputDb(float dB)  { outDb = dB; }
+    // Gain compensation: divide the drive back out after the diode (steady level) or not.
+    void setGainCompensation(bool on) { compensate = on; }
 
     // Process up to two channels in place. Extra channels are left untouched.
     void process(float* const* channels, int numChannels, int numSamples)
@@ -171,8 +176,9 @@ private:
         c.hp2 += fConst8 * band;
         const double hp   = fConst9 * v;
 
-        // Gain compensation (divide back out) + hard clip at the ceiling.
-        const double y = hp / drive;
+        // Gain compensation (divide back out) keeps level steady; without it, drive
+        // pushes level into the diode + output ceiling — clips hotter and louder.
+        const double y = compensate ? (hp / drive) : hp;
         return std::max(-ceil, std::min(ceil, y));
     }
 
@@ -181,6 +187,7 @@ private:
     double fConst4 = 0.0, fConst6 = 0.0, fConst7 = 0.0, fConst8 = 0.0, fConst9 = 0.0;
     double smCeil = 1.0, smDrive = 1.0;
     float  outDb = 0.0f, driveDb = 0.0f;
+    bool   compensate = true;   // instrument: true (Kalos); AMYplugFX: false
     Channel chans[2];
 };
 } // namespace amyplug

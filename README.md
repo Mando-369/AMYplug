@@ -21,7 +21,7 @@ AMYplug loads AMY as a normal instrument: play it live, design and save patches,
 ## Install — the easy way (no coding)
 
 1. **Download** the latest `AMYplug-macOS.zip` from the [**Releases page**](https://github.com/Mando-369/AMYplug/releases).
-2. **Unzip** it. You’ll get `AMYplug.component` (AU), `AMYplug.vst3`, an optional `AMYplug.app` (Standalone), and `install.sh`.
+2. **Unzip** it. You’ll get the **AMYplug** instrument (`.component` / `.vst3`), the **AMYplugFX** effect (`.component` / `.vst3`), an optional `AMYplug.app` (Standalone), and `install.sh`.
 3. **Run the installer.** Open **Terminal**, type `cd ` (with a trailing space), drag the unzipped folder onto the Terminal window, press Return, then run the script:
    ```bash
    cd /path/to/AMYplug-macOS
@@ -97,6 +97,14 @@ Short version:
 
 > ### ⚠️ If hardware audio ever sounds glitchy, “bitcrushed,” or drifts in pitch/latency — **CHECK YOUR AUDIO MASTER CLOCK FIRST.**
 > A misconfigured macOS **Aggregate Device** (two interfaces with bad *drift correction*) causes exactly these symptoms, **intermittently**, and it will masquerade as a board or plugin bug. Use your interface directly on its own clock, or set a single clock master. This cost us a full debugging session — don’t repeat it. Details in [`docs/HARDWARE_LATENCY.md`](docs/HARDWARE_LATENCY.md).
+
+---
+
+## AMYplugFX — the FX section as an effect plugin
+
+The download also includes **AMYplugFX**, an AU/VST3 **audio effect** carrying AMYplug’s output-stage DSP — the **bitcrusher** (sample-rate + bit-depth reduction) and the **WDF diode saturator** — so you can drop that grit on *any* track. It’s especially handy in **Hardware mode**: the instrument outputs silence, so insert AMYplugFX on the **AMYboard’s audio-return track** to process the board’s sound. Controls: **Freq · Bit · Drive · Mix · Output**. (Its saturator is driven non-compensated — pushing Drive clips hotter and louder — with Output as makeup.)
+
+> More of the synth’s filter + FX section as an insert is planned — see the roadmap.
 
 ---
 

@@ -127,6 +127,51 @@ target_link_libraries(AMYplug PRIVATE
     juce::juce_recommended_warning_flags)
 
 # ---------------------------------------------------------------------------
+# AMYplugFX — the output FX section as a standalone audio-effect plugin.
+# Phase 1: the two host-side Faust effects (bitcrusher + WDF diode saturator),
+# usable as an insert on any track (incl. the AMYboard's audio return). Shares
+# the DSP + LookAndFeel + bundled fonts with the instrument; needs no AMY engine.
+# ---------------------------------------------------------------------------
+juce_add_plugin(AMYplugFX
+    PRODUCT_NAME                "AMYplugFX"
+    COMPANY_NAME                "Mando369"
+    BUNDLE_ID                   "com.mando369.amyplugfx"
+    PLUGIN_MANUFACTURER_CODE    Mand          # 4 chars, one uppercase
+    PLUGIN_CODE                 Amfx          # unique from the instrument's Amyp
+    FORMATS                     AU VST3
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            FALSE
+    NEEDS_MIDI_OUTPUT           FALSE
+    COPY_PLUGIN_AFTER_BUILD     TRUE
+    VST3_CATEGORIES             "Fx" "Distortion"
+    AU_MAIN_TYPE                "kAudioUnitType_Effect")
+
+juce_generate_juce_header(AMYplugFX)
+
+target_sources(AMYplugFX PRIVATE
+    src/fx/FxProcessor.cpp
+    src/fx/FxEditor.cpp
+    src/gui/AmyLookAndFeel.cpp
+    src/gui/AmyFonts.cpp)
+
+target_include_directories(AMYplugFX PRIVATE src)
+
+target_compile_definitions(AMYplugFX PUBLIC
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_DISPLAY_SPLASH_SCREEN=0)
+
+target_link_libraries(AMYplugFX PRIVATE
+    AmyPlugAssets
+    juce::juce_audio_utils
+    juce::juce_audio_plugin_client
+    PUBLIC
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_lto_flags
+    juce::juce_recommended_warning_flags)
+
+# ---------------------------------------------------------------------------
 # Headless snapshot tool (UI dev): renders the editor to a PNG without a window.
 # Off by default; enable with -DAMYPLUG_BUILD_SNAPSHOT=ON.
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# AMYplug installer for macOS — copies the AU + VST3 (and optionally the
-# Standalone app) into your user plug-in folders and clears macOS Gatekeeper
-# quarantine so your DAW will load them.
+# AMYplug installer for macOS — installs the AMYplug instrument AND the AMYplugFX
+# effect (AU + VST3, and optionally the instrument's Standalone app) into your user
+# plug-in folders, clearing macOS Gatekeeper quarantine so your DAW will load them.
 #
 # Usage:
 #   ./install.sh                # install AU + VST3
@@ -31,9 +31,10 @@ AU_DIR="$HOME/Library/Audio/Plug-Ins/Components"
 VST3_DIR="$HOME/Library/Audio/Plug-Ins/VST3"
 APP_DIR="/Applications"
 
-AU_NAME="AMYplug.component"
-VST3_NAME="AMYplug.vst3"
-APP_NAME="AMYplug.app"
+# Both plug-ins: the AMYplug instrument and the AMYplugFX effect.
+AU_NAMES=("AMYplug.component" "AMYplugFX.component")
+VST3_NAMES=("AMYplug.vst3" "AMYplugFX.vst3")
+APP_NAME="AMYplug.app"   # only the instrument ships a Standalone build
 
 WANT_STANDALONE=0
 DO_UNINSTALL=0
@@ -54,7 +55,7 @@ done
 # --- uninstall ------------------------------------------------------------
 if [[ "$DO_UNINSTALL" == 1 ]]; then
   say "Removing AMYplug…"
-  for p in "$AU_DIR/$AU_NAME" "$VST3_DIR/$VST3_NAME" "$APP_DIR/$APP_NAME"; do
+  for p in "${AU_NAMES[@]/#/$AU_DIR/}" "${VST3_NAMES[@]/#/$VST3_DIR/}" "$APP_DIR/$APP_NAME"; do
     if [[ -e "$p" ]]; then rm -rf "$p" && ok "removed $p"; fi
   done
   ok "Uninstall complete. Rescan plug-ins in your DAW."
@@ -71,7 +72,9 @@ find_bundle() {
     "$SCRIPT_DIR/../$name" \
     "$SCRIPT_DIR/../build/mac-release/AMYplug_artefacts/Release/AU/$name" \
     "$SCRIPT_DIR/../build/mac-release/AMYplug_artefacts/Release/VST3/$name" \
-    "$SCRIPT_DIR/../build/mac-release/AMYplug_artefacts/Release/Standalone/$name"
+    "$SCRIPT_DIR/../build/mac-release/AMYplug_artefacts/Release/Standalone/$name" \
+    "$SCRIPT_DIR/../build/mac-release/AMYplugFX_artefacts/Release/AU/$name" \
+    "$SCRIPT_DIR/../build/mac-release/AMYplugFX_artefacts/Release/VST3/$name"
   do
     if [[ -d "$c" ]]; then printf '%s' "$c"; return 0; fi
   done
@@ -91,17 +94,22 @@ install_bundle() {  # <src> <dest_dir>
   ok "installed $dest_dir/$base"
 }
 
-AU_SRC="$(find_bundle "$AU_NAME"   || true)"
-VST3_SRC="$(find_bundle "$VST3_NAME" || true)"
-APP_SRC="$(find_bundle "$APP_NAME"  || true)"
+say "Installing AMYplug plug-ins…"
+installed=0
+for n in "${AU_NAMES[@]}"; do
+  src="$(find_bundle "$n" || true)"
+  if [[ -n "$src" ]]; then install_bundle "$src" "$AU_DIR"; installed=1; fi
+done
+for n in "${VST3_NAMES[@]}"; do
+  src="$(find_bundle "$n" || true)"
+  if [[ -n "$src" ]]; then install_bundle "$src" "$VST3_DIR"; installed=1; fi
+done
 
-[[ -n "$AU_SRC$VST3_SRC" ]] || die "couldn't find $AU_NAME or $VST3_NAME.
-Put this script next to the .component/.vst3 (release zip), or build first:
+[[ "$installed" == 1 ]] || die "couldn't find any AMYplug plug-ins.
+Put this script next to the .component/.vst3 bundles (release zip), or build first:
   cmake --preset mac-release && cmake --build --preset mac-release"
 
-say "Installing AMYplug plug-ins…"
-[[ -n "$AU_SRC"   ]] && install_bundle "$AU_SRC"   "$AU_DIR"   || warn "no AU (.component) found — skipping"
-[[ -n "$VST3_SRC" ]] && install_bundle "$VST3_SRC" "$VST3_DIR" || warn "no VST3 found — skipping"
+APP_SRC="$(find_bundle "$APP_NAME" || true)"
 
 if [[ "$WANT_STANDALONE" == 1 ]]; then
   if [[ -n "$APP_SRC" ]]; then
@@ -126,8 +134,10 @@ killall -q AudioComponentRegistrar 2>/dev/null || true
 echo
 ok "Done."
 echo "Next steps:"
-echo "  • Restart your DAW (or trigger a plug-in rescan) so it picks up AMYplug."
+echo "  • Restart your DAW (or trigger a plug-in rescan) to pick up AMYplug (instrument)"
+echo "    and AMYplugFX (audio effect — bitcrusher + diode saturator)."
 echo "  • Logic/GarageBand users: the AU may take a moment to validate on first scan."
-echo "  • Verify the AU from Terminal (optional):  auval -v aumu Amyp Mand"
+echo "  • Verify from Terminal (optional):  auval -v aumu Amyp Mand   (instrument)"
+echo "                                      auval -v aufx Amfx Mand   (effect)"
 echo "  • Hardware-mode users: read docs/HARDWARE_MODE.md — and if audio ever sounds"
 echo "    glitchy/drifty, CHECK YOUR AUDIO MASTER CLOCK / Aggregate Device first."
