@@ -14,6 +14,7 @@
 #include "../amyfx/AmyFilter.h"
 #include "../amyfx/AmyEq.h"
 #include "../amyfx/AmyChorus.h"
+#include "../amyfx/AmyEcho.h"
 #include "../amyfx/AmyReverb.h"
 #include "../amyfx/EnvelopeFollower.h"
 
@@ -27,6 +28,7 @@ namespace fxid
     inline constexpr auto fltOn   = "flt_on";
     inline constexpr auto eqOn    = "eq_on";
     inline constexpr auto choOn   = "cho_on";
+    inline constexpr auto echOn   = "ech_on";
     inline constexpr auto revOn   = "rev_on";
     inline constexpr auto crushOn = "crush_on";
     inline constexpr auto diodeOn = "diode_on";
@@ -47,6 +49,12 @@ namespace fxid
     inline constexpr auto choMix   = "cho_mix";    // wet level
     inline constexpr auto choRate  = "cho_rate";   // LFO Hz
     inline constexpr auto choDepth = "cho_depth";  // mod depth
+
+    // Echo (AMY fixed-delay echo).
+    inline constexpr auto echMix  = "ech_mix";     // wet level
+    inline constexpr auto echTime = "ech_time";    // delay ms
+    inline constexpr auto echFb   = "ech_fb";      // feedback
+    inline constexpr auto echTone = "ech_tone";    // tone (+LP / -HP)
 
     // Reverb (AMY stereo reverb).
     inline constexpr auto revMix  = "rev_mix";   // wet level
@@ -99,6 +107,7 @@ private:
     EnvelopeFollower follower;     // drives the cutoff from input level
     AmyEq      eqL, eqR;           // AMY 3-band bus EQ, one per channel
     AmyChorus  chorus;             // AMY triangle-LFO chorus (stereo)
+    AmyEcho    echoL, echoR;       // AMY fixed-delay echo, one per channel
     AmyReverb  reverb;             // AMY stereo reverb (one instance, stereo)
     BitCrusher crush;
     WdfClipper clip;
@@ -106,6 +115,7 @@ private:
     std::atomic<float>* pFltOn = nullptr;
     std::atomic<float>* pEqOn = nullptr;
     std::atomic<float>* pChoOn = nullptr;
+    std::atomic<float>* pEchOn = nullptr;
     std::atomic<float>* pRevOn = nullptr;
     std::atomic<float>* pCrushOn = nullptr;
     std::atomic<float>* pDiodeOn = nullptr;
@@ -120,6 +130,10 @@ private:
     std::atomic<float>* pChoMix = nullptr;
     std::atomic<float>* pChoRate = nullptr;
     std::atomic<float>* pChoDepth = nullptr;
+    std::atomic<float>* pEchMix = nullptr;
+    std::atomic<float>* pEchTime = nullptr;
+    std::atomic<float>* pEchFb = nullptr;
+    std::atomic<float>* pEchTone = nullptr;
     std::atomic<float>* pRevMix = nullptr;
     std::atomic<float>* pRevSize = nullptr;
     std::atomic<float>* pRevDamp = nullptr;

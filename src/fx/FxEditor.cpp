@@ -54,6 +54,11 @@ FxEditor::FxEditor(FxProcessor& p) : juce::AudioProcessorEditor(p), proc(p)
     addKnob(choRate,  fxid::choRate,  "RATE",     col::lfoGreen);
     addKnob(choDepth, fxid::choDepth, "DEPTH",    col::lfoGreen);
 
+    addKnob(echMix,   fxid::echMix,   "MIX",      col::engineCyan);
+    addKnob(echTime,  fxid::echTime,  "TIME",     col::engineCyan);
+    addKnob(echFb,    fxid::echFb,    "FBK",      col::engineCyan);
+    addKnob(echTone,  fxid::echTone,  "TONE",     col::engineCyan);
+
     addKnob(revMix,   fxid::revMix,   "MIX",      col::junoBlue);
     addKnob(revSize,  fxid::revSize,  "SIZE",     col::junoBlue);
     addKnob(revDamp,  fxid::revDamp,  "DAMP",     col::junoBlue);
@@ -67,11 +72,14 @@ FxEditor::FxEditor(FxProcessor& p) : juce::AudioProcessorEditor(p), proc(p)
     addPower(fltPower,   fltPowerAtt,   fxid::fltOn);
     addPower(eqPower,    eqPowerAtt,    fxid::eqOn);
     addPower(choPower,   choPowerAtt,   fxid::choOn);
+    addPower(echPower,   echPowerAtt,   fxid::echOn);
     addPower(revPower,   revPowerAtt,   fxid::revOn);
     addPower(crushPower, crushPowerAtt, fxid::crushOn);
     addPower(diodePower, diodePowerAtt, fxid::diodeOn);
 
-    setSize(940, 476);
+    // Width chosen so each of the 4 columns is wide enough to hold up to 4 knobs at
+    // the full (capped) knob size — uniform spacing across every card.
+    setSize(1328, 476);
 }
 
 void FxEditor::addPower(PowerButton& b, std::unique_ptr<ButtonAttachment>& att, const juce::String& paramId)
@@ -136,7 +144,7 @@ void FxEditor::layoutCards()
     };
     auto placePower = [](juce::Component& b, juce::Rectangle<int> card) { b.setBounds(card.getRight() - 21, card.getY() + 5, 13, 13); };
 
-    placePower(fltPower, rFilter); placePower(eqPower, rEq); placePower(choPower, rChorus);
+    placePower(fltPower, rFilter); placePower(eqPower, rEq); placePower(choPower, rChorus); placePower(echPower, rEcho);
     placePower(revPower, rReverb); placePower(crushPower, rCrush); placePower(diodePower, rDiode);
 
     {   // FILTER: type selector on top, then the 4 knobs.
@@ -148,6 +156,7 @@ void FxEditor::layoutCards()
     }
     placeRow({ &eqLow, &eqMid, &eqHigh },       content(rEq));
     placeRow({ &choMix, &choRate, &choDepth },  content(rChorus));
+    placeRow({ &echMix, &echTime, &echFb, &echTone }, content(rEcho));
     placeRow({ &revMix, &revSize, &revDamp },   content(rReverb));
     placeRow({ &freq, &bit },                   content(rCrush));
     placeRow({ &drive },                        content(rDiode));
@@ -157,7 +166,7 @@ void FxEditor::layoutCards()
         { "FILTER",   col::filterViolet, rFilter, false },
         { "EQ",       col::amber,        rEq,     false },
         { "CHORUS",   col::lfoGreen,     rChorus, false },
-        { "ECHO",     col::engineCyan,   rEcho,   true  },
+        { "ECHO",     col::engineCyan,   rEcho,   false },
         { "REVERB",   col::junoBlue,     rReverb, false },
         { "BITCRUSH", col::junoRed,      rCrush,  false },
         { "DIODE CLIPPER", col::junoRed, rDiode,  false },

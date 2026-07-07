@@ -27,6 +27,8 @@ effect without the AMY engine or its global state:
 - `AmyChorus.h` — the bus chorus, reconstructed from AMY's parameters + method
   (triangle-LFO modulated fractional delay); AMY generates the LFO with its
   oscillator engine, so this reproduces the behavior rather than byte-copying it.
+- `AmyEcho.h` — the bus echo (`delay_line_in_out_fixed_delay`): fixed delay +
+  feedback with AMY's three tone cases (LP in / clean / HP-FIR out).
 
 Coefficient generation and the DF-I / split-feedback biquad topologies are copied from
 AMY. AMY is MIT (see the AMY entry above); these files carry AMY's copyright/permission

@@ -16,6 +16,7 @@ APVTS::ParameterLayout FxProcessor::createLayout()
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::fltOn,   1 }, "Filter On",   true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::eqOn,    1 }, "EQ On",       true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::choOn,   1 }, "Chorus On",   true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::echOn,   1 }, "Echo On",     true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::revOn,   1 }, "Reverb On",   true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::crushOn, 1 }, "Bitcrush On", true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::diodeOn, 1 }, "Diode On",    true));
@@ -52,6 +53,16 @@ APVTS::ParameterLayout FxProcessor::createLayout()
         ParameterID { fxid::choRate,  1 }, "Chorus Rate",  NormalisableRange<float> { 0.05f, 8.0f, 0.01f, 0.4f }, 0.5f));
     layout.add(std::make_unique<AudioParameterFloat>(
         ParameterID { fxid::choDepth, 1 }, "Chorus Depth", NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.5f));
+
+    // Echo — wet level (0 = off), delay time, feedback, tone (+LP / -HP).
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::echMix,  1 }, "Echo Mix",  NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::echTime, 1 }, "Echo Time", NormalisableRange<float> { 10.0f, 1000.0f, 1.0f, 0.4f }, 500.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::echFb,   1 }, "Echo Fbk",  NormalisableRange<float> { 0.0f, 0.95f, 0.001f }, 0.35f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::echTone, 1 }, "Echo Tone", NormalisableRange<float> { -0.95f, 0.95f, 0.001f }, 0.0f));
 
     // Reverb — wet level (0 = off), size (liveness/decay), damping.
     layout.add(std::make_unique<AudioParameterFloat>(
@@ -97,6 +108,7 @@ FxProcessor::FxProcessor()
     pFltOn    = state.getRawParameterValue(fxid::fltOn);
     pEqOn     = state.getRawParameterValue(fxid::eqOn);
     pChoOn    = state.getRawParameterValue(fxid::choOn);
+    pEchOn    = state.getRawParameterValue(fxid::echOn);
     pRevOn    = state.getRawParameterValue(fxid::revOn);
     pCrushOn  = state.getRawParameterValue(fxid::crushOn);
     pDiodeOn  = state.getRawParameterValue(fxid::diodeOn);
@@ -111,6 +123,10 @@ FxProcessor::FxProcessor()
     pChoMix   = state.getRawParameterValue(fxid::choMix);
     pChoRate  = state.getRawParameterValue(fxid::choRate);
     pChoDepth = state.getRawParameterValue(fxid::choDepth);
+    pEchMix   = state.getRawParameterValue(fxid::echMix);
+    pEchTime  = state.getRawParameterValue(fxid::echTime);
+    pEchFb    = state.getRawParameterValue(fxid::echFb);
+    pEchTone  = state.getRawParameterValue(fxid::echTone);
     pRevMix   = state.getRawParameterValue(fxid::revMix);
     pRevSize  = state.getRawParameterValue(fxid::revSize);
     pRevDamp  = state.getRawParameterValue(fxid::revDamp);
@@ -130,6 +146,7 @@ void FxProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     follower.prepare(sr);
     eqL.prepare(sr); eqR.prepare(sr);
     chorus.prepare(sr);
+    echoL.prepare(sr); echoR.prepare(sr);
     reverb.prepare(sr);
     crush.prepare(sr);
     clip.prepare(sr);
@@ -227,7 +244,22 @@ void FxProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         }
     }
 
-    // REVERB — AMY's stereo reverb (after chorus; echo will slot in ahead of it).
+    // ECHO — AMY's fixed-delay echo (after chorus, before reverb).
+    {
+        const bool  echOn = ! pEchOn || pEchOn->load() > 0.5f;
+        const float wet   = pEchMix ? pEchMix->load() : 0.0f;
+        if (echOn && wet > 0.0001f && nch > 0)
+        {
+            const float t  = pEchTime ? pEchTime->load() : 500.0f;
+            const float fbk = pEchFb  ? pEchFb->load()   : 0.35f;
+            const float tn = pEchTone ? pEchTone->load() : 0.0f;
+            echoL.setParams(t, fbk, tn);
+            echoL.process(buffer.getWritePointer(0), n, wet);
+            if (nch > 1) { echoR.setParams(t, fbk, tn); echoR.process(buffer.getWritePointer(1), n, wet); }
+        }
+    }
+
+    // REVERB — AMY's stereo reverb (after echo).
     {
         const bool  revOn = ! pRevOn || pRevOn->load() > 0.5f;
         const float wet   = pRevMix ? pRevMix->load() : 0.0f;
