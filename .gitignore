@@ -1,6 +1,7 @@
 # Build output
 /build/
 /builds/
+/dist/
 *.o
 *.obj
 *.a
