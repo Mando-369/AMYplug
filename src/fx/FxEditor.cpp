@@ -50,6 +50,10 @@ FxEditor::FxEditor(FxProcessor& p) : juce::AudioProcessorEditor(p), proc(p)
     addKnob(eqMid,    fxid::eqMid,    "MID",      col::amber);
     addKnob(eqHigh,   fxid::eqHigh,   "HIGH",     col::amber);
 
+    addKnob(choMix,   fxid::choMix,   "MIX",      col::lfoGreen);
+    addKnob(choRate,  fxid::choRate,  "RATE",     col::lfoGreen);
+    addKnob(choDepth, fxid::choDepth, "DEPTH",    col::lfoGreen);
+
     addKnob(revMix,   fxid::revMix,   "MIX",      col::junoBlue);
     addKnob(revSize,  fxid::revSize,  "SIZE",     col::junoBlue);
     addKnob(revDamp,  fxid::revDamp,  "DAMP",     col::junoBlue);
@@ -62,11 +66,12 @@ FxEditor::FxEditor(FxProcessor& p) : juce::AudioProcessorEditor(p), proc(p)
 
     addPower(fltPower,   fltPowerAtt,   fxid::fltOn);
     addPower(eqPower,    eqPowerAtt,    fxid::eqOn);
+    addPower(choPower,   choPowerAtt,   fxid::choOn);
     addPower(revPower,   revPowerAtt,   fxid::revOn);
     addPower(crushPower, crushPowerAtt, fxid::crushOn);
     addPower(diodePower, diodePowerAtt, fxid::diodeOn);
 
-    setSize(940, 420);
+    setSize(940, 476);
 }
 
 void FxEditor::addPower(PowerButton& b, std::unique_ptr<ButtonAttachment>& att, const juce::String& paramId)
@@ -98,82 +103,64 @@ void FxEditor::layoutCards()
     const int m = 12, gap = 8;
     constexpr int titleH = 24;
 
-    // Row A — filter + bus FX, in signal-flow order.
-    const int ay = 64, ah = 176;
-    int x = m;
-    juce::Rectangle<int> rFilter(x, ay, 300, ah); x += 300 + gap;
-    juce::Rectangle<int> rEq    (x, ay, 145, ah); x += 145 + gap;
-    juce::Rectangle<int> rChorus(x, ay, 145, ah); x += 145 + gap;
-    juce::Rectangle<int> rEcho  (x, ay, 145, ah); x += 145 + gap;
-    juce::Rectangle<int> rReverb(x, ay, 145, ah);
+    // Uniform 4-column x 2-row grid, in signal-flow order:
+    //   FILTER  EQ      CHORUS  ECHO
+    //   REVERB  BITCRUSH DIODE  OUT
+    const int cardW = (getWidth() - 2 * m - 3 * gap) / 4;
+    const int cardH = 184;
+    const int y1 = 64, y2 = y1 + cardH + 10;
+    auto cell = [&](int colv, int yv) { return juce::Rectangle<int>(m + colv * (cardW + gap), yv, cardW, cardH); };
 
-    // Row B — output stage.
-    const int by = ay + ah + 10, bh = 150;
-    x = m;
-    juce::Rectangle<int> rCrush(x, by, 200, bh); x += 200 + gap;
-    juce::Rectangle<int> rDiode(x, by, 130, bh); x += 130 + gap;
-    juce::Rectangle<int> rOut  (x, by, 200, bh);
+    juce::Rectangle<int> rFilter = cell(0, y1), rEq    = cell(1, y1), rChorus = cell(2, y1), rEcho  = cell(3, y1);
+    juce::Rectangle<int> rReverb = cell(0, y2), rCrush = cell(1, y2), rDiode  = cell(2, y2), rOut   = cell(3, y2);
 
-    auto content   = [](juce::Rectangle<int> card) { return card.withTrimmedTop(titleH).reduced(8, 6); };
-    auto placeKnob = [](Knob& k, juce::Rectangle<int> cell) { k.label.setBounds(cell.removeFromTop(15)); k.slider.setBounds(cell.reduced(2)); };
-    // Power LED at the right end of a card's title bar.
+    auto content = [](juce::Rectangle<int> card) { return card.withTrimmedTop(titleH).reduced(8, 8); };
+
+    // Lay a row of knobs as a fixed-size block, centred in `area` (uniform knob size
+    // across every card, regardless of how many the card has).
+    auto placeRow = [](std::vector<Knob*> knobs, juce::Rectangle<int> area)
+    {
+        const int count = (int) knobs.size();
+        if (count == 0) return;
+        const int cellW = juce::jmin(76, area.getWidth() / count);
+        const int knobH = juce::jmin(area.getHeight(), 102);
+        int x = area.getCentreX() - (cellW * count) / 2;
+        const int yTop = area.getCentreY() - knobH / 2;
+        for (auto* k : knobs)
+        {
+            juce::Rectangle<int> c(x, yTop, cellW, knobH);
+            k->label.setBounds(c.removeFromTop(15));
+            k->slider.setBounds(c.reduced(3, 2));
+            x += cellW;
+        }
+    };
     auto placePower = [](juce::Component& b, juce::Rectangle<int> card) { b.setBounds(card.getRight() - 21, card.getY() + 5, 13, 13); };
-    placePower(fltPower,   rFilter);
-    placePower(eqPower,    rEq);
-    placePower(revPower,   rReverb);
-    placePower(crushPower, rCrush);
-    placePower(diodePower, rDiode);
 
-    {   // FILTER
+    placePower(fltPower, rFilter); placePower(eqPower, rEq); placePower(choPower, rChorus);
+    placePower(revPower, rReverb); placePower(crushPower, rCrush); placePower(diodePower, rDiode);
+
+    {   // FILTER: type selector on top, then the 4 knobs.
         auto c = content(rFilter);
-        fltTypeLabel.setBounds(c.removeFromTop(14));
+        fltTypeLabel.setBounds(c.removeFromTop(13));
         fltType.setBounds(c.removeFromTop(24));
         c.removeFromTop(6);
-        const int kw = c.getWidth() / 4;
-        placeKnob(cutoff,   c.removeFromLeft(kw));
-        placeKnob(reso,     c.removeFromLeft(kw));
-        placeKnob(envAmt,   c.removeFromLeft(kw));
-        placeKnob(follower, c);
+        placeRow({ &cutoff, &reso, &envAmt, &follower }, c);
     }
-    {   // EQ (low / mid / high)
-        auto c = content(rEq);
-        const int kw = c.getWidth() / 3;
-        placeKnob(eqLow,  c.removeFromLeft(kw));
-        placeKnob(eqMid,  c.removeFromLeft(kw));
-        placeKnob(eqHigh, c);
-    }
-    {   // REVERB (mix / size / damp)
-        auto c = content(rReverb);
-        const int kw = c.getWidth() / 3;
-        placeKnob(revMix,  c.removeFromLeft(kw));
-        placeKnob(revSize, c.removeFromLeft(kw));
-        placeKnob(revDamp, c);
-    }
-    {   // BITCRUSH
-        auto c = content(rCrush);
-        const int kw = c.getWidth() / 2;
-        placeKnob(freq, c.removeFromLeft(kw));
-        placeKnob(bit,  c);
-    }
-    {   // DIODE
-        auto c = content(rDiode);
-        placeKnob(drive, c);
-    }
-    {   // OUT
-        auto c = content(rOut);
-        const int kw = c.getWidth() / 2;
-        placeKnob(mix,    c.removeFromLeft(kw));
-        placeKnob(output, c);
-    }
+    placeRow({ &eqLow, &eqMid, &eqHigh },       content(rEq));
+    placeRow({ &choMix, &choRate, &choDepth },  content(rChorus));
+    placeRow({ &revMix, &revSize, &revDamp },   content(rReverb));
+    placeRow({ &freq, &bit },                   content(rCrush));
+    placeRow({ &drive },                        content(rDiode));
+    placeRow({ &mix, &output },                 content(rOut));
 
     cards = {
         { "FILTER",   col::filterViolet, rFilter, false },
         { "EQ",       col::amber,        rEq,     false },
-        { "CHORUS",   col::lfoGreen,     rChorus, true  },
+        { "CHORUS",   col::lfoGreen,     rChorus, false },
         { "ECHO",     col::engineCyan,   rEcho,   true  },
         { "REVERB",   col::junoBlue,     rReverb, false },
         { "BITCRUSH", col::junoRed,      rCrush,  false },
-        { "DIODE",    col::junoRed,      rDiode,  false },
+        { "DIODE CLIPPER", col::junoRed, rDiode,  false },
         { "OUT",      col::amber,        rOut,    false },
     };
 }

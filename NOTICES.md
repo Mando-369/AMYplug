@@ -24,6 +24,9 @@ effect without the AMY engine or its global state:
 - `AmyFilter.h` — the analog VCF, incl. the 24 dB/oct "twice" cascade (the Juno slope).
 - `AmyEq.h` — the 3-band parametric bus EQ (`parametric_eq_process`, 800/2500/7000 Hz).
 - `AmyReverb.h` — the stereo reverb (`stereo_reverb`, a Stautner-Puckette design).
+- `AmyChorus.h` — the bus chorus, reconstructed from AMY's parameters + method
+  (triangle-LFO modulated fractional delay); AMY generates the LFO with its
+  oscillator engine, so this reproduces the behavior rather than byte-copying it.
 
 Coefficient generation and the DF-I / split-feedback biquad topologies are copied from
 AMY. AMY is MIT (see the AMY entry above); these files carry AMY's copyright/permission

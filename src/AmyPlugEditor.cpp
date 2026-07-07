@@ -1003,7 +1003,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fxPanelR.addKnob(params::id::reverb, "Level");
     fxPanelR.addKnob(params::id::reverbSize, "Size");
     fxPanelR.addKnob(params::id::reverbDamping, "Damp");
-    fxPanelR.addSection("DISTORTION", col::junoRed);
+    fxPanelR.addSection("DIODE CLIPPER", col::junoRed);
     fxPanelR.addKnob(params::id::clipDrive, "Drive");       // WDF diode saturator (analog warmth)
     fxPanelR.addKnob(params::id::masterVolume, "Synth Vol"); // AMY engine volume (upstream)
 

@@ -15,6 +15,7 @@ APVTS::ParameterLayout FxProcessor::createLayout()
     // Per-effect bypass (default = enabled; defaults are transparent anyway).
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::fltOn,   1 }, "Filter On",   true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::eqOn,    1 }, "EQ On",       true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::choOn,   1 }, "Chorus On",   true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::revOn,   1 }, "Reverb On",   true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::crushOn, 1 }, "Bitcrush On", true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::diodeOn, 1 }, "Diode On",    true));
@@ -43,6 +44,14 @@ APVTS::ParameterLayout FxProcessor::createLayout()
         ParameterID { fxid::eqMid, 1 },  "EQ Mid",  NormalisableRange<float> { -15.0f, 15.0f, 0.1f }, 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(
         ParameterID { fxid::eqHigh, 1 }, "EQ High", NormalisableRange<float> { -15.0f, 15.0f, 0.1f }, 0.0f));
+
+    // Chorus — wet level (0 = off), LFO rate, depth.
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::choMix,   1 }, "Chorus Mix",   NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::choRate,  1 }, "Chorus Rate",  NormalisableRange<float> { 0.05f, 8.0f, 0.01f, 0.4f }, 0.5f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::choDepth, 1 }, "Chorus Depth", NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.5f));
 
     // Reverb — wet level (0 = off), size (liveness/decay), damping.
     layout.add(std::make_unique<AudioParameterFloat>(
@@ -87,6 +96,7 @@ FxProcessor::FxProcessor()
     pDrive  = state.getRawParameterValue(fxid::drive);
     pFltOn    = state.getRawParameterValue(fxid::fltOn);
     pEqOn     = state.getRawParameterValue(fxid::eqOn);
+    pChoOn    = state.getRawParameterValue(fxid::choOn);
     pRevOn    = state.getRawParameterValue(fxid::revOn);
     pCrushOn  = state.getRawParameterValue(fxid::crushOn);
     pDiodeOn  = state.getRawParameterValue(fxid::diodeOn);
@@ -98,6 +108,9 @@ FxProcessor::FxProcessor()
     pEqLow    = state.getRawParameterValue(fxid::eqLow);
     pEqMid    = state.getRawParameterValue(fxid::eqMid);
     pEqHigh   = state.getRawParameterValue(fxid::eqHigh);
+    pChoMix   = state.getRawParameterValue(fxid::choMix);
+    pChoRate  = state.getRawParameterValue(fxid::choRate);
+    pChoDepth = state.getRawParameterValue(fxid::choDepth);
     pRevMix   = state.getRawParameterValue(fxid::revMix);
     pRevSize  = state.getRawParameterValue(fxid::revSize);
     pRevDamp  = state.getRawParameterValue(fxid::revDamp);
@@ -116,6 +129,7 @@ void FxProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     filterL.prepare(sr); filterR.prepare(sr);
     follower.prepare(sr);
     eqL.prepare(sr); eqR.prepare(sr);
+    chorus.prepare(sr);
     reverb.prepare(sr);
     crush.prepare(sr);
     clip.prepare(sr);
@@ -201,7 +215,19 @@ void FxProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         }
     }
 
-    // REVERB — AMY's stereo reverb (after EQ; chorus/echo will slot in ahead of it).
+    // CHORUS — AMY's triangle-LFO chorus (after EQ, before reverb).
+    {
+        const bool  choOn = ! pChoOn || pChoOn->load() > 0.5f;
+        const float wet   = pChoMix ? pChoMix->load() : 0.0f;
+        if (choOn && wet > 0.0001f && nch > 0)
+        {
+            chorus.setParams(pChoRate ? pChoRate->load() : 0.5f, pChoDepth ? pChoDepth->load() : 0.5f);
+            chorus.processStereo(buffer.getWritePointer(0),
+                                 nch > 1 ? buffer.getWritePointer(1) : nullptr, n, wet);
+        }
+    }
+
+    // REVERB — AMY's stereo reverb (after chorus; echo will slot in ahead of it).
     {
         const bool  revOn = ! pRevOn || pRevOn->load() > 0.5f;
         const float wet   = pRevMix ? pRevMix->load() : 0.0f;
