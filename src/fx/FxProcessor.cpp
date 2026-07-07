@@ -12,6 +12,12 @@ APVTS::ParameterLayout FxProcessor::createLayout()
     using namespace juce;
     APVTS::ParameterLayout layout;
 
+    // Per-effect bypass (default = enabled; defaults are transparent anyway).
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::fltOn,   1 }, "Filter On",   true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::eqOn,    1 }, "EQ On",       true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::crushOn, 1 }, "Bitcrush On", true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::diodeOn, 1 }, "Diode On",    true));
+
     // Filter (AMY VCF) — head of the chain. Defaults = wide open (transparent).
     layout.add(std::make_unique<AudioParameterChoice>(
         ParameterID { fxid::fltType, 1 }, "Filter Type",
@@ -28,6 +34,14 @@ APVTS::ParameterLayout FxProcessor::createLayout()
     layout.add(std::make_unique<AudioParameterFloat>(
         ParameterID { fxid::follower, 1 }, "Env Speed",
         NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.5f));      // up = faster/snappier
+
+    // 3-band bus EQ — dB gains, 0 = flat (matches the instrument's EQ range/centers).
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::eqLow, 1 },  "EQ Low",  NormalisableRange<float> { -15.0f, 15.0f, 0.1f }, 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::eqMid, 1 },  "EQ Mid",  NormalisableRange<float> { -15.0f, 15.0f, 0.1f }, 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::eqHigh, 1 }, "EQ High", NormalisableRange<float> { -15.0f, 15.0f, 0.1f }, 0.0f));
 
     // Bitcrusher: crushed sample rate + bit depth. Ranges/defaults match the
     // instrument's master-FX so a patch sounds identical here (16 bit + 48 kHz = bypass).
@@ -62,11 +76,18 @@ FxProcessor::FxProcessor()
     pBits   = state.getRawParameterValue(fxid::bits);
     pFreq   = state.getRawParameterValue(fxid::freq);
     pDrive  = state.getRawParameterValue(fxid::drive);
+    pFltOn    = state.getRawParameterValue(fxid::fltOn);
+    pEqOn     = state.getRawParameterValue(fxid::eqOn);
+    pCrushOn  = state.getRawParameterValue(fxid::crushOn);
+    pDiodeOn  = state.getRawParameterValue(fxid::diodeOn);
     pFltType  = state.getRawParameterValue(fxid::fltType);
     pCutoff   = state.getRawParameterValue(fxid::cutoff);
     pReso     = state.getRawParameterValue(fxid::reso);
     pEnvAmt   = state.getRawParameterValue(fxid::envAmt);
     pFollower = state.getRawParameterValue(fxid::follower);
+    pEqLow    = state.getRawParameterValue(fxid::eqLow);
+    pEqMid    = state.getRawParameterValue(fxid::eqMid);
+    pEqHigh   = state.getRawParameterValue(fxid::eqHigh);
     pMix    = state.getRawParameterValue(fxid::mix);
     pOutput = state.getRawParameterValue(fxid::output);
 
@@ -81,6 +102,7 @@ void FxProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     sr = sampleRate > 1.0 ? sampleRate : 48000.0;
     filterL.prepare(sr); filterR.prepare(sr);
     follower.prepare(sr);
+    eqL.prepare(sr); eqR.prepare(sr);
     crush.prepare(sr);
     clip.prepare(sr);
     dryBuf.setSize(2, samplesPerBlock, false, false, true);
@@ -121,8 +143,9 @@ void FxProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         const float reso     = pReso ? pReso->load() : 0.7f;
         const float envAmt   = pEnvAmt ? pEnvAmt->load() : 0.0f;
         const bool  isLP     = (uiType == 0 || uiType == 1);
-        // A wide-open lowpass with no envelope is a true bypass (default = transparent).
-        const bool  open     = isLP && envAmt == 0.0f && cutParam >= 19999.0f;
+        const bool  fltOn    = ! pFltOn || pFltOn->load() > 0.5f;
+        // Bypassed, or a wide-open lowpass with no envelope (true transparent).
+        const bool  open     = ! fltOn || (isLP && envAmt == 0.0f && cutParam >= 19999.0f);
         if (! open && nch > 0)
         {
             static constexpr int kAmyType[4] =
@@ -148,15 +171,36 @@ void FxProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
         }
     }
 
-    // Bitcrusher -> diode saturator, exactly the instrument's master chain.
-    if (pFreq)  crush.setFreqHz(pFreq->load());
-    if (pBits)  crush.setBits(pBits->load());
-    if (pDrive) clip.setDriveDb(pDrive->load());
-    clip.setOutputDb(0.0f);   // ceiling at 0 dBFS (doubles as a safety limiter)
+    // EQ — AMY's 3-band bus EQ (800/2500/7000). dB -> linear; skip when off or flat.
+    {
+        const bool  eqOn = ! pEqOn || pEqOn->load() > 0.5f;
+        const float loDb = pEqLow  ? pEqLow->load()  : 0.0f;
+        const float mdDb = pEqMid  ? pEqMid->load()  : 0.0f;
+        const float hiDb = pEqHigh ? pEqHigh->load() : 0.0f;
+        if (eqOn && (loDb != 0.0f || mdDb != 0.0f || hiDb != 0.0f))
+        {
+            const float gL = std::pow(10.0f, loDb / 20.0f);
+            const float gM = std::pow(10.0f, mdDb / 20.0f);
+            const float gH = std::pow(10.0f, hiDb / 20.0f);
+            if (nch > 0) eqL.process(buffer.getWritePointer(0), n, gL, gM, gH);
+            if (nch > 1) eqR.process(buffer.getWritePointer(1), n, gL, gM, gH);
+        }
+    }
 
+    // Bitcrusher -> diode saturator, exactly the instrument's master chain.
     auto* chans = buffer.getArrayOfWritePointers();
-    crush.process(chans, nch, n);
-    clip.process(chans, nch, n);
+    if (! pCrushOn || pCrushOn->load() > 0.5f)
+    {
+        if (pFreq)  crush.setFreqHz(pFreq->load());
+        if (pBits)  crush.setBits(pBits->load());
+        crush.process(chans, nch, n);
+    }
+    if (! pDiodeOn || pDiodeOn->load() > 0.5f)
+    {
+        if (pDrive) clip.setDriveDb(pDrive->load());
+        clip.setOutputDb(0.0f);   // ceiling at 0 dBFS (doubles as a safety limiter)
+        clip.process(chans, nch, n);
+    }
 
     // Dry/wet blend, then output makeup as a click-free per-block linear ramp
     // from last block's gain to this block's target (standard zipper-free gain).

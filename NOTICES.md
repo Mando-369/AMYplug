@@ -16,15 +16,19 @@ following third-party components.
 - Vendored as a git submodule under `third_party/amy` (not modified). MIT text
   is preserved in that submodule. AMY is compatible with AGPL-3.0.
 
-## AMYplugFX filter (AmyFilter) — derived from AMY · MIT
-`src/amyfx/AmyFilter.h` is the AMY analog VCF (from AMY's `filters.c`), transcribed
-to float as a standalone, per-instance DSP block so it runs in the AMYplugFX effect
-without the AMY engine or its global state. Coefficient generation and the DF-I
-split-feedback biquad topology (including the 24 dB/oct "twice" cascade — the Juno
-slope) are copied from AMY. AMY is MIT (see the AMY entry above); the file carries
-AMY's copyright/permission notice and additionally `SPDX-License-Identifier:
-AGPL-3.0-or-later OR MIT`. `third_party/amy/` itself is unmodified — this is a copy,
-not an edit. The envelope follower (`src/amyfx/EnvelopeFollower.h`) is first-party.
+## AMYplugFX DSP (src/amyfx/) — derived from AMY · MIT
+The `src/amyfx/` module is AMY's bus DSP (from AMY's `filters.c`), transcribed to
+float as standalone, per-instance blocks so they run in the AMYplugFX effect without
+the AMY engine or its global state:
+- `AmyBiquad.h` — the RBJ/AMY biquad coefficient generators (`dsps_biquad_gen_*`).
+- `AmyFilter.h` — the analog VCF, incl. the 24 dB/oct "twice" cascade (the Juno slope).
+- `AmyEq.h` — the 3-band parametric bus EQ (`parametric_eq_process`, 800/2500/7000 Hz).
+
+Coefficient generation and the DF-I / split-feedback biquad topologies are copied from
+AMY. AMY is MIT (see the AMY entry above); these files carry AMY's copyright/permission
+notice and additionally `SPDX-License-Identifier: AGPL-3.0-or-later OR MIT`.
+`third_party/amy/` itself is unmodified — this is a copy, not an edit. The envelope
+follower (`src/amyfx/EnvelopeFollower.h`) is first-party.
 
 ## AMYplug FX DSP (BitCrusher, WdfClipper) — ported from Faust · STK-4.3
 The two output effects that ship in both the instrument's master bus and the

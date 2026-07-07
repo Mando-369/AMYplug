@@ -8,6 +8,21 @@ namespace amyplug
 {
 namespace col = amyplug::colours;
 
+void PowerButton::paintButton(juce::Graphics& g, bool highlighted, bool /*down*/)
+{
+    // Sits on a bright accent title bar. ON = the "FX" teal (lit), OFF = dark.
+    auto r = getLocalBounds().toFloat().reduced(1.0f);
+    g.setColour(getToggleState() ? col::engineCyan : col::groove);
+    g.fillEllipse(r);
+    g.setColour(col::panel.withAlpha(0.6f));   // subtle rim for definition on bright bars
+    g.drawEllipse(r.reduced(0.5f), 1.0f);
+    if (highlighted)
+    {
+        g.setColour(juce::Colours::white.withAlpha(0.18f));
+        g.fillEllipse(r);
+    }
+}
+
 FxEditor::FxEditor(FxProcessor& p) : juce::AudioProcessorEditor(p), proc(p)
 {
     setLookAndFeel(&lnf);
@@ -31,13 +46,29 @@ FxEditor::FxEditor(FxProcessor& p) : juce::AudioProcessorEditor(p), proc(p)
     addKnob(envAmt,   fxid::envAmt,   "ENV AMT",  col::filterViolet);
     addKnob(follower, fxid::follower, "SPEED",    col::filterViolet);
 
+    addKnob(eqLow,    fxid::eqLow,    "LOW",      col::amber);
+    addKnob(eqMid,    fxid::eqMid,    "MID",      col::amber);
+    addKnob(eqHigh,   fxid::eqHigh,   "HIGH",     col::amber);
+
     addKnob(freq,   fxid::freq,   "FREQ",   col::junoRed);
     addKnob(bit,    fxid::bits,   "BIT",    col::junoRed);
     addKnob(drive,  fxid::drive,  "DRIVE",  col::junoRed);
     addKnob(mix,    fxid::mix,    "MIX",    col::amber);
     addKnob(output, fxid::output, "OUTPUT", col::amber);
 
+    addPower(fltPower,   fltPowerAtt,   fxid::fltOn);
+    addPower(eqPower,    eqPowerAtt,    fxid::eqOn);
+    addPower(crushPower, crushPowerAtt, fxid::crushOn);
+    addPower(diodePower, diodePowerAtt, fxid::diodeOn);
+
     setSize(940, 420);
+}
+
+void FxEditor::addPower(PowerButton& b, std::unique_ptr<ButtonAttachment>& att, const juce::String& paramId)
+{
+    b.setTooltip("Bypass");
+    addAndMakeVisible(b);
+    att = std::make_unique<ButtonAttachment>(proc.apvts(), paramId, b);
 }
 
 FxEditor::~FxEditor() { setLookAndFeel(nullptr); }
@@ -80,6 +111,12 @@ void FxEditor::layoutCards()
 
     auto content   = [](juce::Rectangle<int> card) { return card.withTrimmedTop(titleH).reduced(8, 6); };
     auto placeKnob = [](Knob& k, juce::Rectangle<int> cell) { k.label.setBounds(cell.removeFromTop(15)); k.slider.setBounds(cell.reduced(2)); };
+    // Power LED at the right end of a card's title bar.
+    auto placePower = [](juce::Component& b, juce::Rectangle<int> card) { b.setBounds(card.getRight() - 21, card.getY() + 5, 13, 13); };
+    placePower(fltPower,   rFilter);
+    placePower(eqPower,    rEq);
+    placePower(crushPower, rCrush);
+    placePower(diodePower, rDiode);
 
     {   // FILTER
         auto c = content(rFilter);
@@ -91,6 +128,13 @@ void FxEditor::layoutCards()
         placeKnob(reso,     c.removeFromLeft(kw));
         placeKnob(envAmt,   c.removeFromLeft(kw));
         placeKnob(follower, c);
+    }
+    {   // EQ (low / mid / high)
+        auto c = content(rEq);
+        const int kw = c.getWidth() / 3;
+        placeKnob(eqLow,  c.removeFromLeft(kw));
+        placeKnob(eqMid,  c.removeFromLeft(kw));
+        placeKnob(eqHigh, c);
     }
     {   // BITCRUSH
         auto c = content(rCrush);
@@ -111,7 +155,7 @@ void FxEditor::layoutCards()
 
     cards = {
         { "FILTER",   col::filterViolet, rFilter, false },
-        { "EQ",       col::amber,        rEq,     true  },
+        { "EQ",       col::amber,        rEq,     false },
         { "CHORUS",   col::lfoGreen,     rChorus, true  },
         { "ECHO",     col::engineCyan,   rEcho,   true  },
         { "REVERB",   col::junoBlue,     rReverb, true  },

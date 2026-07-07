@@ -12,6 +12,7 @@
 #include "../dsp/BitCrusher.h"
 #include "../dsp/WdfClipper.h"
 #include "../amyfx/AmyFilter.h"
+#include "../amyfx/AmyEq.h"
 #include "../amyfx/EnvelopeFollower.h"
 
 namespace amyplug
@@ -20,12 +21,23 @@ namespace amyplug
 // designer's muscle memory carries over); mix/output are FX-plugin-only.
 namespace fxid
 {
+    // Per-effect bypass toggles (true = enabled).
+    inline constexpr auto fltOn   = "flt_on";
+    inline constexpr auto eqOn    = "eq_on";
+    inline constexpr auto crushOn = "crush_on";
+    inline constexpr auto diodeOn = "diode_on";
+
     // Filter (AMY VCF) — head of the chain.
     inline constexpr auto fltType   = "flt_type";     // 0 LP24, 1 LP12, 2 HP, 3 BP
     inline constexpr auto cutoff    = "flt_cutoff";   // Hz
     inline constexpr auto reso      = "flt_reso";     // Q
     inline constexpr auto envAmt    = "flt_env_amt";  // envelope-follower depth, octaves (+/-)
-    inline constexpr auto follower  = "flt_follower"; // follower speed, 0 fast .. 1 slow
+    inline constexpr auto follower  = "flt_follower"; // follower speed, 0 slow .. 1 fast
+
+    // 3-band bus EQ (AMY centers 800/2500/7000 Hz), gains in dB.
+    inline constexpr auto eqLow  = "eq_low";
+    inline constexpr auto eqMid  = "eq_mid";
+    inline constexpr auto eqHigh = "eq_high";
 
     inline constexpr auto bits   = "bc_bits";     // 2..16 (16 = transparent)
     inline constexpr auto freq   = "bc_freq";     // crushed sample rate, Hz
@@ -71,14 +83,22 @@ private:
     juce::AudioProcessorValueTreeState state;
     AmyFilter  filterL, filterR;   // AMY VCF, one per channel (state is per-channel)
     EnvelopeFollower follower;     // drives the cutoff from input level
+    AmyEq      eqL, eqR;           // AMY 3-band bus EQ, one per channel
     BitCrusher crush;
     WdfClipper clip;
 
+    std::atomic<float>* pFltOn = nullptr;
+    std::atomic<float>* pEqOn = nullptr;
+    std::atomic<float>* pCrushOn = nullptr;
+    std::atomic<float>* pDiodeOn = nullptr;
     std::atomic<float>* pFltType = nullptr;
     std::atomic<float>* pCutoff = nullptr;
     std::atomic<float>* pReso = nullptr;
     std::atomic<float>* pEnvAmt = nullptr;
     std::atomic<float>* pFollower = nullptr;
+    std::atomic<float>* pEqLow = nullptr;
+    std::atomic<float>* pEqMid = nullptr;
+    std::atomic<float>* pEqHigh = nullptr;
     std::atomic<float>* pBits = nullptr;
     std::atomic<float>* pFreq = nullptr;
     std::atomic<float>* pDrive = nullptr;

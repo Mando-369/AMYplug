@@ -8,6 +8,14 @@ namespace amyplug
 {
 class FxProcessor;
 
+// A compact power toggle drawn as a dot in a card's title bar (filled = on).
+class PowerButton : public juce::Button
+{
+public:
+    PowerButton() : juce::Button("bypass") { setClickingTogglesState(true); }
+    void paintButton(juce::Graphics&, bool highlighted, bool down) override;
+};
+
 // AMYplugFX editor — an FX rack laid out in the synth's signal-flow order:
 //   FILTER -> EQ -> CHORUS -> ECHO -> REVERB -> BITCRUSH -> DIODE -> OUT
 // Each effect is a titled card. Cards not yet implemented render as dimmed
@@ -25,6 +33,7 @@ public:
 private:
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboAttachment  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
     struct Knob
     {
@@ -42,6 +51,7 @@ private:
     };
 
     void addKnob(Knob&, const juce::String& paramId, const juce::String& name, juce::Colour accent);
+    void addPower(PowerButton&, std::unique_ptr<ButtonAttachment>&, const juce::String& paramId);
     void layoutCards();     // compute card rects + place children (called from resized)
 
     FxProcessor& proc;
@@ -53,8 +63,15 @@ private:
     juce::Label    fltTypeLabel;
     Knob cutoff, reso, envAmt, follower;
 
+    // EQ card
+    Knob eqLow, eqMid, eqHigh;
+
     // Bitcrush / Diode / Out cards
     Knob freq, bit, drive, mix, output;
+
+    // Per-effect bypass toggles (in the title bars).
+    PowerButton fltPower, eqPower, crushPower, diodePower;
+    std::unique_ptr<ButtonAttachment> fltPowerAtt, eqPowerAtt, crushPowerAtt, diodePowerAtt;
 
     std::vector<Card> cards;   // for paint (backgrounds + titles + placeholders)
 
