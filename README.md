@@ -126,7 +126,7 @@ The download also includes **AMYplugFX**, an AU/VST3 **audio effect** carrying A
 
 - macOS 11 (Big Sur) or newer, Apple Silicon or Intel.
 - Any AU or VST3 host (Ableton Live, Logic, Reaper, Bitwig, Cubase, GarageBand, …), or run the Standalone app.
-- **Hardware mode** additionally needs an AMYboard connected by USB.
+- **Hardware mode** additionally needs an **[AMYboard](https://www.amyboard.com/)** connected by USB.
 
 ---
 
