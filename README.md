@@ -100,11 +100,18 @@ Short version:
 
 ---
 
-## AMYplugFX — the FX section as an effect plugin
+## AMYplugFX — the synth’s whole FX bus as an effect plugin
 
-The download also includes **AMYplugFX**, an AU/VST3 **audio effect** carrying AMYplug’s output-stage DSP — the **bitcrusher** (sample-rate + bit-depth reduction) and the **WDF diode saturator** — so you can drop that grit on *any* track. It’s especially handy in **Hardware mode**: the instrument outputs silence, so insert AMYplugFX on the **AMYboard’s audio-return track** to process the board’s sound. Controls: **Freq · Bit · Drive · Mix · Output**. (Its saturator is driven non-compensated — pushing Drive clips hotter and louder — with Output as makeup.)
+The download also includes **AMYplugFX**, an AU/VST3 **audio effect** that is AMYplug’s complete output section, usable as an insert on *any* track. Its DSP is extracted from AMY itself (engine-free, so any number of instances run independently), in the synth’s exact signal order:
 
-> More of the synth’s filter + FX section as an insert is planned — see the roadmap.
+**Filter → EQ → Chorus → Echo → Reverb → Bitcrush → Diode Clipper → Output**
+
+- **Filter** — AMY’s analog VCF (LP 24/12, HP, BP) with cutoff/reso and an **envelope follower** so it opens with input level.
+- **EQ** — 3-band (800 / 2500 / 7000 Hz), **Chorus**, **Echo** (time/feedback/tone), **Reverb** (size/damp) — the same AMY bus effects the instrument uses.
+- **Bitcrush** + **Diode Clipper** — the Faust output-stage DSP (the diode is driven non-compensated here, so pushing Drive clips hotter/louder).
+- Each effect has a **bypass toggle** in its title bar; every control is host-automatable.
+
+It’s especially handy in **Hardware mode**: the instrument outputs silence, so insert AMYplugFX on the **AMYboard’s audio-return track** to process the board’s sound with the same effects.
 
 ---
 
@@ -137,7 +144,7 @@ The plugin links **JUCE 8** (free license: AGPLv3), so any distributed binary is
 - [AMY](https://github.com/shorepine/amy) by DAn Ellis & Brian Whitman / Shore Pine Sound Systems (MIT).
 - [AMYboard](https://amyboard.com) hardware · [shorepine/tulipcc](https://github.com/shorepine/tulipcc).
 - Built with [JUCE](https://juce.com) (AGPLv3).
-- **AMYplugFX DSP** — the bitcrusher and WDF diode saturator are ported from [Faust](https://faust.grame.fr) under the **STK-4.3** license: `ba.bitcrusher` by Julius O. Smith III, `ba.downSample` by Romain Michon, and the diode WDF model by Dirk Roosenburg (`KalosSoftClipper.dsp` by Thomas Mandolini). See [`NOTICES.md`](NOTICES.md) and [`licenses/STK-4.3.txt`](licenses/STK-4.3.txt).
+- **AMYplugFX DSP** — the filter, EQ, chorus, echo and reverb are extracted from AMY (MIT) into `src/amyfx/`; the bitcrusher and WDF diode clipper are ported from [Faust](https://faust.grame.fr) under the **STK-4.3** license (`ba.bitcrusher` by Julius O. Smith III, `ba.downSample` by Romain Michon, diode WDF model by Dirk Roosenburg, `KalosSoftClipper.dsp` by Thomas Mandolini). Full attribution in [`NOTICES.md`](NOTICES.md); STK text in [`licenses/STK-4.3.txt`](licenses/STK-4.3.txt).
 
 This is an independent community project and is **not** affiliated with or endorsed by Shore Pine Sound Systems.
 
