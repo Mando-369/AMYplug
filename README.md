@@ -137,6 +137,7 @@ The plugin links **JUCE 8** (free license: AGPLv3), so any distributed binary is
 - [AMY](https://github.com/shorepine/amy) by DAn Ellis & Brian Whitman / Shore Pine Sound Systems (MIT).
 - [AMYboard](https://amyboard.com) hardware · [shorepine/tulipcc](https://github.com/shorepine/tulipcc).
 - Built with [JUCE](https://juce.com) (AGPLv3).
+- **AMYplugFX DSP** — the bitcrusher and WDF diode saturator are ported from [Faust](https://faust.grame.fr) under the **STK-4.3** license: `ba.bitcrusher` by Julius O. Smith III, `ba.downSample` by Romain Michon, and the diode WDF model by Dirk Roosenburg (`KalosSoftClipper.dsp` by Thomas Mandolini). See [`NOTICES.md`](NOTICES.md) and [`licenses/STK-4.3.txt`](licenses/STK-4.3.txt).
 
 This is an independent community project and is **not** affiliated with or endorsed by Shore Pine Sound Systems.
 

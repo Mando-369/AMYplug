@@ -36,7 +36,8 @@ cp "$SCRIPT_DIR/install.sh" "$STAGE/"; chmod +x "$STAGE/install.sh"
 cp "$ROOT/README.md" "$STAGE/"
 cp "$ROOT/LICENSE"   "$STAGE/" 2>/dev/null || true
 cp "$ROOT/NOTICES.md" "$STAGE/" 2>/dev/null || true
-echo "  + install.sh, README.md, LICENSE, NOTICES.md"
+[[ -d "$ROOT/licenses" ]] && cp -R "$ROOT/licenses" "$STAGE/"
+echo "  + install.sh, README.md, LICENSE, NOTICES.md, licenses/"
 
 echo "==> Zipping (ditto, preserves bundle structure)"
 rm -f "$DIST/AMYplug-macOS.zip"
