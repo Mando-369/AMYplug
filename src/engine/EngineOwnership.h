@@ -25,6 +25,12 @@ namespace amyplug::engineown
 // One definition across all TUs (C++17 inline variable). nullptr == engine is free.
 inline std::atomic<const void*> softwareOwner { nullptr };
 
+// The physical AMYboard is ALSO a single shared resource: N instances all opening its
+// MIDI/serial and firing notes stack the same note -> clipping/"bitcrush", and they fight
+// over the serial port. So the board has its own single-owner token, mirroring software.
+// Only the owner opens the port and drives the board; everyone else stays hands-off.
+inline std::atomic<const void*> hardwareOwner { nullptr };
+
 // Claim the engine iff it's free (or already ours). Returns true if `me` owns it
 // after the call. RT-safe (single atomic CAS + load).
 inline bool claimSoftwareIfFree(const void* me) noexcept
@@ -47,4 +53,19 @@ inline void releaseSoftware(const void* me) noexcept
 }
 
 inline bool ownsSoftware(const void* me) noexcept { return softwareOwner.load() == me; }
+
+// --- hardware (AMYboard) ownership: same contract as software ---------------
+inline bool claimHardwareIfFree(const void* me) noexcept
+{
+    const void* expected = nullptr;
+    if (hardwareOwner.compare_exchange_strong(expected, me))
+        return true;
+    return hardwareOwner.load() == me;   // already ours?
+}
+inline void releaseHardware(const void* me) noexcept
+{
+    const void* expected = me;
+    hardwareOwner.compare_exchange_strong(expected, nullptr);
+}
+inline bool ownsHardware(const void* me) noexcept { return hardwareOwner.load() == me; }
 } // namespace amyplug::engineown

@@ -75,10 +75,16 @@ public:
     IAmyBackend* backend() { return active; }                       // for device UI
     HardwareBackend* hardwareBackend();                             // AMYboard device config
     void         sendPatchToHardware();                             // push current patch as SysEx
+    // Remember which board ports the user/session wants; the actual open/close is gated on
+    // being in Hardware mode AND owning the board (applyHardwareConnection). Editor Connect
+    // and state-restore set these instead of opening the port directly.
+    void         setDesiredHardwarePorts(const juce::String& midi, const juce::String& serial);
+    bool         ownsHardwareBoard() const;                        // true if THIS drives the board
 
 private:
     void parameterChanged(const juce::String& id, float newValue) override;
     void handleAsyncUpdate() override;   // message thread: structural rebuild
+    void applyHardwareConnection();      // open/close the board port per mode+ownership
     void rebuildEngineFromModel();       // off-thread; syncs backend to model+params
     void syncModelFromParams();          // copy current APVTS values into `model`
     void cacheParamPointers();           // resolve atomic param pointers once
@@ -108,6 +114,7 @@ private:
     double lastSampleRate = 44100.0;   // remembered so setMode can (re)prepare software
     int    lastBlockSize  = 512;
     bool   wasSoftwareOwner = false;   // audio-thread edge detect: silent -> owning
+    double hwRetryAccum     = 0.0;     // throttle re-attempts to acquire the board when idle
 
     std::atomic<bool> panicRequested { false };
     // Set on the message thread by rebuildEngineFromModel; consumed on the audio
@@ -166,6 +173,8 @@ private:
     double lastSyncHz   = -1.0;                  // last streamed Sync freq (Hz; -1 = none)
     double curBpm       = 120.0;                 // host tempo, refreshed each block
     bool   analogNoteOn = false;                 // a note-on landed this block (Key mode)
+    bool   wasPlaying   = false;                 // transport rising edge → re-assert board latency_ms
+    juce::String desiredHwMidi, desiredHwSerial; // board ports to open WHEN Hardware + owned
     std::atomic<bool> lfoResyncPending { true }; // a rebuild happened → re-assert Sync freq
     Macro mVcfA, mVcfD, mVcfS, mVcfR;            // VCF envelope (bp1)
     Macro mEqLow, mEqMid, mEqHigh;

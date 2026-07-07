@@ -91,13 +91,17 @@ public:
 private:
     void timerCallback() override;
     void refreshDevices();
+    void selectSerialPort(const juce::String& port);   // select in serialBox, adding if missing
 
     AmyPlugProcessor& proc;
     juce::Label      title  { {}, "AMYboard - Hardware Control" };
     juce::Label      devLabel { {}, "MIDI Out" };
+    juce::Label      serialLabel { {}, "Serial" };
     juce::Label      status;
-    juce::ComboBox   deviceBox;
+    juce::ComboBox   deviceBox;      // USB-MIDI port (notes)
+    juce::ComboBox   serialBox;      // USB-serial REPL port (patch/param edits)
     juce::TextButton refreshBtn    { "Refresh" };
+    juce::TextButton detectBtn     { "Detect" };
     juce::TextButton connectBtn    { "Connect" };
     juce::TextButton disconnectBtn { "Disconnect" };
     juce::TextButton sendBtn       { "Send Patch to Board" };

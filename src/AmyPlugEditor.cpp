@@ -296,28 +296,48 @@ HardwarePanel::HardwarePanel(AmyPlugProcessor& p) : proc(p)
     title.setFont(fonts::header(18.0f).withExtraKerningFactor(0.04f));
     title.setColour(juce::Label::textColourId, col::textPrimary);
     addAndMakeVisible(title);
-    devLabel.setFont(fonts::label(12.0f).withExtraKerningFactor(0.06f));
-    devLabel.setColour(juce::Label::textColourId, col::textDim);
-    addAndMakeVisible(devLabel);
+    for (auto* l : { &devLabel, &serialLabel })
+    { l->setFont(fonts::label(12.0f).withExtraKerningFactor(0.06f));
+      l->setColour(juce::Label::textColourId, col::textDim); addAndMakeVisible(*l); }
     status.setFont(fonts::mono(12.5f));
     addAndMakeVisible(status);
     addAndMakeVisible(deviceBox);
-    for (auto* b : { &refreshBtn, &connectBtn, &disconnectBtn, &sendBtn }) addAndMakeVisible(*b);
+    addAndMakeVisible(serialBox);
+    for (auto* b : { &refreshBtn, &detectBtn, &connectBtn, &disconnectBtn, &sendBtn }) addAndMakeVisible(*b);
 
     auto setMode = [this] (float hardware)   // 0 = Software, 1 = Hardware
     { if (auto* p = proc.apvts().getParameter(params::id::mode)) p->setValueNotifyingHost(hardware); };
 
     refreshBtn.onClick    = [this] { refreshDevices(); };
-    // Connecting a board switches the engine to Hardware (plugin goes silent, the
-    // board makes the sound) and pushes the current patch; disconnecting reverts.
+    // Find the AMYboard's serial REPL. If serial is ALREADY open, that port IS the board —
+    // reflect it (a busy port can't be re-probed, which is why Detect used to come up empty
+    // and leave the dock port selected). Otherwise probe each port for the MicroPython banner.
+    detectBtn.onClick     = [this] {
+        auto* hw = proc.hardwareBackend();
+        if (hw == nullptr) return;
+        const juce::String port = hw->serialConnected() ? hw->serialPortName()
+                                                        : hw->detectSerialPort();
+        if (port.isNotEmpty()) selectSerialPort(port);
+    };
+    // Connecting a board switches the engine to Hardware (plugin goes silent, the board
+    // makes the sound). Notes go over USB-MIDI; patch/param EDITS go over the serial REPL
+    // (MIDI-SysEx wire is inert on real hardware — see docs/HARDWARE_MODE.md). Open BOTH.
     connectBtn.onClick    = [this, setMode] {
-        // Switching to Hardware already re-sends the patch (rebuildEngineFromModel),
-        // so don't also call sendPatchToHardware — that doubled the SysEx burst.
-        if (auto* hw = proc.hardwareBackend())
-            if (hw->openOutput(deviceBox.getText())) setMode(1.0f);
+        auto* hw = proc.hardwareBackend();
+        if (hw == nullptr) return;
+        // Auto-detect the real AMYboard REPL first (so the dock's other usbmodem port can't
+        // be picked by accident); fall back to the manual pick only if the probe finds none.
+        juce::String sport = hw->detectSerialPort();
+        if (sport.isEmpty()) sport = serialBox.getText();
+        // Store the desired ports and switch to Hardware. The processor gates the ACTUAL
+        // open on being Hardware + owning the board (single-owner arbitration), so extra
+        // instances can't hijack the port. Switching to Hardware re-sends the patch.
+        proc.setDesiredHardwarePorts(deviceBox.getText(), sport);
+        selectSerialPort(sport);
+        setMode(1.0f);
     };
     disconnectBtn.onClick = [this, setMode] {
-        if (auto* hw = proc.hardwareBackend()) hw->closeOutput();
+        proc.setDesiredHardwarePorts({}, {});   // forget the ports; setMode(Software) closes + frees the board
         setMode(0.0f);
     };
     sendBtn.onClick       = [this] { proc.sendPatchToHardware(); };
@@ -326,37 +346,70 @@ HardwarePanel::HardwarePanel(AmyPlugProcessor& p) : proc(p)
     startTimerHz(3);   // status + button enablement
 }
 
+void HardwarePanel::selectSerialPort(const juce::String& port)
+{
+    if (port.isEmpty()) return;
+    for (int i = 0; i < serialBox.getNumItems(); ++i)
+        if (serialBox.getItemText(i) == port)
+        { serialBox.setSelectedId(serialBox.getItemId(i), juce::dontSendNotification); return; }
+    const int id = serialBox.getNumItems() + 1;      // not listed yet (e.g. busy port) — add it
+    serialBox.addItem(port, id);
+    serialBox.setSelectedId(id, juce::dontSendNotification);
+}
+
 void HardwarePanel::refreshDevices()
 {
-    const auto keep = deviceBox.getText();
+    auto* hw = proc.hardwareBackend();
+
+    // MIDI-out ports (notes). Auto-select the "AMYboard" port when present.
+    const auto keepMidi = deviceBox.getText();
     deviceBox.clear(juce::dontSendNotification);
-    if (auto* hw = proc.hardwareBackend())
+    if (hw != nullptr) { int id = 1; for (const auto& n : hw->availableOutputs()) deviceBox.addItem(n, id++); }
+    auto selectMatching = [] (juce::ComboBox& box, const juce::String& want, bool contains)
     {
-        int id = 1;
-        for (const auto& n : hw->availableOutputs()) deviceBox.addItem(n, id++);
-    }
-    // Re-select the previously chosen port if it's still present, else the first.
-    for (int i = 0; i < deviceBox.getNumItems(); ++i)
-        if (deviceBox.getItemText(i) == keep) { deviceBox.setSelectedId(deviceBox.getItemId(i), juce::dontSendNotification); return; }
-    if (deviceBox.getNumItems() > 0) deviceBox.setSelectedId(1, juce::dontSendNotification);
+        for (int i = 0; i < box.getNumItems(); ++i)
+            if (contains ? box.getItemText(i).containsIgnoreCase(want) : (box.getItemText(i) == want))
+                { box.setSelectedId(box.getItemId(i), juce::dontSendNotification); return true; }
+        return false;
+    };
+    if (! selectMatching(deviceBox, keepMidi, false) && ! selectMatching(deviceBox, "AMYboard", true)
+        && deviceBox.getNumItems() > 0) deviceBox.setSelectedId(1, juce::dontSendNotification);
+
+    // Serial REPL ports (patch/param edits). Keep the current pick, else leave for Detect.
+    const auto keepSerial = serialBox.getText();
+    serialBox.clear(juce::dontSendNotification);
+    if (hw != nullptr) { int id = 1; for (const auto& p : hw->availableSerialPorts()) serialBox.addItem(p, id++); }
+    if (! selectMatching(serialBox, keepSerial, false) && serialBox.getNumItems() > 0)
+        serialBox.setSelectedId(1, juce::dontSendNotification);
 }
 
 void HardwarePanel::timerCallback()
 {
     auto* hw = proc.hardwareBackend();
-    const bool conn = hw && hw->isConnected();
+    const bool conn = hw && hw->isConnected();          // MIDI (notes)
+    const bool ser  = hw && hw->serialConnected();      // serial REPL (edits)
     const bool hwMode = proc.currentMode() == IAmyBackend::Kind::Hardware;
+    // Keep the Serial dropdown honest: while connected, show the port that's actually open
+    // (not a stale default), so it's obvious whether we're on the AMYboard or the wrong port.
+    if (ser && serialBox.getText() != hw->serialPortName())
+        selectSerialPort(hw->serialPortName());
+    const bool ownsBoard = proc.ownsHardwareBoard();
     juce::String s;
-    if (hwMode) s = conn ? ("HARDWARE - board is sounding (" + hw->connectedName() + "); plugin is silent")
-                         : "HARDWARE - but no board connected (silent!)";
-    else        s = conn ? ("SOFTWARE - plugin is sounding; board connected but idle")
-                         : "SOFTWARE - plugin is sounding";
+    if (hwMode && ! ownsBoard)
+        s = "HARDWARE - board in use by another AMYplug instance (this one is idle)";
+    else if (hwMode)
+        s = conn ? ("HARDWARE - board is sounding (" + hw->connectedName() + "); plugin is silent"
+                    + (ser ? "" : "  [!] no serial: notes only, edits won't reach the board"))
+                 : "HARDWARE - but no board connected (silent!)";
+    else
+        s = conn ? ("SOFTWARE - plugin is sounding; board connected but idle")
+                 : "SOFTWARE - plugin is sounding";
     status.setText("Mode: " + s, juce::dontSendNotification);
     status.setColour(juce::Label::textColourId,
-                     hwMode ? (conn ? col::statusGreen : col::panicRed) : col::statusGreen);
+                     hwMode ? ((conn && ser) ? col::statusGreen : col::panicRed) : col::statusGreen);
     connectBtn.setEnabled(! conn && deviceBox.getNumItems() > 0);
-    disconnectBtn.setEnabled(conn);
-    sendBtn.setEnabled(conn);
+    disconnectBtn.setEnabled(conn || ser);
+    sendBtn.setEnabled(conn || ser);
 }
 
 void HardwarePanel::paint(juce::Graphics& g)
@@ -370,9 +423,10 @@ void HardwarePanel::paint(juce::Graphics& g)
 
     g.setColour(col::textFaint);
     g.setFont(fonts::mono(11.5f));
-    g.drawFittedText("Connect the AMYboard's MIDI port to play the sound ON THE BOARD - the plugin goes\n"
-                     "silent and pushes the current patch. Disconnect to return to the plugin's own sound.",
-                     getLocalBounds().removeFromBottom(56).reduced(24, 8), juce::Justification::topLeft, 3);
+    g.drawFittedText("Notes play over the MIDI port; patch/parameter EDITS go over the Serial port (the\n"
+                     "board's REPL - MIDI SysEx can't edit it). Pick the AMYboard for both (Detect finds the\n"
+                     "serial port), Connect to sound ON THE BOARD, Disconnect to return to the plugin's sound.",
+                     getLocalBounds().removeFromBottom(64).reduced(24, 8), juce::Justification::topLeft, 3);
 }
 
 void HardwarePanel::resized()
@@ -388,6 +442,11 @@ void HardwarePanel::resized()
       refreshBtn.setBounds(line.removeFromRight(90));
       auto box = line.removeFromLeft(selW);
       deviceBox.setBounds(box); selX = box.getX(); selW = box.getWidth();
+      r.removeFromTop(12); }
+    // Serial REPL selector (patch/param edits) — Detect probes for the AMYboard banner.
+    { auto line = r.removeFromTop(kRowH); serialLabel.setBounds(line.removeFromLeft(kLabelW));
+      detectBtn.setBounds(line.removeFromRight(90));
+      serialBox.setBounds(juce::Rectangle<int>(selX, line.getY(), selW, line.getHeight()));
       r.removeFromTop(12); }
     // Connect + Disconnect share the selector width; Send Patch spans the whole width.
     { auto line = r.removeFromTop(kRowH);

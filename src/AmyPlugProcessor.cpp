@@ -173,8 +173,9 @@ bool AmyPlugProcessor::engineIsFM() const
 
 AmyPlugProcessor::~AmyPlugProcessor()
 {
-    // Free the global engine token so a still-loaded silent instance can grab it.
+    // Free the global tokens so another still-loaded instance can grab the engine / board.
     engineown::releaseSoftware(this);
+    engineown::releaseHardware(this);
 }
 
 void AmyPlugProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
@@ -253,6 +254,19 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         }
     }
 
+    // Hardware mode is single-owner too, and ownership means actually holding the board's
+    // serial connection (applyHardwareConnection). If we're in Hardware mode but don't own
+    // the board, stay fully idle — no notes, so two instances can't stack the same note into
+    // clipping/"bitcrush" — and periodically ask the message thread to (re)try connecting, so
+    // when the board frees up (previous owner disconnected / went Software) we grab it.
+    if (activeKind == IAmyBackend::Kind::Hardware && ! engineown::ownsHardware(this))
+    {
+        hwRetryAccum += buffer.getNumSamples();
+        if (hwRetryAccum >= lastSampleRate * 0.5) { hwRetryAccum = 0.0; triggerAsyncUpdate(); }
+        buffer.clear(); midi.clear();
+        return;
+    }
+
     // Honour a pending Panic from the UI before anything else.
     if (panicRequested.exchange(false))
         router.allNotesOff(active);
@@ -272,8 +286,10 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
         {
-            router.updateTransport(pos->getIsPlaying(), *active);
+            const bool playing = pos->getIsPlaying();
+            router.updateTransport(playing, *active);
             if (auto bpm = pos->getBpm(); bpm && *bpm > 0.0) curBpm = *bpm;
+            wasPlaying = playing;
         }
 
     // Apply any queued structural rebuild BEFORE anything else touches AMY. The rebuild
@@ -381,17 +397,63 @@ void AmyPlugProcessor::setMode(IAmyBackend::Kind mode)
         software->release();                    // drop the shared global AMY engine
         engineown::releaseSoftware(this);       // ...and free it for other instances
         wasSoftwareOwner = false;
+        // NB: do NOT claim the board here. Ownership is tied to an actual serial connection
+        // (applyHardwareConnection), so a Hardware-mode instance that isn't connected never
+        // owns the board — that's what stops a disconnected/software instance blocking it.
     }
     else
     {
+        engineown::releaseHardware(this);       // leaving Hardware -> free the board
         software->prepare(lastSampleRate, lastBlockSize);   // re-acquire the engine
         engineown::claimSoftwareIfFree(this);               // grab the global token if free
         active = software.get();
         activeKind = mode;
     }
+    applyHardwareConnection();                   // open the board (Hardware+owned) or close it
     suspendProcessing(false);
     rebuildEngineFromModel();                   // bring the new backend up to date
 }
+
+// Open the board's MIDI/serial ONLY when this instance is in Hardware mode AND owns the
+// board; otherwise close them. This is the single gate for touching the physical board, so
+// a Software-mode or non-owner instance can never hijack the port (the recall bug) and two
+// Hardware instances can't both drive it (the "bitcrush" stacking). Message thread only.
+void AmyPlugProcessor::applyHardwareConnection()
+{
+    auto* hw = hardwareBackend();
+    if (hw == nullptr) return;
+
+    // Do we WANT to drive the board? Only in Hardware mode with a serial port to open.
+    const bool want = (activeKind == IAmyBackend::Kind::Hardware) && desiredHwSerial.isNotEmpty();
+
+    // Ownership == holding the board's serial connection. Claim the token, then make the
+    // connection real; if the serial can't be opened (another instance/process has it, or
+    // it's gone) we do NOT own the board and give the token back. A Software-mode instance
+    // (want=false) always lands in the else branch, so it can never own or block the board.
+    if (want && engineown::claimHardwareIfFree(this))
+    {
+        if (! hw->serialConnected())
+        {
+            if (! hw->openSerial(desiredHwSerial)) { engineown::releaseHardware(this); return; }
+            if (desiredHwMidi.isNotEmpty()) hw->openOutput(desiredHwMidi);
+            // (the caller — setMode / handleAsyncUpdate — rebuilds right after, pushing the patch)
+        }
+    }
+    else
+    {
+        hw->closeOutput();
+        hw->closeSerial();
+        engineown::releaseHardware(this);   // not driving -> free the board for another instance
+    }
+}
+
+void AmyPlugProcessor::setDesiredHardwarePorts(const juce::String& midi, const juce::String& serial)
+{
+    desiredHwMidi = midi; desiredHwSerial = serial;
+    applyHardwareConnection();   // acts now if we're already the Hardware owner; else just stored
+}
+
+bool AmyPlugProcessor::ownsHardwareBoard() const { return engineown::ownsHardware(this); }
 
 bool AmyPlugProcessor::ownsSoftwareEngine() const
 {
@@ -946,8 +1008,12 @@ void AmyPlugProcessor::handleAsyncUpdate()
     // otherwise a structural change (patch/voices/engine).
     const auto wanted = (pMode != nullptr && (int) std::lround(pMode->load()) != 0)
                         ? IAmyBackend::Kind::Hardware : IAmyBackend::Kind::Software;
-    if (wanted != activeKind) setMode(wanted);
-    else                      rebuildEngineFromModel();
+    if (wanted != activeKind) { setMode(wanted); }   // setMode also (re)applies the board connection
+    else
+    {
+        applyHardwareConnection();   // e.g. we just acquired the board token this block -> open it
+        rebuildEngineFromModel();
+    }
     // A rebuild re-emits osc1 with the baked (manual) LFO freq. In Sync mode that's
     // only a fallback — force streamAnalogParams to re-assert the tempo-derived Hz.
     lfoResyncPending.store(true, std::memory_order_relaxed);
@@ -1148,9 +1214,12 @@ void AmyPlugProcessor::getStateInformation(juce::MemoryBlock& dest)
     juce::ValueTree root { "AMYplugState" };
     root.appendChild(state.copyState(), nullptr);
     root.appendChild(model.toValueTree(), nullptr);
-    // Remember the AMYboard MIDI-out so the connection recalls with the session.
-    if (auto* hw = hardwareBackend(); hw != nullptr && hw->isConnected())
-        root.setProperty("hwDevice", hw->connectedName(), nullptr);
+    // Remember the AMYboard MIDI-out + serial REPL port so the connection recalls.
+    if (auto* hw = hardwareBackend(); hw != nullptr)
+    {
+        if (hw->isConnected())      root.setProperty("hwDevice", hw->connectedName(), nullptr);
+        if (hw->serialConnected())  root.setProperty("hwSerial", hw->serialPortName(), nullptr);
+    }
     if (auto xml = root.createXml()) copyXmlToBinary(*xml, dest);
 }
 
@@ -1166,11 +1235,13 @@ void AmyPlugProcessor::setStateInformation(const void* data, int size)
             model.fromValueTree(patchTree);
         rebuildEngineFromModel();   // recreate exact AMY state from the model
 
-        // Reconnect the saved AMYboard device; the mode param (restored above) then
-        // brings us back into Hardware mode via handleAsyncUpdate.
-        const juce::String hwDevice = root.getProperty("hwDevice", juce::String()).toString();
-        if (hwDevice.isNotEmpty())
-            if (auto* hw = hardwareBackend()) hw->openOutput(hwDevice);
+        // Remember the saved AMYboard ports but DON'T open them here — opening is gated on
+        // being in Hardware mode AND owning the board (applyHardwareConnection). The restored
+        // mode param drives the async setMode, which opens the port only if this instance
+        // recalls as Hardware and wins the board. A Software-recalled instance thus never
+        // grabs the board (the recall-hijack bug). See docs/HARDWARE_MODE.md.
+        setDesiredHardwarePorts(root.getProperty("hwDevice", juce::String()).toString(),
+                                root.getProperty("hwSerial", juce::String()).toString());
     }
 }
 

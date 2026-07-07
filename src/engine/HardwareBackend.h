@@ -9,6 +9,7 @@
 // hardware before assuming a port name.
 
 #include "IAmyBackend.h"
+#include "SerialTransport.h"
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <memory>
 
@@ -49,6 +50,23 @@ public:
     // Sends `zI` ping and watches for the F0 00 03 45 'O' 'K' F7 reply.
     bool   pingBoard();
 
+    // Serial control path (AMYboard MicroPython REPL). This is the ONLY path that edits
+    // the board's sound — MIDI-SysEx wire is inert on real hardware. Notes still go over
+    // MIDI (openOutput above); patch/param wire goes here.
+    juce::StringArray availableSerialPorts() const { return SerialTransport::availablePorts(); }
+    juce::String detectSerialPort() const          { return SerialTransport::detectAmyboardPort(); }
+    bool   openSerial(const juce::String& devicePath)
+    { const bool ok = serial.open(devicePath); if (ok) assertLatency(); return ok; }
+    void   closeSerial()                            { serial.close(); }
+    bool   serialConnected() const                  { return serial.isOpen(); }
+    juce::String serialPortName() const             { return serial.portName(); }
+
+    // Re-assert AMY's scheduling latency_ms to a small value over the serial REPL. The
+    // board firmware forces a huge default (~700 ms) and re-applies it (e.g. on transport
+    // stop), so the processor calls this on connect + transport start. See assertLatency().
+    void   assertLatency();
+    void   setLatencyMs(int ms) { latencyMs = juce::jlimit(0, 5000, ms); }
+
     // If no device is open, the processor pulls the queued MIDI each block and
     // merges it into the host's outgoing MidiBuffer (DAW-routed path). When a device
     // IS open the sender thread delivers it directly, so this is a no-op then.
@@ -63,5 +81,7 @@ private:
     juce::MidiBuffer  sendQueue;                    // pending outgoing MIDI
     juce::CriticalSection midiLock;                 // guards sendQueue + output
     juce::String connected;                         // name of the open device ("" if none)
+    SerialTransport serial;                         // wire/patch/param edits -> REPL
+    int latencyMs { 0 };                            // AMY scheduling latency; 0 = board default (instant, live)
 };
 } // namespace amyplug

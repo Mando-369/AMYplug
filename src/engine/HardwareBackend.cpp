@@ -62,6 +62,15 @@ void HardwareBackend::run()
 // --- wire / note events (called from audio + message threads) ---------------
 void HardwareBackend::sendWire(const char* msg, int len)
 {
+    // Patch/param/osc edits go over the serial REPL — the ONLY path that reaches the
+    // board's sound (verified on hardware; MIDI-SysEx wire is inert, see
+    // docs/HARDWARE_MODE.md). If no serial port is open we fall back to MIDI-SysEx, which
+    // at least keeps the older host-routed path and any SysEx-honouring board working.
+    if (serial.isOpen())
+    {
+        serial.sendWire(juce::String::fromUTF8(msg, len));
+        return;
+    }
     auto sysex = wrapSysex(msg, len);   // F0 00 03 45 <ascii> F7
     enqueue(juce::MidiMessage::createSysExMessage(sysex.data() + 1, (int) sysex.size() - 2));
 }
@@ -121,6 +130,20 @@ void HardwareBackend::rebuildFrom(const PatchModel& model)
     allNotesOff();
     for (const auto& msg : model.toWireMessages())
         sendWire(msg.c_str(), (int) msg.size());
+    // NOTE: we deliberately do NOT touch AMY's global latency_ms. It defaults to 0 (wire 'N',
+    // an unsigned scheduling offset added to every event) — a directly-connected board plays
+    // instantly at 0, which the official web editor confirms. latency_ms is a jitter cushion
+    // for *sequenced/networked* play (the 1000 ms Alles Wi-Fi-mesh default is the outlier),
+    // not something a live MIDI editor should raise. Setting it was adding delay, not removing
+    // it. If a future sequenced-hardware feature needs it, set it explicitly there.
+}
+
+void HardwareBackend::assertLatency()
+{
+    // Retained for a possible future "set scheduling latency for sequenced play" control, but
+    // NOT called on connect/play: the board's latency_ms default of 0 is correct for live use.
+    if (serial.isOpen())
+        serial.sendReplLine("amy.send(latency_ms=" + juce::String(latencyMs) + ")");
 }
 
 // --- device management (message thread) ------------------------------------
