@@ -15,6 +15,7 @@ APVTS::ParameterLayout FxProcessor::createLayout()
     // Per-effect bypass (default = enabled; defaults are transparent anyway).
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::fltOn,   1 }, "Filter On",   true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::eqOn,    1 }, "EQ On",       true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::revOn,   1 }, "Reverb On",   true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::crushOn, 1 }, "Bitcrush On", true));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { fxid::diodeOn, 1 }, "Diode On",    true));
 
@@ -42,6 +43,14 @@ APVTS::ParameterLayout FxProcessor::createLayout()
         ParameterID { fxid::eqMid, 1 },  "EQ Mid",  NormalisableRange<float> { -15.0f, 15.0f, 0.1f }, 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(
         ParameterID { fxid::eqHigh, 1 }, "EQ High", NormalisableRange<float> { -15.0f, 15.0f, 0.1f }, 0.0f));
+
+    // Reverb — wet level (0 = off), size (liveness/decay), damping.
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::revMix,  1 }, "Reverb Mix",  NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::revSize, 1 }, "Reverb Size", NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.85f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::revDamp, 1 }, "Reverb Damp", NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.5f));
 
     // Bitcrusher: crushed sample rate + bit depth. Ranges/defaults match the
     // instrument's master-FX so a patch sounds identical here (16 bit + 48 kHz = bypass).
@@ -78,6 +87,7 @@ FxProcessor::FxProcessor()
     pDrive  = state.getRawParameterValue(fxid::drive);
     pFltOn    = state.getRawParameterValue(fxid::fltOn);
     pEqOn     = state.getRawParameterValue(fxid::eqOn);
+    pRevOn    = state.getRawParameterValue(fxid::revOn);
     pCrushOn  = state.getRawParameterValue(fxid::crushOn);
     pDiodeOn  = state.getRawParameterValue(fxid::diodeOn);
     pFltType  = state.getRawParameterValue(fxid::fltType);
@@ -88,6 +98,9 @@ FxProcessor::FxProcessor()
     pEqLow    = state.getRawParameterValue(fxid::eqLow);
     pEqMid    = state.getRawParameterValue(fxid::eqMid);
     pEqHigh   = state.getRawParameterValue(fxid::eqHigh);
+    pRevMix   = state.getRawParameterValue(fxid::revMix);
+    pRevSize  = state.getRawParameterValue(fxid::revSize);
+    pRevDamp  = state.getRawParameterValue(fxid::revDamp);
     pMix    = state.getRawParameterValue(fxid::mix);
     pOutput = state.getRawParameterValue(fxid::output);
 
@@ -103,6 +116,7 @@ void FxProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     filterL.prepare(sr); filterR.prepare(sr);
     follower.prepare(sr);
     eqL.prepare(sr); eqR.prepare(sr);
+    reverb.prepare(sr);
     crush.prepare(sr);
     clip.prepare(sr);
     dryBuf.setSize(2, samplesPerBlock, false, false, true);
@@ -184,6 +198,20 @@ void FxProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             const float gH = std::pow(10.0f, hiDb / 20.0f);
             if (nch > 0) eqL.process(buffer.getWritePointer(0), n, gL, gM, gH);
             if (nch > 1) eqR.process(buffer.getWritePointer(1), n, gL, gM, gH);
+        }
+    }
+
+    // REVERB — AMY's stereo reverb (after EQ; chorus/echo will slot in ahead of it).
+    {
+        const bool  revOn = ! pRevOn || pRevOn->load() > 0.5f;
+        const float wet   = pRevMix ? pRevMix->load() : 0.0f;
+        if (revOn && wet > 0.0001f && nch > 0)
+        {
+            reverb.setParams(pRevSize ? pRevSize->load() : 0.85f,
+                             3000.0f,
+                             pRevDamp ? pRevDamp->load() : 0.5f);
+            reverb.processStereo(buffer.getWritePointer(0),
+                                 nch > 1 ? buffer.getWritePointer(1) : nullptr, n, wet);
         }
     }
 

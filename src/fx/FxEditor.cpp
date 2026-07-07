@@ -50,6 +50,10 @@ FxEditor::FxEditor(FxProcessor& p) : juce::AudioProcessorEditor(p), proc(p)
     addKnob(eqMid,    fxid::eqMid,    "MID",      col::amber);
     addKnob(eqHigh,   fxid::eqHigh,   "HIGH",     col::amber);
 
+    addKnob(revMix,   fxid::revMix,   "MIX",      col::junoBlue);
+    addKnob(revSize,  fxid::revSize,  "SIZE",     col::junoBlue);
+    addKnob(revDamp,  fxid::revDamp,  "DAMP",     col::junoBlue);
+
     addKnob(freq,   fxid::freq,   "FREQ",   col::junoRed);
     addKnob(bit,    fxid::bits,   "BIT",    col::junoRed);
     addKnob(drive,  fxid::drive,  "DRIVE",  col::junoRed);
@@ -58,6 +62,7 @@ FxEditor::FxEditor(FxProcessor& p) : juce::AudioProcessorEditor(p), proc(p)
 
     addPower(fltPower,   fltPowerAtt,   fxid::fltOn);
     addPower(eqPower,    eqPowerAtt,    fxid::eqOn);
+    addPower(revPower,   revPowerAtt,   fxid::revOn);
     addPower(crushPower, crushPowerAtt, fxid::crushOn);
     addPower(diodePower, diodePowerAtt, fxid::diodeOn);
 
@@ -115,6 +120,7 @@ void FxEditor::layoutCards()
     auto placePower = [](juce::Component& b, juce::Rectangle<int> card) { b.setBounds(card.getRight() - 21, card.getY() + 5, 13, 13); };
     placePower(fltPower,   rFilter);
     placePower(eqPower,    rEq);
+    placePower(revPower,   rReverb);
     placePower(crushPower, rCrush);
     placePower(diodePower, rDiode);
 
@@ -135,6 +141,13 @@ void FxEditor::layoutCards()
         placeKnob(eqLow,  c.removeFromLeft(kw));
         placeKnob(eqMid,  c.removeFromLeft(kw));
         placeKnob(eqHigh, c);
+    }
+    {   // REVERB (mix / size / damp)
+        auto c = content(rReverb);
+        const int kw = c.getWidth() / 3;
+        placeKnob(revMix,  c.removeFromLeft(kw));
+        placeKnob(revSize, c.removeFromLeft(kw));
+        placeKnob(revDamp, c);
     }
     {   // BITCRUSH
         auto c = content(rCrush);
@@ -158,7 +171,7 @@ void FxEditor::layoutCards()
         { "EQ",       col::amber,        rEq,     false },
         { "CHORUS",   col::lfoGreen,     rChorus, true  },
         { "ECHO",     col::engineCyan,   rEcho,   true  },
-        { "REVERB",   col::junoBlue,     rReverb, true  },
+        { "REVERB",   col::junoBlue,     rReverb, false },
         { "BITCRUSH", col::junoRed,      rCrush,  false },
         { "DIODE",    col::junoRed,      rDiode,  false },
         { "OUT",      col::amber,        rOut,    false },

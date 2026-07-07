@@ -13,6 +13,7 @@
 #include "../dsp/WdfClipper.h"
 #include "../amyfx/AmyFilter.h"
 #include "../amyfx/AmyEq.h"
+#include "../amyfx/AmyReverb.h"
 #include "../amyfx/EnvelopeFollower.h"
 
 namespace amyplug
@@ -24,6 +25,7 @@ namespace fxid
     // Per-effect bypass toggles (true = enabled).
     inline constexpr auto fltOn   = "flt_on";
     inline constexpr auto eqOn    = "eq_on";
+    inline constexpr auto revOn   = "rev_on";
     inline constexpr auto crushOn = "crush_on";
     inline constexpr auto diodeOn = "diode_on";
 
@@ -38,6 +40,11 @@ namespace fxid
     inline constexpr auto eqLow  = "eq_low";
     inline constexpr auto eqMid  = "eq_mid";
     inline constexpr auto eqHigh = "eq_high";
+
+    // Reverb (AMY stereo reverb).
+    inline constexpr auto revMix  = "rev_mix";   // wet level
+    inline constexpr auto revSize = "rev_size";  // liveness / decay
+    inline constexpr auto revDamp = "rev_damp";  // HF damping
 
     inline constexpr auto bits   = "bc_bits";     // 2..16 (16 = transparent)
     inline constexpr auto freq   = "bc_freq";     // crushed sample rate, Hz
@@ -84,11 +91,13 @@ private:
     AmyFilter  filterL, filterR;   // AMY VCF, one per channel (state is per-channel)
     EnvelopeFollower follower;     // drives the cutoff from input level
     AmyEq      eqL, eqR;           // AMY 3-band bus EQ, one per channel
+    AmyReverb  reverb;             // AMY stereo reverb (one instance, stereo)
     BitCrusher crush;
     WdfClipper clip;
 
     std::atomic<float>* pFltOn = nullptr;
     std::atomic<float>* pEqOn = nullptr;
+    std::atomic<float>* pRevOn = nullptr;
     std::atomic<float>* pCrushOn = nullptr;
     std::atomic<float>* pDiodeOn = nullptr;
     std::atomic<float>* pFltType = nullptr;
@@ -99,6 +108,9 @@ private:
     std::atomic<float>* pEqLow = nullptr;
     std::atomic<float>* pEqMid = nullptr;
     std::atomic<float>* pEqHigh = nullptr;
+    std::atomic<float>* pRevMix = nullptr;
+    std::atomic<float>* pRevSize = nullptr;
+    std::atomic<float>* pRevDamp = nullptr;
     std::atomic<float>* pBits = nullptr;
     std::atomic<float>* pFreq = nullptr;
     std::atomic<float>* pDrive = nullptr;

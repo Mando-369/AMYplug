@@ -66,12 +66,15 @@ private:
     // EQ card
     Knob eqLow, eqMid, eqHigh;
 
+    // Reverb card
+    Knob revMix, revSize, revDamp;
+
     // Bitcrush / Diode / Out cards
     Knob freq, bit, drive, mix, output;
 
     // Per-effect bypass toggles (in the title bars).
-    PowerButton fltPower, eqPower, crushPower, diodePower;
-    std::unique_ptr<ButtonAttachment> fltPowerAtt, eqPowerAtt, crushPowerAtt, diodePowerAtt;
+    PowerButton fltPower, eqPower, revPower, crushPower, diodePower;
+    std::unique_ptr<ButtonAttachment> fltPowerAtt, eqPowerAtt, revPowerAtt, crushPowerAtt, diodePowerAtt;
 
     std::vector<Card> cards;   // for paint (backgrounds + titles + placeholders)
 

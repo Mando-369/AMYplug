@@ -17,12 +17,13 @@ following third-party components.
   is preserved in that submodule. AMY is compatible with AGPL-3.0.
 
 ## AMYplugFX DSP (src/amyfx/) — derived from AMY · MIT
-The `src/amyfx/` module is AMY's bus DSP (from AMY's `filters.c`), transcribed to
-float as standalone, per-instance blocks so they run in the AMYplugFX effect without
-the AMY engine or its global state:
+The `src/amyfx/` module is AMY's bus DSP (from AMY's `filters.c` and `delay.c`),
+transcribed to float as standalone, per-instance blocks so they run in the AMYplugFX
+effect without the AMY engine or its global state:
 - `AmyBiquad.h` — the RBJ/AMY biquad coefficient generators (`dsps_biquad_gen_*`).
 - `AmyFilter.h` — the analog VCF, incl. the 24 dB/oct "twice" cascade (the Juno slope).
 - `AmyEq.h` — the 3-band parametric bus EQ (`parametric_eq_process`, 800/2500/7000 Hz).
+- `AmyReverb.h` — the stereo reverb (`stereo_reverb`, a Stautner-Puckette design).
 
 Coefficient generation and the DF-I / split-feedback biquad topologies are copied from
 AMY. AMY is MIT (see the AMY entry above); these files carry AMY's copyright/permission
