@@ -16,6 +16,16 @@ following third-party components.
 - Vendored as a git submodule under `third_party/amy` (not modified). MIT text
   is preserved in that submodule. AMY is compatible with AGPL-3.0.
 
+## AMYplugFX filter (AmyFilter) — derived from AMY · MIT
+`src/amyfx/AmyFilter.h` is the AMY analog VCF (from AMY's `filters.c`), transcribed
+to float as a standalone, per-instance DSP block so it runs in the AMYplugFX effect
+without the AMY engine or its global state. Coefficient generation and the DF-I
+split-feedback biquad topology (including the 24 dB/oct "twice" cascade — the Juno
+slope) are copied from AMY. AMY is MIT (see the AMY entry above); the file carries
+AMY's copyright/permission notice and additionally `SPDX-License-Identifier:
+AGPL-3.0-or-later OR MIT`. `third_party/amy/` itself is unmodified — this is a copy,
+not an edit. The envelope follower (`src/amyfx/EnvelopeFollower.h`) is first-party.
+
 ## AMYplug FX DSP (BitCrusher, WdfClipper) — ported from Faust · STK-4.3
 The two output effects that ship in both the instrument's master bus and the
 **AMYplugFX** plugin — the bitcrusher (`src/dsp/BitCrusher.h`) and the WDF

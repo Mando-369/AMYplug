@@ -12,6 +12,23 @@ APVTS::ParameterLayout FxProcessor::createLayout()
     using namespace juce;
     APVTS::ParameterLayout layout;
 
+    // Filter (AMY VCF) — head of the chain. Defaults = wide open (transparent).
+    layout.add(std::make_unique<AudioParameterChoice>(
+        ParameterID { fxid::fltType, 1 }, "Filter Type",
+        StringArray { "LP 24", "LP 12", "HP", "BP" }, 0));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::cutoff, 1 }, "Cutoff",
+        NormalisableRange<float> { 20.0f, 20000.0f, 1.0f, 0.25f }, 20000.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::reso, 1 }, "Reso",
+        NormalisableRange<float> { 0.5f, 16.0f, 0.01f, 0.5f }, 0.7f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::envAmt, 1 }, "Env Amt",
+        NormalisableRange<float> { -6.0f, 6.0f, 0.01f }, 0.0f));      // octaves
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID { fxid::follower, 1 }, "Follower",
+        NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.3f));      // 0 fast .. 1 slow
+
     // Bitcrusher: crushed sample rate + bit depth. Ranges/defaults match the
     // instrument's master-FX so a patch sounds identical here (16 bit + 48 kHz = bypass).
     layout.add(std::make_unique<AudioParameterFloat>(
@@ -45,6 +62,11 @@ FxProcessor::FxProcessor()
     pBits   = state.getRawParameterValue(fxid::bits);
     pFreq   = state.getRawParameterValue(fxid::freq);
     pDrive  = state.getRawParameterValue(fxid::drive);
+    pFltType  = state.getRawParameterValue(fxid::fltType);
+    pCutoff   = state.getRawParameterValue(fxid::cutoff);
+    pReso     = state.getRawParameterValue(fxid::reso);
+    pEnvAmt   = state.getRawParameterValue(fxid::envAmt);
+    pFollower = state.getRawParameterValue(fxid::follower);
     pMix    = state.getRawParameterValue(fxid::mix);
     pOutput = state.getRawParameterValue(fxid::output);
 
@@ -57,6 +79,8 @@ FxProcessor::FxProcessor()
 void FxProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     sr = sampleRate > 1.0 ? sampleRate : 48000.0;
+    filterL.prepare(sr); filterR.prepare(sr);
+    follower.prepare(sr);
     crush.prepare(sr);
     clip.prepare(sr);
     dryBuf.setSize(2, samplesPerBlock, false, false, true);
@@ -87,6 +111,41 @@ void FxProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             dryBuf.setSize(nch, n, false, false, true);   // grow if the host lied about block size
         for (int ch = 0; ch < nch; ++ch)
             dryBuf.copyFrom(ch, 0, buffer, ch, 0, n);
+    }
+
+    // FILTER (head of chain) — the AMY VCF, cutoff opened by the envelope follower.
+    // Chain order matches the synth's bus: filter -> (EQ/chorus/echo/reverb) -> crush -> diode.
+    {
+        const int   uiType   = pFltType ? (int) std::lround(pFltType->load()) : 0;
+        const float cutParam = pCutoff ? pCutoff->load() : 20000.0f;
+        const float reso     = pReso ? pReso->load() : 0.7f;
+        const float envAmt   = pEnvAmt ? pEnvAmt->load() : 0.0f;
+        const bool  isLP     = (uiType == 0 || uiType == 1);
+        // A wide-open lowpass with no envelope is a true bypass (default = transparent).
+        const bool  open     = isLP && envAmt == 0.0f && cutParam >= 19999.0f;
+        if (! open && nch > 0)
+        {
+            static constexpr int kAmyType[4] =
+                { AmyFilter::LPF24, AmyFilter::LPF, AmyFilter::HPF, AmyFilter::BPF };
+            const int type = kAmyType[juce::jlimit(0, 3, uiType)];
+            // Follower speed: 0 = snappy (fast attack), 1 = smooth. Fast attack lets
+            // transients open the filter; release trails longer.
+            const float fspeed = pFollower ? pFollower->load() : 0.3f;
+            follower.setTimesMs(0.5f + fspeed * 14.5f, 20.0f + fspeed * 380.0f);
+            float cut = cutParam;
+            if (envAmt != 0.0f)
+            {
+                const float envPk = follower.processBlockPeak(buffer.getReadPointer(0), n);
+                // Saturating sensitivity: a raw peak of ~0.2–0.4 (typical audio) should
+                // already open the filter a lot. 1 - e^(-k·env) reaches ~0.7 at env=0.2,
+                // ~0.9 at 0.4, and can't exceed 1 — musical and responsive, not sluggish.
+                const float e = 1.0f - std::exp(-envPk * 6.0f);
+                cut *= std::pow(2.0f, envAmt * e);
+            }
+            cut = juce::jlimit(20.0f, (float) (0.45 * sr), cut);
+            filterL.process(buffer.getWritePointer(0), n, cut, reso, type);
+            if (nch > 1) filterR.process(buffer.getWritePointer(1), n, cut, reso, type);
+        }
     }
 
     // Bitcrusher -> diode saturator, exactly the instrument's master chain.

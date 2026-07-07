@@ -11,6 +11,8 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../dsp/BitCrusher.h"
 #include "../dsp/WdfClipper.h"
+#include "../amyfx/AmyFilter.h"
+#include "../amyfx/EnvelopeFollower.h"
 
 namespace amyplug
 {
@@ -18,6 +20,13 @@ namespace amyplug
 // designer's muscle memory carries over); mix/output are FX-plugin-only.
 namespace fxid
 {
+    // Filter (AMY VCF) — head of the chain.
+    inline constexpr auto fltType   = "flt_type";     // 0 LP24, 1 LP12, 2 HP, 3 BP
+    inline constexpr auto cutoff    = "flt_cutoff";   // Hz
+    inline constexpr auto reso      = "flt_reso";     // Q
+    inline constexpr auto envAmt    = "flt_env_amt";  // envelope-follower depth, octaves (+/-)
+    inline constexpr auto follower  = "flt_follower"; // follower speed, 0 fast .. 1 slow
+
     inline constexpr auto bits   = "bc_bits";     // 2..16 (16 = transparent)
     inline constexpr auto freq   = "bc_freq";     // crushed sample rate, Hz
     inline constexpr auto drive  = "clip_drive";  // diode THD, dB (gain-compensated)
@@ -60,9 +69,16 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
     juce::AudioProcessorValueTreeState state;
+    AmyFilter  filterL, filterR;   // AMY VCF, one per channel (state is per-channel)
+    EnvelopeFollower follower;     // drives the cutoff from input level
     BitCrusher crush;
     WdfClipper clip;
 
+    std::atomic<float>* pFltType = nullptr;
+    std::atomic<float>* pCutoff = nullptr;
+    std::atomic<float>* pReso = nullptr;
+    std::atomic<float>* pEnvAmt = nullptr;
+    std::atomic<float>* pFollower = nullptr;
     std::atomic<float>* pBits = nullptr;
     std::atomic<float>* pFreq = nullptr;
     std::atomic<float>* pDrive = nullptr;
