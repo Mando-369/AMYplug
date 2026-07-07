@@ -29,7 +29,7 @@ FxEditor::FxEditor(FxProcessor& p) : juce::AudioProcessorEditor(p), proc(p)
     addKnob(cutoff,   fxid::cutoff,   "CUTOFF",   col::filterViolet);
     addKnob(reso,     fxid::reso,     "RESO",     col::filterViolet);
     addKnob(envAmt,   fxid::envAmt,   "ENV AMT",  col::filterViolet);
-    addKnob(follower, fxid::follower, "FOLLOWER", col::filterViolet);
+    addKnob(follower, fxid::follower, "SPEED",    col::filterViolet);
 
     addKnob(freq,   fxid::freq,   "FREQ",   col::junoRed);
     addKnob(bit,    fxid::bits,   "BIT",    col::junoRed);

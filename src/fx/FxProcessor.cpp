@@ -26,8 +26,8 @@ APVTS::ParameterLayout FxProcessor::createLayout()
         ParameterID { fxid::envAmt, 1 }, "Env Amt",
         NormalisableRange<float> { -6.0f, 6.0f, 0.01f }, 0.0f));      // octaves
     layout.add(std::make_unique<AudioParameterFloat>(
-        ParameterID { fxid::follower, 1 }, "Follower",
-        NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.3f));      // 0 fast .. 1 slow
+        ParameterID { fxid::follower, 1 }, "Env Speed",
+        NormalisableRange<float> { 0.0f, 1.0f, 0.001f }, 0.5f));      // up = faster/snappier
 
     // Bitcrusher: crushed sample rate + bit depth. Ranges/defaults match the
     // instrument's master-FX so a patch sounds identical here (16 bit + 48 kHz = bypass).
@@ -128,10 +128,10 @@ void FxProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffe
             static constexpr int kAmyType[4] =
                 { AmyFilter::LPF24, AmyFilter::LPF, AmyFilter::HPF, AmyFilter::BPF };
             const int type = kAmyType[juce::jlimit(0, 3, uiType)];
-            // Follower speed: 0 = snappy (fast attack), 1 = smooth. Fast attack lets
-            // transients open the filter; release trails longer.
-            const float fspeed = pFollower ? pFollower->load() : 0.3f;
-            follower.setTimesMs(0.5f + fspeed * 14.5f, 20.0f + fspeed * 380.0f);
+            // Env Speed: turn UP for faster/snappier tracking. 1 = ~0.5 ms attack /
+            // ~20 ms release (percussive), 0 = ~15 ms / ~400 ms (smooth swells).
+            const float spd = pFollower ? pFollower->load() : 0.5f;
+            follower.setTimesMs(15.0f - spd * 14.5f, 400.0f - spd * 380.0f);
             float cut = cutParam;
             if (envAmt != 0.0f)
             {

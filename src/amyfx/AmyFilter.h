@@ -35,6 +35,12 @@ public:
     void process(float* block, int n, float cutoffHz, float resonance, int type)
     {
         if (type == None) return;
+
+        // Switching type swaps both the coefficients and the state layout (LPF24 uses
+        // 6 memories, the others 4). Feeding stale state into a different topology can
+        // send the resonant recurrence unstable, so clear the memory on any type change.
+        if (type != lastType) { reset(); lastType = type; }
+
         // AMY: ratio = freq / SR, floored at LOWEST_RATIO (~4.4 Hz), f capped at 0.45 in gen.
         float ratio = (float) (cutoffHz / sampleRate);
         if (ratio < kLowestRatio) ratio = kLowestRatio;
@@ -47,6 +53,18 @@ public:
 
         if (type == LPF24) biquadSplitFbTwice(block, block, n, coeffs, w);   // 24 dB/oct (Juno)
         else               biquadSplitFb     (block, block, n, coeffs, w);   // 12 dB/oct
+
+        // Safety net: if the filter ever goes non-finite (an unstable coefficient jump,
+        // extreme resonance), a NaN/Inf in the state would propagate forever. Detect it,
+        // clear the state, and silence this block so nothing bad reaches the rest of the
+        // chain — the next block starts clean.
+        for (float s : w)
+            if (! std::isfinite(s))
+            {
+                reset();
+                for (int i = 0; i < n; ++i) block[i] = 0.0f;
+                break;
+            }
     }
 
 private:
@@ -131,6 +149,7 @@ private:
     }
 
     double sampleRate = 48000.0;
-    float  w[8] = { 0 };   // biquad delay memories (LPF24 uses 6, others 4)
+    float  w[8] = { 0 };    // biquad delay memories (LPF24 uses 6, others 4)
+    int    lastType = -1;   // detect a type switch → clear state (different topology)
 };
 } // namespace amyplug
