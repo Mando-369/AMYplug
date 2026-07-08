@@ -293,17 +293,28 @@ void PlaceholderPanel::paint(juce::Graphics& g)
 // ===========================================================================
 HardwarePanel::HardwarePanel(AmyPlugProcessor& p) : proc(p)
 {
-    title.setFont(fonts::header(18.0f).withExtraKerningFactor(0.04f));
+    title.setFont(fonts::header(22.0f).withExtraKerningFactor(0.04f));
     title.setColour(juce::Label::textColourId, col::textPrimary);
+    title.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(title);
     for (auto* l : { &devLabel, &serialLabel })
-    { l->setFont(fonts::label(12.0f).withExtraKerningFactor(0.06f));
+    { l->setFont(fonts::label(16.0f).withExtraKerningFactor(0.06f));
+      l->setJustificationType(juce::Justification::centred);
       l->setColour(juce::Label::textColourId, col::textDim); addAndMakeVisible(*l); }
-    status.setFont(fonts::mono(12.5f));
+    status.setFont(fonts::mono(16.5f));
+    status.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(status);
+    firmwareLabel.setFont(fonts::mono(15.5f));
+    firmwareLabel.setJustificationType(juce::Justification::centred);
+    firmwareLabel.setColour(juce::Label::textColourId, col::textDim);
+    addAndMakeVisible(firmwareLabel);
+    flashLink.setFont(fonts::mono(15.5f), false, juce::Justification::centred);
+    flashLink.setColour(juce::HyperlinkButton::textColourId, col::engineCyan);
+    flashLink.setTooltip("Open the AMYboard WebSerial flasher to update the firmware");
+    addChildComponent(flashLink);   // only shown when an update is available
     addAndMakeVisible(deviceBox);
     addAndMakeVisible(serialBox);
-    for (auto* b : { &refreshBtn, &detectBtn, &connectBtn, &disconnectBtn, &sendBtn }) addAndMakeVisible(*b);
+    for (auto* b : { &refreshBtn, &detectBtn, &connectBtn, &disconnectBtn, &sendBtn, &firmwareBtn }) addAndMakeVisible(*b);
 
     auto setMode = [this] (float hardware)   // 0 = Software, 1 = Hardware
     { if (auto* p = proc.apvts().getParameter(params::id::mode)) p->setValueNotifyingHost(hardware); };
@@ -341,6 +352,12 @@ HardwarePanel::HardwarePanel(AmyPlugProcessor& p) : proc(p)
         setMode(0.0f);
     };
     sendBtn.onClick       = [this] { proc.sendPatchToHardware(); };
+    // Check for a firmware update per docs/FIRMWARE_UPDATE_CHECK.md: read the board's build
+    // over USB (tulip.version(), e.g. "20260627-abc1234") AND fetch the latest rolling build
+    // from GitHub, then compare (hash + date). AMYboard has no version number — it's a
+    // rolling release, so we present date + short hash. We never flash from the plugin.
+    firmwareBtn.setTooltip("Read the board's firmware and check GitHub for a newer AMYboard build");
+    firmwareBtn.onClick   = [this] { startFirmwareCheck(); };
 
     refreshDevices();
     startTimerHz(3);   // status + button enablement
@@ -410,6 +427,84 @@ void HardwarePanel::timerCallback()
     connectBtn.setEnabled(! conn && deviceBox.getNumItems() > 0);
     disconnectBtn.setEnabled(conn || ser);
     sendBtn.setEnabled(conn || ser);
+
+    // Firmware check: poll for the board read (serial) and time out its two async halves.
+    if (awaitingFirmware || onlinePending)
+    {
+        ++firmwareWaitTicks;
+        if (awaitingFirmware)
+        {
+            const juce::String v = hw ? hw->firmwareVersion() : juce::String();
+            if (v.isNotEmpty())              // resolved (build id, or "unavailable")
+            { boardFirmware = v; awaitingFirmware = false; refreshFirmwareLabel(); }
+            else if (firmwareWaitTicks > 12) // ~4s: serial likely not open / no reply
+            { boardFirmware = ser ? "unavailable" : "no-serial"; awaitingFirmware = false; refreshFirmwareLabel(); }
+        }
+        if (onlinePending && firmwareWaitTicks > 45)   // ~15s: GitHub fetch stalled
+        { onlinePending = false; refreshFirmwareLabel(); }
+    }
+}
+
+void HardwarePanel::startFirmwareCheck()
+{
+    auto* hw = proc.hardwareBackend();
+    if (hw == nullptr) return;
+
+    boardFirmware.clear();
+    latestFirmware = {};
+    awaitingFirmware  = true;
+    onlinePending     = true;
+    firmwareWaitTicks = 0;
+    firmwareLabel.setText("Checking firmware (board + GitHub)...", juce::dontSendNotification);
+    firmwareLabel.setColour(juce::Label::textColourId, col::textDim);
+
+    // Board half: read tulip.version() over the serial REPL (the timer polls for the result).
+    hw->requestFirmwareVersion();
+
+    // Online half: hit the GitHub releases API off the message thread, then post back.
+    juce::Component::SafePointer<HardwarePanel> safe(this);
+    juce::Thread::launch([safe]
+    {
+        const FirmwareInfo info = fetchLatestAmyboardFirmware();
+        juce::MessageManager::callAsync([safe, info]
+        {
+            if (auto* self = safe.getComponent())
+            { self->latestFirmware = info; self->onlinePending = false; self->refreshFirmwareLabel(); }
+        });
+    });
+}
+
+void HardwarePanel::refreshFirmwareLabel()
+{
+    if (awaitingFirmware || onlinePending) return;   // wait until BOTH halves resolve
+
+    flashLink.setVisible(false);                      // only shown on "update available"
+    auto set = [this] (const juce::String& text, juce::Colour c)
+    { firmwareLabel.setText(text, juce::dontSendNotification);
+      firmwareLabel.setColour(juce::Label::textColourId, c); };
+
+    // Board read outcome first.
+    if (boardFirmware == "no-serial")
+        return set("Connect the board (Serial) first, then check the firmware", col::panicRed);
+    if (boardFirmware.isEmpty() || boardFirmware == "unavailable")
+        return set("Couldn't read the board's firmware (is Serial the AMYboard's REPL?)", col::panicRed);
+
+    // We have a board build; fold in the online result. Rolling release -> show date+hash.
+    if (! latestFirmware.ok)
+        return set("Board firmware: " + boardFirmware + "   (couldn't reach GitHub to check for updates)",
+                   col::textDim);
+
+    if (firmwareUpdateAvailable(boardFirmware, latestFirmware))
+    {
+        set("Update available: " + firmwareShortId(latestFirmware)
+            + "  (installed " + boardFirmware + ")  -  flash at:", col::amber);
+        flashLink.setVisible(true);   // clickable link laid out under the label (see resized())
+        resized();                    // reflow so the link sits centred beneath the text
+        return;
+    }
+
+    set("Board firmware: " + boardFirmware + "   -  up to date (latest "
+        + firmwareShortId(latestFirmware) + ")", col::statusGreen);
 }
 
 void HardwarePanel::paint(juce::Graphics& g)
@@ -422,44 +517,86 @@ void HardwarePanel::paint(juce::Graphics& g)
     g.drawRoundedRectangle(b.reduced(0.5f), 6.0f, 1.0f);
 
     g.setColour(col::textFaint);
-    g.setFont(fonts::mono(11.5f));
+    g.setFont(fonts::mono(15.5f));
     g.drawFittedText("Notes play over the MIDI port; patch/parameter EDITS go over the Serial port (the\n"
                      "board's REPL - MIDI SysEx can't edit it). Pick the AMYboard for both (Detect finds the\n"
                      "serial port), Connect to sound ON THE BOARD, Disconnect to return to the plugin's sound.",
-                     getLocalBounds().removeFromBottom(64).reduced(24, 8), juce::Justification::topLeft, 3);
+                     getLocalBounds().removeFromBottom(84).reduced(24, 8), juce::Justification::centredTop, 3);
 }
 
 void HardwarePanel::resized()
 {
-    auto r = getLocalBounds().reduced(20);
-    title.setBounds(r.removeFromTop(30));
-    r.removeFromTop(18);
+    // One fixed-width column, centred both horizontally and vertically, so the controls use
+    // the tab's height instead of bunching at the top. Generous inter-group spacing gives it
+    // room to breathe; the help text stays pinned to the bottom (see paint()).
+    const int kColW = 360, kRowH = 32, kLabelH = 16, kTight = 6, kGroupGap = 22, kSplit = 12;
 
-    const int kLabelW = 70, kGap = 12, kRowH = 30;
-    // MIDI Out selector — the buttons below span its width, aligned to its left edge.
-    int selX = 0, selW = 340;
-    { auto line = r.removeFromTop(kRowH); devLabel.setBounds(line.removeFromLeft(kLabelW));
-      refreshBtn.setBounds(line.removeFromRight(90));
-      auto box = line.removeFromLeft(selW);
-      deviceBox.setBounds(box); selX = box.getX(); selW = box.getWidth();
-      r.removeFromTop(12); }
-    // Serial REPL selector (patch/param edits) — Detect probes for the AMYboard banner.
-    { auto line = r.removeFromTop(kRowH); serialLabel.setBounds(line.removeFromLeft(kLabelW));
-      detectBtn.setBounds(line.removeFromRight(90));
-      serialBox.setBounds(juce::Rectangle<int>(selX, line.getY(), selW, line.getHeight()));
-      r.removeFromTop(12); }
-    // Connect + Disconnect share the selector width; Send Patch spans the whole width.
-    { auto line = r.removeFromTop(kRowH);
-      juce::Rectangle<int> row(selX, line.getY(), selW, line.getHeight());
-      connectBtn.setBounds(row.removeFromLeft((selW - kGap) / 2));
-      row.removeFromLeft(kGap);
-      disconnectBtn.setBounds(row);
-      r.removeFromTop(12); }
-    { auto line = r.removeFromTop(kRowH);
-      sendBtn.setBounds(selX, line.getY(), selW, line.getHeight());
-      r.removeFromTop(18); }
-    { auto line = r.removeFromTop(26);
-      status.setBounds(selX, line.getY(), line.getRight() - selX, 26); }
+    // Total height of the stack, to vertically centre it in the available body (minus the
+    // bottom help strip). Keep this in step with the rows laid out below.
+    const int kStackH = 34                                   // title
+                      + kGroupGap
+                      + kLabelH + kTight + kRowH + kTight + kRowH   // MIDI Out + Refresh
+                      + kGroupGap
+                      + kLabelH + kTight + kRowH + kTight + kRowH   // Serial + Detect
+                      + kGroupGap
+                      + kRowH                                 // Connect | Disconnect
+                      + kSplit + kRowH                        // Send Patch
+                      + kSplit + kRowH                        // Check for Update
+                      + kTight + 20 + 2 + 20                  // firmware read-out label + flasher link
+                      + kGroupGap + 46;                       // status (up to two wrapped lines)
+
+    auto area = getLocalBounds().reduced(20).withTrimmedBottom(84);   // leave the help strip
+    const int top = area.getY() + juce::jmax(0, (area.getHeight() - kStackH) / 2);
+    juce::Rectangle<int> col(area.getCentreX() - kColW / 2, top, kColW, kStackH);
+
+    auto centred = [](juce::Rectangle<int> row, int w)
+    { return juce::Rectangle<int>(row.getCentreX() - w / 2, row.getY(), w, row.getHeight()); };
+
+    title.setBounds(col.removeFromTop(34));
+    col.removeFromTop(kGroupGap);
+
+    // MIDI Out (notes): label · full-width selector · centred Refresh.
+    devLabel.setBounds(col.removeFromTop(kLabelH));
+    col.removeFromTop(kTight);
+    deviceBox.setBounds(col.removeFromTop(kRowH));
+    col.removeFromTop(kTight);
+    refreshBtn.setBounds(centred(col.removeFromTop(kRowH), 150));
+    col.removeFromTop(kGroupGap);
+
+    // Serial REPL (edits): label · full-width selector · centred Detect.
+    serialLabel.setBounds(col.removeFromTop(kLabelH));
+    col.removeFromTop(kTight);
+    serialBox.setBounds(col.removeFromTop(kRowH));
+    col.removeFromTop(kTight);
+    detectBtn.setBounds(centred(col.removeFromTop(kRowH), 150));
+    col.removeFromTop(kGroupGap);
+
+    // Connect | Disconnect share the width; Send Patch + Check for Update span it.
+    { auto line = col.removeFromTop(kRowH);
+      connectBtn.setBounds(line.removeFromLeft((kColW - kSplit) / 2));
+      line.removeFromLeft(kSplit);
+      disconnectBtn.setBounds(line); }
+    col.removeFromTop(kSplit);
+    sendBtn.setBounds(col.removeFromTop(kRowH));
+    col.removeFromTop(kSplit);
+    firmwareBtn.setBounds(col.removeFromTop(kRowH));
+    col.removeFromTop(kTight);
+    // The firmware result line can be long ("Update available: … flash at:"), so give it the
+    // full tab width, centred — wider than the 360px control column. The clickable flasher
+    // link sits on its own centred line just beneath it (only visible on "update available").
+    { auto fwRow = col.removeFromTop(20);
+      const int fwW = juce::jmin(getWidth() - 24, 960);
+      firmwareLabel.setBounds(getWidth() / 2 - fwW / 2, fwRow.getY(), fwW, 20);
+      col.removeFromTop(2);
+      auto linkRow = col.removeFromTop(20);
+      flashLink.setBounds(getWidth() / 2 - 120, linkRow.getY(), 240, 20); }
+    col.removeFromTop(kGroupGap);
+
+    // Status can get long ("… no serial: notes only, edits won't reach the board"), so give it
+    // the full tab width and two lines of height — juce::Label wraps when the box is tall enough.
+    { auto stRow = col.removeFromTop(46);
+      const int stW = juce::jmin(getWidth() - 24, 960);
+      status.setBounds(getWidth() / 2 - stW / 2, stRow.getY(), stW, 46); }
 }
 
 // ===========================================================================
@@ -664,7 +801,7 @@ void Dx7TabComponent::paint(juce::Graphics& g)
     {
         auto w = watermarkCard.reduced(16);
         g.setColour(col::tabIndicator);
-        g.setFont(fonts::logo(40.0f));
+        g.setFont(fonts::logo(42.0f));   // match the JUNO page title (both below the 46 brand)
         g.drawText("DX7", w.removeFromTop(46), juce::Justification::centred);
         g.setColour(col::engineCyan);
         g.setFont(fonts::header(15.0f).withExtraKerningFactor(0.12f));
@@ -1039,7 +1176,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     // Height fits the tallest scrolled tab body without clipping: the Juno right
     // column has 5 sections (…VOICE) ~618px; window overhead (title + 2 top rows +
     // insets + tab bar) is ~156px, so >= 774px keeps VOICE fully visible.
-    setSize(1280, 800);
+    setSize(1280, 830);   // +30px over the body height, all given to the taller header
     startTimerHz(15);
 }
 
@@ -1251,21 +1388,23 @@ void AmyPlugEditor::paint(juce::Graphics& g)
                         col::shellBottom, 0.0f, (float) getHeight(), false });
     g.fillAll();
 
-    // Brand: "AMY" primary + "plug" neutral grey, one wordmark.
-    auto logo = fonts::logo(30.0f);
+    // Brand: "AMY" primary + "plug" neutral grey, one wordmark. Kept the largest thing on
+    // screen — bigger than any per-tab page title (Juno 42 / DX7 40) — and vertically
+    // centred in the taller (92px) header.
+    auto logo = fonts::logo(46.0f);
     g.setFont(logo);
-    const int lx = 16, ly = 12;
+    const int lx = 16, ly = 20;
     const int amyW = (int) juce::GlyphArrangement::getStringWidth(logo, "AMY");
     g.setColour(col::textPrimary);
-    g.drawText("AMY", lx, ly, amyW + 4, 30, juce::Justification::left);
+    g.drawText("AMY", lx, ly, amyW + 8, 48, juce::Justification::left);
     g.setColour(col::tabIndicator);
-    g.drawText("plug", lx + amyW, ly, 120, 30, juce::Justification::left);
+    g.drawText("plug", lx + amyW, ly, 170, 48, juce::Justification::left);
 
     // Subtitle.
     g.setColour(col::textFaint);
     g.setFont(fonts::label(11.0f).withExtraKerningFactor(0.04f));
     g.drawText(juce::String::fromUTF8("AMY FOR YOUR DAW · EDITOR V2"),
-               lx, ly + 28, 320, 12, juce::Justification::left);
+               lx, ly + 46, 340, 12, juce::Justification::left);
 }
 
 void AmyPlugEditor::resized()
@@ -1273,8 +1412,9 @@ void AmyPlugEditor::resized()
     auto full = getLocalBounds().reduced(12);
 
     // --- header: brand | patch browser | OUT GAIN | status / engine·panic ---
-    auto header = full.removeFromTop(62);
-    header.removeFromLeft(140);                       // brand wordmark (painted in paint())
+    auto header = full.removeFromTop(92);             // +30px, for the bigger brand wordmark
+    header.removeFromLeft(215);                       // brand wordmark reserve (painted in paint())
+    header = header.withSizeKeepingCentre(header.getWidth(), 62);   // centre the control band
 
     // Right cluster: status (top row), engine + PANIC (bottom row).
     auto right = header.removeFromRight(230);

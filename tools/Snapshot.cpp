@@ -5,7 +5,7 @@
 // quirks that block screenshotting the Standalone. Used to iterate on the UI.
 //
 //   amyplug_snapshot <out.png> [tabIndex]
-//     tabIndex: 0 Juno · 1-4 DX7 1-4 · 5 AMYboard   (default 0)
+//     tabIndex: 0 Juno · 1-4 DX7 1-4 · 5 FX-MASTER · 6 AMYboard   (default 0)
 
 #include "AmyPlugProcessor.h"
 #include "AmyPlugEditor.h"
@@ -37,7 +37,7 @@ int main(int argc, char** argv)
             a->setValueNotifyingHost(a->convertTo0to1((float) (algo - 1)));   // 0-based choice index
 
     auto editor = std::make_unique<amyplug::AmyPlugEditor>(proc);
-    editor->setBounds(0, 0, 1280, 800);
+    editor->setBounds(0, 0, editor->getWidth(), editor->getHeight());   // the editor's own size
     editor->selectTab(tab);
 
     // Let any async layout / repaint settle.

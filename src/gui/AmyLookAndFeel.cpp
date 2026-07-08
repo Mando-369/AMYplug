@@ -148,8 +148,8 @@ void AmyLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& labe
     label.setJustificationType(juce::Justification::centredLeft);
 }
 
-juce::Font AmyLookAndFeel::getComboBoxFont(juce::ComboBox&) { return fonts::label(14.0f); }
-juce::Font AmyLookAndFeel::getPopupMenuFont()               { return fonts::label(15.0f); }
+juce::Font AmyLookAndFeel::getComboBoxFont(juce::ComboBox&) { return fonts::label(18.0f); }
+juce::Font AmyLookAndFeel::getPopupMenuFont()               { return fonts::label(19.0f); }
 
 void AmyLookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Rectangle<int>& area,
                                        bool isSeparator, bool isActive, bool isHighlighted,
@@ -210,7 +210,7 @@ void AmyLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& b,
     g.drawRoundedRectangle(r, 4.0f, 1.0f);
 }
 
-juce::Font AmyLookAndFeel::getTextButtonFont(juce::TextButton&, int) { return fonts::label(13.5f); }
+juce::Font AmyLookAndFeel::getTextButtonFont(juce::TextButton&, int) { return fonts::label(17.5f); }
 
 void AmyLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& b, bool, bool)
 {

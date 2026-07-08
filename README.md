@@ -94,6 +94,7 @@ Short version:
 1. Connect the AMYboard by USB. In the plugin, switch to **Hardware** and pick the board’s **MIDI** port and **Serial** port (use **Detect**).
 2. **Notes** are sent over USB-MIDI; **patch/parameter edits** go over the board’s serial REPL (the plugin handles both).
 3. The plugin outputs silence in this mode — record the **board’s** audio through your interface.
+4. **Check for Firmware Update** reads the board’s build over USB and compares it to the latest AMYboard release on GitHub. AMYboard firmware is a *rolling* release (no version number — a `YYYYMMDD-<hash>` build id), so it reports “up to date” or shows the newer build with a link to the [WebSerial flasher](https://amyboard.com/editor). It never flashes for you. See [`docs/FIRMWARE_UPDATE_CHECK.md`](docs/FIRMWARE_UPDATE_CHECK.md).
 
 > ### ⚠️ If hardware audio ever sounds glitchy, “bitcrushed,” or drifts in pitch/latency — **CHECK YOUR AUDIO MASTER CLOCK FIRST.**
 > A misconfigured macOS **Aggregate Device** (two interfaces with bad *drift correction*) causes exactly these symptoms, **intermittently**, and it will masquerade as a board or plugin bug. Use your interface directly on its own clock, or set a single clock master. This cost us a full debugging session — don’t repeat it. Details in [`docs/HARDWARE_LATENCY.md`](docs/HARDWARE_LATENCY.md).

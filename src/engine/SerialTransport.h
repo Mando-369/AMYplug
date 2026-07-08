@@ -45,17 +45,27 @@ public:
     // the first match ("" if none). Opens/closes each briefly — call off the audio thread.
     static juce::String detectAmyboardPort();
 
+    // Firmware version, read over the REPL via the documented `tulip.version()` (returns a
+    // build id like "20260627-abc1234"). requestVersion() schedules a round-trip on the
+    // sender thread (which owns the port); poll firmwareVersion() for the result — "" while
+    // pending/unknown, the build id on success, or "unavailable" if the read failed.
+    void         requestVersion();
+    juce::String firmwareVersion() const;
+
 private:
     void run() override;                       // sender thread
     bool handshake();                          // wake REPL, ensure `amy` imported
     void drainReplEcho(int timeoutMs);         // read until ">>>" or timeout (heavy ACK pace)
     void drainAvailable(int maxMs);            // read+discard whatever's buffered, then return
+    void queryVersion();                       // sender-thread: ask the board for tulip.version()
 
     SerialPort port;
     juce::CriticalSection qlock;
     juce::StringArray queue;                   // pending wire strings (wrapped in send_raw)
     juce::StringArray rawQueue;                // pending raw REPL statements (sent as-is)
     std::atomic<bool> connected { false };
+    std::atomic<bool> versionWanted { false }; // set by requestVersion(), consumed by run()
+    juce::String version;                      // last firmware read (guarded by qlock)
     juce::String name;
 };
 } // namespace amyplug

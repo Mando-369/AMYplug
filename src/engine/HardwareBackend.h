@@ -61,6 +61,11 @@ public:
     bool   serialConnected() const                  { return serial.isOpen(); }
     juce::String serialPortName() const             { return serial.portName(); }
 
+    // Firmware version over the REPL: request a read, then poll the result ("" while pending,
+    // a build id like "20260627-abc1234", or "unavailable" if the read failed).
+    void   requestFirmwareVersion()                 { serial.requestVersion(); }
+    juce::String firmwareVersion() const            { return serial.firmwareVersion(); }
+
     // Re-assert AMY's scheduling latency_ms to a small value over the serial REPL. The
     // board firmware forces a huge default (~700 ms) and re-applies it (e.g. on transport
     // stop), so the processor calls this on connect + transport start. See assertLatency().

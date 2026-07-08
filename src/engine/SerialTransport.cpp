@@ -67,6 +67,7 @@ void SerialTransport::close()
     stopThread(700);
     port.close();
     connected.store(false);
+    versionWanted.store(false);   // don't let a pending query fire on the next open
     name = {};
     const juce::ScopedLock sl(qlock);
     queue.clear();
@@ -151,6 +152,65 @@ void SerialTransport::sendReplLine(juce::String line)
     notify();
 }
 
+void SerialTransport::requestVersion()
+{
+    { const juce::ScopedLock sl(qlock); version.clear(); }   // "" = pending until the thread answers
+    versionWanted.store(true);
+    notify();
+}
+
+juce::String SerialTransport::firmwareVersion() const
+{
+    const juce::ScopedLock sl(qlock);
+    return version;
+}
+
+void SerialTransport::queryVersion()
+{
+    // Read the firmware build over the SAME USB serial REPL that detectAmyboardPort() uses
+    // (proven to echo print() output back): the documented accessor is tulip.version() ->
+    // "20260627-abc1234". We fence the value in unique <<AMYFW: … >> markers so we can pick it
+    // out of the reply; the REPL also echoes our typed source (which contains the markers with
+    // quotes/plus around it), so we accept only a fenced value made of build-id characters.
+    // We own the port here (sender thread), so this short blocking round-trip is safe.
+    drainAvailable(10);   // clear any pending echo so our reply isn't mixed with prior output
+    const char* q = "import tulip\r\nprint('<<AMYFW:'+tulip.version()+'>>')\r\n";
+    port.write(q, (int) std::strlen(q));
+
+    juce::String reply;
+    char buf[512];
+    for (int i = 0; i < 25; ++i)   // up to ~1s for the board to answer
+    {
+        const int n = port.read(buf, sizeof(buf), 40);
+        if (n > 0) reply += juce::String(buf, (size_t) n);
+        // Stop once we have a fenced value (a '>>' that follows a marker, past the echo).
+        if (reply.contains("<<AMYFW:") && reply.fromFirstOccurrenceOf("<<AMYFW:", false, false).contains(">>"))
+        {
+            // Give a beat for the rest of the line, then bail.
+            if (i >= 2) break;
+        }
+    }
+
+    juce::String v;
+    juce::String scan = reply;
+    while (v.isEmpty())
+    {
+        const int m = scan.indexOf("<<AMYFW:");
+        if (m < 0) break;
+        juce::String rest = scan.substring(m + 8);
+        const int e = rest.indexOf(">>");
+        if (e < 0) break;
+        const juce::String cand = rest.substring(0, e).trim();
+        // A real build id is digits/hex/letters and dashes only — the echoed source is not.
+        if (cand.isNotEmpty() && cand.containsOnly("0123456789abcdefABCDEF-."))
+            v = cand;
+        scan = rest.substring(e + 2);   // keep scanning past this (possibly echoed) marker
+    }
+
+    const juce::ScopedLock sl(qlock);
+    version = v.isNotEmpty() ? v : juce::String("unavailable");
+}
+
 void SerialTransport::run()
 {
     juce::StringArray batch, raws;
@@ -166,6 +226,9 @@ void SerialTransport::run()
 
     while (! threadShouldExit())
     {
+        if (port.isOpen() && versionWanted.exchange(false))
+            queryVersion();
+
         batch.clearQuick(); raws.clearQuick();
         {
             const juce::ScopedLock sl(qlock);

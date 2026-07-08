@@ -100,6 +100,19 @@ The board has no project memory. On project load (and mode switch), the plugin
 re-sends the entire `PatchModel` via `rebuildFrom()` so the board matches the
 session. Treat the board as a stateless renderer of the canonical model.
 
+## Firmware version & update check
+
+The **Check for Firmware Update** button reads the board's build over the serial REPL —
+`print('<<AMYFW:'+tulip.version()+'>>')`, whose reply comes straight back over the SAME
+USB serial path Detect uses (the board echoes `print()` output; the `report_version()`
+`V`-frame-over-MIDI path is NOT needed) — and compares it to the latest online build.
+`tulip.version()` returns a rolling-release id `YYYYMMDD-<git short hash>` (no semver). The
+online half GETs `api.github.com/repos/shorepine/tulipcc/releases/tags/amyboard` on a
+background thread and compares on hash + date. See
+[`docs/FIRMWARE_UPDATE_CHECK.md`](FIRMWARE_UPDATE_CHECK.md) for the full protocol; the
+implementation is `src/engine/FirmwareCheck.{h,cpp}` + `HardwareBackend::firmwareVersion()`.
+The plugin never flashes — it links to the WebSerial flasher at amyboard.com/editor.
+
 ## Latency & sync
 
 - There's round-trip latency over USB/MIDI; the plugin can't sample-align hardware

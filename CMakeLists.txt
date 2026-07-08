@@ -100,6 +100,7 @@ target_sources(AMYplug PRIVATE
     src/engine/HardwareBackend.cpp
     src/engine/SerialPort.cpp
     src/engine/SerialTransport.cpp
+    src/engine/FirmwareCheck.cpp
     src/engine/AmyWire.cpp
     src/engine/amy_platform_stubs.c   # no-op AMY device hooks for library mode
     src/midi/NoteRouter.cpp
@@ -188,6 +189,7 @@ if(AMYPLUG_BUILD_SNAPSHOT)
         src/engine/HardwareBackend.cpp
         src/engine/SerialPort.cpp
         src/engine/SerialTransport.cpp
+        src/engine/FirmwareCheck.cpp
         src/engine/AmyWire.cpp
         src/engine/amy_platform_stubs.c
         src/midi/NoteRouter.cpp

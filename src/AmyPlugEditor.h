@@ -5,6 +5,7 @@
 #include "AmyPlugProcessor.h"
 #include "gui/AmyLookAndFeel.h"
 #include "gui/AmyColours.h"
+#include "engine/FirmwareCheck.h"
 #include <memory>
 #include <vector>
 #include <map>
@@ -92,12 +93,22 @@ private:
     void timerCallback() override;
     void refreshDevices();
     void selectSerialPort(const juce::String& port);   // select in serialBox, adding if missing
+    void startFirmwareCheck();                          // read board version + fetch latest online
+    void refreshFirmwareLabel();                        // compose the result once both halves land
 
     AmyPlugProcessor& proc;
+    bool             awaitingFirmware = false;   // board version read in flight
+    bool             onlinePending    = false;   // GitHub "latest" fetch in flight
+    int              firmwareWaitTicks = 0;      // timer ticks since the check was requested
+    juce::String     boardFirmware;              // "" until the board read resolves
+    FirmwareInfo     latestFirmware;             // resolved by the background fetch
     juce::Label      title  { {}, "AMYboard - Hardware Control" };
     juce::Label      devLabel { {}, "MIDI Out" };
     juce::Label      serialLabel { {}, "Serial" };
     juce::Label      status;
+    juce::Label      firmwareLabel;
+    juce::HyperlinkButton flashLink { "amyboard.com/editor",
+                                      juce::URL("https://amyboard.com/editor") };  // shown on "update available"
     juce::ComboBox   deviceBox;      // USB-MIDI port (notes)
     juce::ComboBox   serialBox;      // USB-serial REPL port (patch/param edits)
     juce::TextButton refreshBtn    { "Refresh" };
@@ -105,6 +116,7 @@ private:
     juce::TextButton connectBtn    { "Connect" };
     juce::TextButton disconnectBtn { "Disconnect" };
     juce::TextButton sendBtn       { "Send Patch to Board" };
+    juce::TextButton firmwareBtn   { "Check for Firmware Update" };
 };
 
 // Centered message for not-yet-built tabs.
