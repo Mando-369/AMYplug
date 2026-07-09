@@ -68,4 +68,15 @@ inline void releaseHardware(const void* me) noexcept
     hardwareOwner.compare_exchange_strong(expected, nullptr);
 }
 inline bool ownsHardware(const void* me) noexcept { return hardwareOwner.load() == me; }
+
+// True only when SOME OTHER instance currently holds the board (token is neither free
+// nor ours). Lets the UI tell "another instance is driving it" apart from "nothing is
+// connected" — a non-owner sees both as !ownsHardware(), which are very different states.
+// (An instance only holds this token while its serial is actually open, so held == a real
+// board is in use elsewhere; see AmyPlugProcessor::applyHardwareConnection.)
+inline bool hardwareOwnedByOther(const void* me) noexcept
+{
+    const void* o = hardwareOwner.load();
+    return o != nullptr && o != me;
+}
 } // namespace amyplug::engineown

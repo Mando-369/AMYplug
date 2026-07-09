@@ -80,6 +80,7 @@ public:
     // and state-restore set these instead of opening the port directly.
     void         setDesiredHardwarePorts(const juce::String& midi, const juce::String& serial);
     bool         ownsHardwareBoard() const;                        // true if THIS drives the board
+    bool         hardwareBoardHeldByOther() const;                 // true if ANOTHER instance holds it
 
 private:
     void parameterChanged(const juce::String& id, float newValue) override;

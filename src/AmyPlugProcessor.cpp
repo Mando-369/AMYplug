@@ -455,6 +455,8 @@ void AmyPlugProcessor::setDesiredHardwarePorts(const juce::String& midi, const j
 
 bool AmyPlugProcessor::ownsHardwareBoard() const { return engineown::ownsHardware(this); }
 
+bool AmyPlugProcessor::hardwareBoardHeldByOther() const { return engineown::hardwareOwnedByOther(this); }
+
 bool AmyPlugProcessor::ownsSoftwareEngine() const
 {
     return engineown::ownsSoftware(this);

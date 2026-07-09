@@ -410,20 +410,35 @@ void HardwarePanel::timerCallback()
     // (not a stale default), so it's obvious whether we're on the AMYboard or the wrong port.
     if (ser && serialBox.getText() != hw->serialPortName())
         selectSerialPort(hw->serialPortName());
-    const bool ownsBoard = proc.ownsHardwareBoard();
+    const bool ownsBoard   = proc.ownsHardwareBoard();
+    const bool heldByOther = proc.hardwareBoardHeldByOther();   // a DIFFERENT instance holds it
     juce::String s;
-    if (hwMode && ! ownsBoard)
+    juce::Colour sc = col::statusGreen;
+    if (hwMode && heldByOther)
+    {   // another loaded AMYplug is actually driving the board
         s = "HARDWARE - board in use by another AMYplug instance (this one is idle)";
+        sc = col::panicRed;
+    }
+    else if (hwMode && ! ownsBoard)
+    {   // nobody holds the board and we haven't connected -> simply not connected yet
+        s = "HARDWARE - no board connected. Pick the AMYboard above and press Connect.";
+        sc = col::amber;
+    }
     else if (hwMode)
+    {   // we own the board
         s = conn ? ("HARDWARE - board is sounding (" + hw->connectedName() + "); plugin is silent"
                     + (ser ? "" : "  [!] no serial: notes only, edits won't reach the board"))
-                 : "HARDWARE - but no board connected (silent!)";
+                 : "HARDWARE - no board connected (silent!)";
+        sc = (conn && ser) ? col::statusGreen : col::panicRed;
+    }
     else
+    {
         s = conn ? ("SOFTWARE - plugin is sounding; board connected but idle")
                  : "SOFTWARE - plugin is sounding";
+        sc = col::statusGreen;
+    }
     status.setText("Mode: " + s, juce::dontSendNotification);
-    status.setColour(juce::Label::textColourId,
-                     hwMode ? ((conn && ser) ? col::statusGreen : col::panicRed) : col::statusGreen);
+    status.setColour(juce::Label::textColourId, sc);
     connectBtn.setEnabled(! conn && deviceBox.getNumItems() > 0);
     disconnectBtn.setEnabled(conn || ser);
     sendBtn.setEnabled(conn || ser);
