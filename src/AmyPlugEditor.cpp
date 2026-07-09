@@ -920,14 +920,14 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     for (auto* l : { &browserLabel, &userLabel }) addAndMakeVisible(*l);
 
     // OUT GAIN rotary (amber) lives in the header, right of the patch block.
-    outGainKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 16);
+    outGainKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 18);
     outGainKnob.setRotaryParameters(juce::degreesToRadians(225.0f),
                                     juce::degreesToRadians(495.0f), true);
     outGainKnob.setColour(juce::Slider::rotarySliderFillColourId, col::amber);
     outGainKnob.setNumDecimalPlacesToDisplay(1);
     outGainAtt = std::make_unique<Apvts::SliderAttachment>(s, params::id::outputGain, outGainKnob);
     addAndMakeVisible(outGainKnob);
-    outGainLabel.setFont(fonts::label(12.0f).withExtraKerningFactor(0.06f));
+    outGainLabel.setFont(fonts::label(13.0f).withExtraKerningFactor(0.06f));
     outGainLabel.setColour(juce::Label::textColourId, col::textDim);
     outGainLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(outGainLabel);
@@ -1451,9 +1451,14 @@ void AmyPlugEditor::resized()
     }
     header.removeFromRight(14);
 
-    // OUT GAIN rotary (spans both browser rows), with a divider to its left.
-    auto gain = header.removeFromRight(60);
-    outGainLabel.setBounds(gain.removeFromTop(14));
+    // OUT GAIN rotary (spans both browser rows), with a divider to its left. Label gets a
+    // gap above the knob (matching every section knob), and the column is taller/wider than
+    // the browser-row band so the ROTARY itself is bigger — the LookAndFeel carves the text
+    // box + a 7px gap off the knob's bottom, so the rotary only grows if the knob box does.
+    auto gain = header.removeFromRight(72);
+    gain = gain.withSizeKeepingCentre(72, 74);   // a touch taller than the 62px band, centred
+    outGainLabel.setBounds(gain.removeFromTop(15));
+    gain.removeFromTop(5);
     outGainKnob.setBounds(gain.reduced(2, 0));
     header.removeFromRight(16);
 
