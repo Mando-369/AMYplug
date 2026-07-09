@@ -233,7 +233,7 @@ void ControlPanel::paint(juce::Graphics& g)
         g.setColour(accent);   // full-alpha bar so the dark title text stays readable
         g.fillPath(hp);
         g.setColour(col::headerTextOn(accent));
-        g.setFont(fonts::header(13.0f).withExtraKerningFactor(0.14f));
+        g.setFont(fonts::header(15.0f).withExtraKerningFactor(0.14f));   // section-bar title size (all tabs)
         g.drawText(sectionTitles[sec].toUpperCase(), tb, juce::Justification::centred);
     }
 }
@@ -1360,8 +1360,9 @@ void AmyPlugEditor::timerCallback()
                              (juce::Component*) &fmOscC, (juce::Component*) &fmEnv1Panel,
                              (juce::Component*) &fmEnv2Panel, (juce::Component*) &fmModPanel })
             { p->setEnabled(fm); p->setAlpha(fm ? 1.0f : 0.4f); }
-            for (auto* c : { (juce::Component*) &patchBox, (juce::Component*) &prevButton,
-                             (juce::Component*) &nextButton, (juce::Component*) &browserLabel })
+            // Dim the factory-patch name (it no longer reflects your edits) but keep the
+            // ‹ › nav arrows at full brightness so they read as normal buttons.
+            for (auto* c : { (juce::Component*) &patchBox, (juce::Component*) &browserLabel })
                 c->setAlpha(factory ? 1.0f : 0.4f);
         }
     }
@@ -1441,8 +1442,9 @@ void AmyPlugEditor::resized()
     outGainKnob.setBounds(gain.reduced(2, 0));
     header.removeFromRight(16);
 
-    // Patch browser block, left-packed so the trailing buttons sit adjacent to their
-    // neighbours (Import DX7 after ‹ ›, To Editor after Delete) — both the same width.
+    // Patch browser block. The two trailing action buttons (Import DX7 / To Editor) are
+    // aligned in a vertical column — same width, same left edge — anchored just past the
+    // wider row-2 group (Save + Delete) so they read as a stacked pair, not staggered.
     const int kActionW = 96;
     auto row1 = header.removeFromTop(26);
     browserLabel.setBounds(row1.removeFromLeft(42));
@@ -1452,8 +1454,6 @@ void AmyPlugEditor::resized()
     prevButton.setBounds(row1.removeFromLeft(30));
     row1.removeFromLeft(3);
     nextButton.setBounds(row1.removeFromLeft(30));
-    row1.removeFromLeft(8);
-    importButton.setBounds(row1.removeFromLeft(kActionW));
     header.removeFromTop(10);
     auto row2 = header.removeFromTop(26);
     userLabel.setBounds(row2.removeFromLeft(42));
@@ -1463,8 +1463,10 @@ void AmyPlugEditor::resized()
     saveButton.setBounds(row2.removeFromLeft(64));
     row2.removeFromLeft(4);
     deleteButton.setBounds(row2.removeFromLeft(62));
-    row2.removeFromLeft(8);
-    toEditorButton.setBounds(row2.removeFromLeft(kActionW));
+    // Shared left edge for both action buttons: just past Delete (the wider row's end).
+    const int actionX = row2.getX() + 8;
+    importButton.setBounds(actionX, row1.getY(), kActionW, row1.getHeight());
+    toEditorButton.setBounds(actionX, row2.getY(), kActionW, row2.getHeight());
 
     full.removeFromTop(10);
     auto r = full;
