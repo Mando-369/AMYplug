@@ -53,7 +53,6 @@ FirmwareInfo parseRelease(const juce::var& json)
         for (auto& a : *assets)
             if (a.getProperty("name", {}).toString() == "amyboard-firmware-AMYBOARD.bin")
             {
-                info.downloadUrl = a.getProperty("browser_download_url", {}).toString();
                 // updated_at "2026-07-08T16:12:06Z" -> "20260708"
                 const auto ts = a.getProperty("updated_at", {}).toString();
                 info.remoteDate = ts.substring(0, 10).removeCharacters("-");

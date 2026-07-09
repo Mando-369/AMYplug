@@ -16,7 +16,6 @@ struct FirmwareInfo
 {
     juce::String remoteSha;    // commit SHA the release was built from (full or short)
     juce::String remoteDate;   // "YYYYMMDD" from the firmware asset's updated_at
-    juce::String downloadUrl;  // amyboard-firmware-AMYBOARD.bin
     bool ok = false;           // true if the query succeeded and yielded an identity
 };
 

@@ -498,8 +498,7 @@ void HardwarePanel::refreshFirmwareLabel()
     {
         set("Update available: " + firmwareShortId(latestFirmware)
             + "  (installed " + boardFirmware + ")  -  flash at:", col::amber);
-        flashLink.setVisible(true);   // clickable link laid out under the label (see resized())
-        resized();                    // reflow so the link sits centred beneath the text
+        flashLink.setVisible(true);   // bounds already assigned unconditionally in resized()
         return;
     }
 
@@ -1175,7 +1174,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
 
     // Height fits the tallest scrolled tab body without clipping: the Juno right
     // column has 5 sections (…VOICE) ~618px; window overhead (title + 2 top rows +
-    // insets + tab bar) is ~156px, so >= 774px keeps VOICE fully visible.
+    // insets + tab bar) is ~186px with the 92px header, so >= 804px keeps VOICE visible.
     setSize(1280, 830);   // +30px over the body height, all given to the taller header
     startTimerHz(15);
 }
@@ -1389,7 +1388,7 @@ void AmyPlugEditor::paint(juce::Graphics& g)
     g.fillAll();
 
     // Brand: "AMY" primary + "plug" neutral grey, one wordmark. Kept the largest thing on
-    // screen — bigger than any per-tab page title (Juno 42 / DX7 40) — and vertically
+    // screen — bigger than any per-tab page title (Juno / DX7 both 42) — and vertically
     // centred in the taller (92px) header.
     auto logo = fonts::logo(46.0f);
     g.setFont(logo);
