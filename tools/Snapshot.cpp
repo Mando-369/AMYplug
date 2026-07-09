@@ -17,6 +17,9 @@
 int main(int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
+    // Run as a background process: no Dock icon, never steals focus or foregrounds a window.
+    // We only ever render offscreen (paintEntireComponent), so nothing should appear on screen.
+    juce::Process::setDockIconVisible(false);
 
     const juce::String outPath = (argc > 1) ? juce::String(argv[1]) : juce::String("amyplug_snapshot.png");
     const int tab = (argc > 2) ? juce::String(argv[2]).getIntValue() : 0;
