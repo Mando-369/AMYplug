@@ -275,7 +275,8 @@ void AmyLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
 
         g.setColour((isReadout ? col::lcdText : label.findColour(juce::Label::textColourId))
                      .withMultipliedAlpha(label.isEnabled() ? 1.0f : 0.5f));
-        g.setFont(isReadout ? fonts::lcd(10.0f) : label.getFont());
+        // Space out the segmented LCD digits — they're hard to read butted together.
+        g.setFont(isReadout ? fonts::lcd(10.0f).withExtraKerningFactor(0.12f) : label.getFont());
         g.drawFittedText(text, label.getLocalBounds().reduced(isReadout ? 4 : 2, 0),
                          juce::Justification::centred, 1, isReadout ? 0.7f : 0.9f);
     }
