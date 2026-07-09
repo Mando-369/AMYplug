@@ -421,7 +421,7 @@ void HardwarePanel::timerCallback()
     }
     else if (hwMode && ! ownsBoard)
     {   // nobody holds the board and we haven't connected -> simply not connected yet
-        s = "HARDWARE - no board connected. Pick the AMYboard above and press Connect.";
+        s = "HARDWARE - no board connected. Click DETECT or pick the board manually and click CONNECT.";
         sc = col::amber;
     }
     else if (hwMode)
