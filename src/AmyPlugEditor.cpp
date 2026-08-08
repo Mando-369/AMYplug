@@ -713,23 +713,29 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
         return juce::Rectangle<int> { x, y, boxW, boxH };
     };
 
+    // Silent operators (Level 0) fade — box, number, and the link they feed, since a
+    // modulator at zero sends nothing down that line.
+    constexpr float kSilentA = 0.3f;
+    auto opAlpha = [this] (int op) { return isSilent(op) ? kSilentA : 1.0f; };
+
     // Connections (modulator bottom -> target top).
-    g.setColour(juce::Colour { 0xff3a4550 });
     for (int op = 1; op <= 6; ++op)
         for (int t : modulates[(size_t) op])
         {
+            g.setColour(juce::Colour { 0xff3a4550 }.withMultipliedAlpha(opAlpha(op)));
             auto a = boxOf(op).toFloat(); auto b = boxOf(t).toFloat();
             g.drawLine(a.getCentreX(), a.getBottom(), b.getCentreX(), b.getY(), 1.6f);
         }
     // Carrier -> output bar (the rail spans only the carrier cluster).
-    g.setColour(kAccent);
     int barL = area.getRight(), barR = area.getX();
     for (int c : topo.carriers)
     {
+        g.setColour(kAccent.withMultipliedAlpha(opAlpha(c)));
         auto bx = boxOf(c).toFloat();
         g.drawLine(bx.getCentreX(), bx.getBottom(), bx.getCentreX(), (float) outBar.getCentreY(), 1.6f);
         barL = juce::jmin(barL, (int) bx.getCentreX()); barR = juce::jmax(barR, (int) bx.getCentreX());
     }
+    g.setColour(kAccent);
     g.drawLine((float) barL, (float) outBar.getCentreY(), (float) barR, (float) outBar.getCentreY(), 1.6f);
     g.setColour(kAccent);
     g.setFont(fonts::label(10.0f).withExtraKerningFactor(0.06f));
@@ -742,16 +748,17 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
     {
         auto bx = boxOf(op);
         const bool carrier = topo.carriers.contains(op);
+        const float a = opAlpha(op);   // Level 0 -> faded: wired, but contributing nothing
         if (carrier)
         {
-            g.setColour(kAccent.withAlpha(0.28f));
+            g.setColour(kAccent.withAlpha(0.28f * a));
             g.fillRoundedRectangle(bx.toFloat().expanded(2.0f), 5.0f);   // soft glow
         }
-        g.setColour(carrier ? juce::Colour { 0xff0d2a30 } : kMod);
+        g.setColour((carrier ? juce::Colour { 0xff0d2a30 } : kMod).withMultipliedAlpha(a));
         g.fillRoundedRectangle(bx.toFloat(), 4.0f);
-        g.setColour(carrier ? kAccent : juce::Colour { 0xff38434e });
+        g.setColour((carrier ? kAccent : juce::Colour { 0xff38434e }).withMultipliedAlpha(a));
         g.drawRoundedRectangle(bx.toFloat(), 4.0f, carrier ? 2.0f : 1.2f);
-        g.setColour(carrier ? kAccent : juce::Colour { 0xffc3ccd6 });
+        g.setColour((carrier ? kAccent : juce::Colour { 0xffc3ccd6 }).withMultipliedAlpha(a));
         g.setFont(fonts::header(13.0f));
         g.drawText(juce::String(op), bx, juce::Justification::centred);
     }
@@ -1412,17 +1419,30 @@ void AmyPlugEditor::timerCallback()
 
         // Fade DX7 operators that output nothing (Level 0) — and their envelope rows on
         // DX7 2/3 — so it's obvious at a glance which operators a patch actually uses.
+        //
+        // ONLY while the FM engine is live. A factory preset doesn't populate these
+        // parameters until you press "To Editor", so under Factory/Analog the tab still
+        // holds editor defaults (OP 1 = 99, the rest 0) — dimming those would claim the
+        // sounding patch uses one operator, which is wrong. The whole panel is already
+        // dimmed wholesale in that case anyway.
         // Cheap to run every tick: setSectionDimmed early-outs when nothing changed, and
         // panels that don't own a given "OP n" section simply ignore it.
+        const bool fmLive = (eng == 2);
+        int silentMask = 0;
         for (int op = 1; op <= 6; ++op)
         {
             bool silent = false;
-            if (auto* lv = proc.apvts().getRawParameterValue(params::id::fmOp(op, "outlvl")))
-                silent = (lv->load() <= 0.0f);
+            if (fmLive)
+                if (auto* lv = proc.apvts().getRawParameterValue(params::id::fmOp(op, "outlvl")))
+                    silent = (lv->load() <= 0.0f);
+            if (silent) silentMask |= (1 << (op - 1));
             const juce::String title = "OP " + juce::String(op);
             for (auto* p : { &fmOscA, &fmOscB, &fmOscC, &fmEnv1Panel, &fmEnv2Panel })
                 p->setSectionDimmed(title, silent);
         }
+        // Same source of truth for the algorithm graph, so the diagram can never claim an
+        // operator is in use while its card says otherwise.
+        algoDiagram.setSilentOps(silentMask);
     }
 }
 

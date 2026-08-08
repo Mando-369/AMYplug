@@ -178,9 +178,15 @@ class AlgorithmDiagram : public juce::Component
 {
 public:
     void setAlgorithm(int a) { if (a != algo) { algo = a; repaint(); } }
+    // Operators at Level 0 are wired by the algorithm but contribute nothing. Fade them
+    // here too, so the diagram tells the same story as the dimmed operator cards (an INIT
+    // voice is algorithm 1 with only OP 1 audible — wired ≠ sounding). Bit n = op n+1.
+    void setSilentOps(int mask) { if (mask != silentMask) { silentMask = mask; repaint(); } }
     void paint(juce::Graphics&) override;
 private:
+    bool isSilent(int op) const { return (silentMask & (1 << (op - 1))) != 0; }
     int algo = 1;
+    int silentMask = 0;
 };
 
 // The DX7 1 tab: a top row with the algorithm diagram (left), the Algorithm +
