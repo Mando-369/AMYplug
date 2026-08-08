@@ -71,6 +71,16 @@ a content component that fills the rest.
 amyplug_snapshot <out.png> [tabIndex]   # 0 Juno · 1-4 DX7 · 5 FX-MASTER · 6 AMYboard
 ```
 
-It constructs the processor + editor headlessly and paints into a `juce::Image` — no
-window, so it's immune to the compositor/Spaces quirks that can stop the Standalone
-window from appearing in a headless/remote session. Use it to iterate on the UI.
+The FX plugin has its own target (both plugins define `createPluginFilter()`, so their
+sources can't share one binary):
+
+```
+amyplugfx_snapshot <out.png>            # the AMYplugFX 4x2 rack
+```
+
+Both construct the processor + editor headlessly and paint into a `juce::Image` — no
+window, so they're immune to the compositor/Spaces quirks that can stop the Standalone
+window from appearing in a headless/remote session, and they call
+`Process::setDockIconVisible(false)` so they never flash a Dock icon or steal focus.
+Use them to iterate on the UI; the README screenshots in `docs/screenshots/` are
+generated this way.

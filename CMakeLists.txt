@@ -209,6 +209,28 @@ if(AMYPLUG_BUILD_SNAPSHOT)
         add_custom_command(TARGET amyplug_snapshot POST_BUILD
             COMMAND codesign --force --sign - "$<TARGET_FILE:amyplug_snapshot>" VERBATIM)
     endif()
+
+    # The FX plugin gets its own target: both plugins define createPluginFilter(),
+    # so their sources can't be linked into one binary.
+    juce_add_console_app(amyplugfx_snapshot PRODUCT_NAME "amyplugfx_snapshot")
+    target_sources(amyplugfx_snapshot PRIVATE
+        tools/SnapshotFx.cpp
+        src/fx/FxProcessor.cpp
+        src/fx/FxEditor.cpp
+        src/gui/AmyLookAndFeel.cpp
+        src/gui/AmyFonts.cpp)
+    target_include_directories(amyplugfx_snapshot PRIVATE src)
+    target_compile_definitions(amyplugfx_snapshot PRIVATE
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(amyplugfx_snapshot PRIVATE
+        AmyPlugAssets
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags)
+    if(APPLE)
+        add_custom_command(TARGET amyplugfx_snapshot POST_BUILD
+            COMMAND codesign --force --sign - "$<TARGET_FILE:amyplugfx_snapshot>" VERBATIM)
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------

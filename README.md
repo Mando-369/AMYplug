@@ -7,6 +7,8 @@ AMYplug loads AMY as a normal instrument: play it live, design and save patches,
 - **macOS** · Audio Unit + VST3 + Standalone · Apple Silicon & Intel · macOS 11+
 - License: **AGPL-3.0** (it links JUCE). AMY’s own C engine is MIT.
 
+![The Juno tab — AMYplug’s analog engine editor](docs/screenshots/juno.png)
+
 ---
 
 ## Two modes
@@ -86,6 +88,24 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 
 ---
 
+## Screenshots
+
+**DX7 — 6-operator FM**, across three tabs: the algorithm graph + operator tuning, the per-operator envelopes, and the global pitch/LFO page.
+
+| Operators | Envelopes | Global |
+| --- | --- | --- |
+| ![DX7 operators](docs/screenshots/dx7-operators.png) | ![DX7 envelopes](docs/screenshots/dx7-envelopes.png) | ![DX7 global](docs/screenshots/dx7-global.png) |
+
+**FX-Master** — the shared output section (EQ · chorus · echo · reverb · bitcrush · diode clipper):
+
+![FX-Master tab](docs/screenshots/fx-master.png)
+
+**AMYboard** — hardware control: port selection, connect, patch push, and the firmware check:
+
+![AMYboard tab](docs/screenshots/amyboard.png)
+
+---
+
 ## Hardware mode (driving a real AMYboard)
 
 Full guide: [`docs/HARDWARE_MODE.md`](docs/HARDWARE_MODE.md).
@@ -109,6 +129,8 @@ Short version:
 The download also includes **AMYplugFX**, an AU/VST3 **audio effect** that is AMYplug’s complete output section, usable as an insert on *any* track. Its DSP is extracted from AMY itself (engine-free, so any number of instances run independently), in the synth’s exact signal order:
 
 **Filter → EQ → Chorus → Echo → Reverb → Bitcrush → Diode Clipper → Output**
+
+![AMYplugFX — the AMY FX bus as an insert effect](docs/screenshots/amyplugfx.png)
 
 - **Filter** — AMY’s analog VCF (LP 24/12, HP, BP) with cutoff/reso and an **envelope follower** so it opens with input level.
 - **EQ** — 3-band (800 / 2500 / 7000 Hz), **Chorus**, **Echo** (time/feedback/tone), **Reverb** (size/damp) — the same AMY bus effects the instrument uses.
