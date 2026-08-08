@@ -105,6 +105,7 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 - **User patches** — save/load your own; organized by cartridge on import.
 - **Import DX7 `.syx`** cartridges (32-voice bulk dumps) straight into the browser.
 - **Voice modes**: Poly / Mono / **Legato** (true pitch-only slur with **glide/portamento**), plus **Unison** with detune.
+- **Polyphony: 6 notes at once by default**, for both the analog and FM engines (that’s the classic Juno-106 / DX7-era voice count). The `Voices` parameter goes **1–16** and is host-automatable — it has no knob in the UI yet, so set it from your DAW’s parameter list. **Unison** (1–4) stacks extra detuned oscillator copies *inside* each voice, so it thickens notes without using up polyphony — but it does cost CPU.
 - **Juno LFO** modes (Poly / Free / Key / Tempo-Sync).
 - **AMY’s full FX bus** on the master — EQ, chorus, echo and reverb.
 - **Two extra output effects of our own**, on top of AMY’s bus: a **Bit Crusher** (independent sample-rate + bit-depth reduction) and a **Diode Clipper** — a wave-digital-filter model of an antiparallel diode pair, for analog-style saturation rather than generic distortion. Both are Faust ports, and both are automatable like everything else.
