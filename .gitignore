@@ -41,3 +41,6 @@ dx7_sounds/
 
 # Local scratch audio captures (not source)
 testaudio/
+
+# UI design references (large third-party photos / mockup archives, not source)
+visual/
