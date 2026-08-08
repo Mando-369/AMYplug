@@ -209,6 +209,16 @@ It’s especially handy in **Hardware mode**: the instrument outputs silence, so
 
 ---
 
+## Support
+
+AMYplug is free and open source, and it stays that way. If it’s useful to you and you’d like to say thanks:
+
+[**☕ Buy me a coffee on Ko-fi**](https://ko-fi.com/mand0369)
+
+Entirely optional — bug reports and patches are just as welcome.
+
+---
+
 ## License & credits
 
 The plugin links **JUCE 8** (free license: AGPLv3), so any distributed binary is **AGPL-3.0** — see [`LICENSE`](LICENSE). AMYplug’s own first-party sources are additionally offered under MIT where noted, but any binary that includes JUCE must comply with AGPL-3.0. Bundled **AMY** remains MIT and is kept as an unmodified submodule. Full third-party breakdown in [`NOTICES.md`](NOTICES.md).
