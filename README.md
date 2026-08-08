@@ -90,11 +90,12 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 ## Quick start
 
 1. Add **AMYplug** on an instrument track and play — it boots on a Juno-6 patch and makes sound immediately.
-2. Open the editor. Use the **patch browser** at the top to pick any of AMY’s built-in sounds (Juno, DX7, piano, PCM…).
-3. Switch tabs to edit per engine:
-   - **Juno** — a full analog editor (OSC A/B, LFO, VCF + filter env, amp ADSR, effects).
-   - **DX7** — a 6-operator FM editor; import your own `.syx` cartridges.
-4. Tweak, then **Save…** to store a named user patch. Everything you change is host-automatable and recalls with the project.
+2. Open the editor. Use the **patch browser** at the top to pick any of AMY’s built-in sounds (Juno, DX7, piano, PCM…). They play straight away.
+3. **To change one, press “To Editor” first.** Factory presets play as-is; **To Editor** decodes the selected preset into the editable engine and fills in every knob — a Juno preset lands on the **Juno** tab, a DX7 preset on the **DX7** tabs, and the plugin switches you there. *Until you press it, the tabs show the editor’s own settings, not the preset you’re hearing.*
+4. Now edit:
+   - **Juno** — a full analog editor (OSC A–D, LFO, VCF + filter env, amp ADSR).
+   - **DX7 1–4** — a 6-operator FM editor; or import your own `.syx` cartridges.
+5. Tweak, then **Save…** to store a named user patch. Everything you change is host-automatable and recalls with the project.
 
 ---
 
@@ -121,6 +122,16 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 ## The interface, tab by tab
 
 Everything above the tabs is always visible: the **patch browser** (factory presets + your own user patches, with Import DX7 and “To Editor”), the **OUT GAIN** master, an **engine indicator** showing whether you’re hearing Software or Hardware, the **engine selector**, and **PANIC**.
+
+### Playing a preset vs. editing it — the “To Editor” button
+
+AMY’s built-in presets are stored as the engine’s own patch data, not as knob positions. Selecting one in the browser **plays** it immediately, but the Juno/DX7 tabs are a separate editable voice — so they keep showing whatever *they* hold, not the preset that’s sounding. The **engine indicator** tells you which you’re hearing: `SOFTWARE · Factory` means a browser preset, `· Analog` or `· FM` means the editable voice.
+
+**“To Editor” bridges the two.** It decodes the selected factory preset into the editable engine, fills in every knob, and jumps you to the matching tab — Juno presets (0–127) to **Juno**, DX7 presets (128–255) to the **DX7** tabs. From there it’s yours to change and **Save…** as a user patch. Your effects and output settings are kept; only the synth voice is replaced.
+
+> Piano and the AMYboard default (256–257) have no editable structure, so the button is greyed out for them — they play, but there’s nothing to decode.
+>
+> This is also why a freshly-opened **DX7** tab can look near-empty with five operators dimmed: that’s the editable voice at its **DX7 INIT VOICE** default (OP 1 only), not the preset you’re hearing. Press **To Editor** to pull the real patch in.
 
 ### Juno — the analog engine
 
