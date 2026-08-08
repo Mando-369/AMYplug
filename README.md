@@ -104,7 +104,7 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 - **All AMY engines** reachable, with proper per-engine editors for **Juno-style analog** and **DX7-style FM**.
 - **Built-in patch browser** with real names (Juno 0–127, DX7 128–255, piano, PCM presets).
 - **User patches** — save/load your own; organized by cartridge on import.
-- **Import DX7 `.syx`** cartridges (32-voice bulk dumps) straight into the browser.
+- **Import DX7 `.syx`** cartridges (32-voice bulk dumps) straight into the browser — each import lands in its own named folder. Decades of DX7 patches are freely available; a good place to start is the huge **[Dexed Cart 1.0](https://audiobombs.com/items/1038/dexed-cart-1.0)** collection compiled by **Jacques Prestreau (BlackWinny)**.
 - **Voice modes**: Poly / Mono / **Legato** (true pitch-only slur with **glide/portamento**), plus **Unison** with detune.
 - **Polyphony: 6 notes at once by default**, for both the analog and FM engines (that’s the classic Juno-106 / DX7-era voice count). Turn it up to **16** with the **Voices** knob in the VOICE section — it’s host-automatable and saves with the patch like everything else. **Unison** (1–4) stacks extra detuned oscillator copies *inside* each voice, thickening notes without using up polyphony.
 
@@ -146,6 +146,10 @@ A full Juno-106-style voice. **OSC A–D** are the audio oscillators (wave, freq
 ![DX7 operators](docs/screenshots/dx7-operators.png)
 
 Pick one of the **32 FM algorithms** and the diagram redraws to show which operators modulate which — modulators stacked above the carriers they feed, feedback marked. **Feedback** sets how hard the algorithm’s feedback operator drives itself. Below, each of the six operators gets its DX7-native tuning: **Coarse**, **Fine**, **Detune**, output **Level**, **Vel** (velocity sensitivity) and ratio/fixed **Mode**.
+
+An operator sitting at **Level 0** contributes nothing, so it’s **faded** — on its card, on its envelope row, and in the algorithm diagram. That’s why a fresh patch shows one bright operator: it’s the DX7’s own INIT VOICE (algorithm 1, OP 1 only), which is exactly why an un-edited DX7 sounds like a plain sine.
+
+> **Want patches?** Use **Import DX7…** to load any 32-voice `.syx` cartridge. The [Dexed Cart 1.0](https://audiobombs.com/items/1038/dexed-cart-1.0) collection by **Jacques Prestreau (BlackWinny)** is an enormous, freely available starting point.
 
 ### DX7 2 & 3 — operator envelopes
 
@@ -247,6 +251,7 @@ The plugin links **JUCE 8** (free license: AGPLv3), so any distributed binary is
 - [AMY](https://github.com/shorepine/amy) by DAn Ellis & Brian Whitman / Shore Pine Sound Systems (MIT).
 - [AMYboard](https://amyboard.com) hardware · [shorepine/tulipcc](https://github.com/shorepine/tulipcc).
 - Built with [JUCE](https://juce.com) (AGPLv3).
+- **DX7 patches** — the [Dexed Cart 1.0](https://audiobombs.com/items/1038/dexed-cart-1.0) cartridge collection compiled by **Jacques Prestreau (BlackWinny)**. Not bundled with AMYplug and not affiliated with it — linked because it’s the most comprehensive freely-available source of `.syx` cartridges to import.
 - **AMYplugFX DSP** — the filter, EQ, chorus, echo and reverb are extracted from AMY (MIT) into `src/amyfx/`; the bitcrusher and WDF diode clipper are ported from [Faust](https://faust.grame.fr) under the **STK-4.3** license (`ba.bitcrusher` by Julius O. Smith III, `ba.downSample` by Romain Michon, diode WDF model by Dirk Roosenburg, `KalosSoftClipper.dsp` by Thomas Mandolini). Full attribution in [`NOTICES.md`](NOTICES.md); STK text in [`licenses/STK-4.3.txt`](licenses/STK-4.3.txt).
 
 ### How this was built
