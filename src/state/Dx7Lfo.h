@@ -77,6 +77,17 @@ inline double linearToDx7Level(double lin)
 inline double ampLfoAmp(double amd)          { return dx7LevelToLinear(amd); }
 inline double ampToAmd(double ampLfoAmp_)    { return linearToDx7Level(ampLfoAmp_); }
 
+// Amplitude Modulation Sensitivity (per operator, 0..3): how much of the LFO's tremolo
+// (AMD) reaches THIS operator. The DX7's response is markedly non-linear — the hardware
+// table is 0, 66, 109, 255 out of 255 (Q24 in the reference emulation: 0, 4342338,
+// 7171437, 16777216), so step 3 is more than double step 2. Anything else — e.g. evenly
+// spaced thirds — makes imported cartridges wobble far too hard at AMS 1-2.
+inline double amsScale(int ams)
+{
+    static constexpr double kTab[4] = { 0.0, 66.0 / 255.0, 109.0 / 255.0, 1.0 };
+    return kTab[juce::jlimit(0, 3, ams)];
+}
+
 // Vibrato depth: PMS (0..7) + PMD (0..99) -> freq mod-coef (pitch_lfo_amp).
 // fm.py: 0 for PMD<=0, else 0.6 * 1.7^(PMS-1) * PMD / 1188.
 inline double pitchLfoAmp(int pms, double pmd)

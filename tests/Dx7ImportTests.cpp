@@ -383,3 +383,29 @@ TEST_CASE("DX7 pitch-EG decode<->emit round-trips (ratio levels + pitch timing)"
     roundTrips("0,1,0,1,0,1,0,1,731,1");                       // BRASS 1 ALGO pitch env (flat)
     roundTrips("0,1,120,1.2968,30,1.15,300,0.9441,200,1");     // synthetic pitch sweep (distinct levels)
 }
+
+// AMS (Amplitude Modulation Sensitivity, 0..3) gates the LFO tremolo into each operator.
+// The DX7's response is NOT linear and NOT on/off: the hardware table is 0, 66, 109, 255
+// out of 255 (the reference emulation stores it in Q24 as 0, 4342338, 7171437, 16777216).
+// We shipped it as a boolean once, which made every AMS 1-2 patch wobble at full depth —
+// pin the real curve so that can't come back.
+TEST_CASE("AMS follows the DX7's non-linear sensitivity table")
+{
+    using amyplug::dx7lfo::amsScale;
+
+    REQUIRE(amsScale(0) == Approx(0.0));
+    REQUIRE(amsScale(1) == Approx(66.0  / 255.0));   // ~0.259
+    REQUIRE(amsScale(2) == Approx(109.0 / 255.0));   // ~0.427
+    REQUIRE(amsScale(3) == Approx(1.0));
+
+    // Strictly increasing, and step 3 is the big jump (more than double step 2) — the
+    // property that makes DX7 tremolo patches sit right.
+    REQUIRE(amsScale(0) < amsScale(1));
+    REQUIRE(amsScale(1) < amsScale(2));
+    REQUIRE(amsScale(2) < amsScale(3));
+    REQUIRE(amsScale(3) > 2.0 * amsScale(2));
+
+    // Out-of-range values clamp rather than read past the table.
+    REQUIRE(amsScale(-1) == Approx(amsScale(0)));
+    REQUIRE(amsScale(99) == Approx(amsScale(3)));
+}

@@ -180,7 +180,9 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
         // (a1,0,1,..) which scales the carriers -> velocity = loudness. Per-operator
         // velocity (DX7 KVS/brightness) is not reachable this way; fm.py drops it too.
         const float vel  = 0.0f;
-        const float trem = (op.ampModSens > 0) ? ampLfo : 0.0f;
+        // AMS gates the LFO tremolo into this operator, on the DX7's own non-linear
+        // curve (0 / 66 / 109 / 255 of full) — not a simple on/off.
+        const float trem = ampLfo * (float) amyplug::dx7lfo::amsScale(op.ampModSens);
         const juce::String env = amyplug::dx7env::egToBreakpoints(op.egRate, op.egLevel);
         out.emplace_back((pre + "v" + juce::String(osc) + "w0"
             + "a" + F(amp) + ",0," + F(vel) + ",1,0," + F(trem)
