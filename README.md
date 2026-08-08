@@ -21,11 +21,13 @@ Load a second AMYplug and it deliberately stays **silent** rather than fighting 
 
 > ○ **SILENT · engine in use by another instance**
 
-…next to a **USE ENGINE HERE** button. Click it and the engine moves to that instance immediately — the other one falls silent. That’s the fast way to hop between two AMYplugs while designing sounds; no rendering required.
+…next to a **USE ENGINE HERE** button. Click it and the engine moves to that instance immediately — the other one falls silent. That’s the fast way to hop between AMYplugs while designing sounds; no rendering required.
 
-**To actually keep several AMYplug parts in one project:** finish a part, **bounce/freeze that track to audio**, then **remove the plugin instance** — and only then load the next one.
+**Load as many instances as you like, in any order** — they simply take turns. There’s no rule about removing one before adding another; only one is ever audible.
 
-> **Important:** *bypassing is not enough.* A bypassed instance still holds the engine. It’s released when the instance is **removed**, when it’s switched to **Hardware** mode, or when another instance takes it with **USE ENGINE HERE**.
+**To have several AMY parts playing together in the final mix,** print each finished part to audio (**bounce/freeze** that track). Only one instance can sound *live*, so a part that’s already audio doesn’t need the engine any more — hand it to the next instance with **USE ENGINE HERE** and carry on. You can leave the finished instance loaded and silent; it keeps its patch, so you can always reclaim the engine and revise it later.
+
+> **Important:** *bypassing does not hand over the engine.* A bypassed instance keeps holding it. The engine changes hands only when another instance takes it with **USE ENGINE HERE**, or when the current owner is **removed** or switched to **Hardware** mode (a silent instance then picks it up automatically).
 
 **Nothing is lost while an instance is silent.** Every instance keeps its own complete state — patch, all parameters, engine choice — saved with your DAW project and restored on reload, whether or not it owned the engine. Your **user patches are stored on disk** (`~/Library/Application Support/AMYplug/Patches/`), so they’re shared by every instance and survive across projects. A silent instance is idle, not amnesiac.
 
