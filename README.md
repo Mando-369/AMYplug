@@ -88,21 +88,47 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 
 ---
 
-## Screenshots
+## The interface, tab by tab
 
-**DX7 — 6-operator FM**, across three tabs: the algorithm graph + operator tuning, the per-operator envelopes, and the global pitch/LFO page.
+Everything above the tabs is always visible: the **patch browser** (factory presets + your own user patches, with Import DX7 and “To Editor”), the **OUT GAIN** master, an **engine indicator** showing whether you’re hearing Software or Hardware, the **engine selector**, and **PANIC**.
 
-| Operators | Envelopes | Global |
-| --- | --- | --- |
-| ![DX7 operators](docs/screenshots/dx7-operators.png) | ![DX7 envelopes](docs/screenshots/dx7-envelopes.png) | ![DX7 global](docs/screenshots/dx7-global.png) |
+### Juno — the analog engine
 
-**FX-Master** — the shared output section (EQ · chorus · echo · reverb · bitcrush · diode clipper):
+![The Juno tab](docs/screenshots/juno.png)
+
+A full Juno-106-style voice. **OSC A–D** are the audio oscillators (wave, frequency, coarse/fine tuning, pulse width, level). **VCF** is the analog filter — cutoff, resonance, keyboard tracking, envelope amount and type — driven by its own **VCF ENV**, while **AMP ENV** shapes the level. **LFO** has selectable mode (Poly / Free / Key / Tempo-Sync), wave and rate, plus separate depths for pitch, PWM and filter. **VOICE** sets Poly / Mono / Legato, glide, and unison with detune.
+
+> Parameter-by-parameter mapping to the real Juno-106 (and what AMY does with each) is in [`docs/JUNO_PARAMETERS.md`](docs/JUNO_PARAMETERS.md).
+
+### DX7 1 — algorithm & operator tuning
+
+![DX7 operators](docs/screenshots/dx7-operators.png)
+
+Pick one of the **32 FM algorithms** and the diagram redraws to show which operators modulate which — modulators stacked above the carriers they feed, feedback marked. **Feedback** sets how hard the algorithm’s feedback operator drives itself. Below, each of the six operators gets its DX7-native tuning: **Coarse**, **Fine**, **Detune**, output **Level**, **Vel** (velocity sensitivity) and ratio/fixed **Mode**.
+
+### DX7 2 & 3 — operator envelopes
+
+![DX7 envelopes, operators 1–3](docs/screenshots/dx7-envelopes-op123.png)
+
+Each operator has the DX7's 4-stage rate/level envelope (**R1–R4**, **L1–L4**), drawn live as a curve so you can see the shape you're dialling in. Operators 1–3 live on **DX7 2**, operators 4–6 on **DX7 3** — same layout on both.
+
+### DX7 4 — global pitch, LFO & routing
+
+![DX7 global](docs/screenshots/dx7-global.png)
+
+**Transpose**, the **Pitch EG** (its own 4-stage envelope applied to all operators), and the patch **LFO** — speed, wave, vibrato depth and sensitivity, tremolo — plus the per-operator switches for which operators the LFO's tremolo actually reaches.
+
+### FX-Master — the output section
 
 ![FX-Master tab](docs/screenshots/fx-master.png)
 
-**AMYboard** — hardware control: port selection, connect, patch push, and the firmware check:
+Shared by both engines: **EQ** (low/mid/high), **Chorus** (level/rate/depth), **Echo** (level/time/feedback/tone) and **Reverb** (level/size/damping) — these are AMY’s own bus effects. Then the two host-side effects: **Bit Crusher** (sample rate + bit depth) and the **Diode Clipper**, a wave-digital-filter diode saturator whose **Drive** you push against **Synth Vol**, the level feeding it.
+
+### AMYboard — hardware control
 
 ![AMYboard tab](docs/screenshots/amyboard.png)
+
+Only needed if you own the hardware. Pick the board's **MIDI** port (notes) and **Serial** port (patch/parameter edits — **Detect** finds it), **Connect** to hand sound-making over to the board, **Send Patch to Board** to push the current patch, and **Check for Firmware Update** to compare the board's build against the latest release. The status line always states plainly what's making sound.
 
 ---
 
