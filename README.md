@@ -4,6 +4,8 @@
 
 AMYplug loads AMY as a normal instrument: play it live, design and save patches, automate every knob, and have the whole sound recall perfectly with your project. It’s the first AMY plugin to exist.
 
+**Two plugins, one download:** the **AMYplug** instrument, and **AMYplugFX** — AMY’s complete filter and effects bus (plus a bit crusher and a diode-clipper saturator) as a standalone insert effect for any track.
+
 - **macOS** · Audio Unit + VST3 + Standalone · Apple Silicon & Intel · macOS 11+
 - License: **AGPL-3.0** (it links JUCE). AMY’s own C engine is MIT.
 
@@ -101,7 +103,10 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 - **User patches** — save/load your own; organized by cartridge on import.
 - **Import DX7 `.syx`** cartridges (32-voice bulk dumps) straight into the browser.
 - **Voice modes**: Poly / Mono / **Legato** (true pitch-only slur with **glide/portamento**), plus **Unison** with detune.
-- **Juno LFO** modes (Poly / Free / Key / Tempo-Sync) and full **effects** (reverb, chorus, echo, EQ).
+- **Juno LFO** modes (Poly / Free / Key / Tempo-Sync).
+- **AMY’s full FX bus** on the master — EQ, chorus, echo and reverb.
+- **Two extra output effects of our own**, on top of AMY’s bus: a **Bit Crusher** (independent sample-rate + bit-depth reduction) and a **Diode Clipper** — a wave-digital-filter model of an antiparallel diode pair, for analog-style saturation rather than generic distortion. Both are Faust ports, and both are automatable like everything else.
+- **A second plugin included — [AMYplugFX](#amyplugfx--the-synths-whole-fx-bus-as-an-effect-plugin)**: the entire output section (filter + EQ + chorus + echo + reverb + bit crusher + diode clipper) as an AU/VST3 **audio effect** you can insert on *any* track. Unlike the instrument, you can run as many of these as you like.
 - **Full host automation** of every sound parameter, with **bit-faithful recall** — the plugin keeps a canonical patch model that saves and restores with your DAW project.
 - **No hanging notes**: deterministic note-off, transport-stop flush, and a Panic button.
 - **Hardware mode** to drive a real AMYboard (see below).
