@@ -172,6 +172,12 @@ The plugin links **JUCE 8** (free license: AGPLv3), so any distributed binary is
 - Built with [JUCE](https://juce.com) (AGPLv3).
 - **AMYplugFX DSP** — the filter, EQ, chorus, echo and reverb are extracted from AMY (MIT) into `src/amyfx/`; the bitcrusher and WDF diode clipper are ported from [Faust](https://faust.grame.fr) under the **STK-4.3** license (`ba.bitcrusher` by Julius O. Smith III, `ba.downSample` by Romain Michon, diode WDF model by Dirk Roosenburg, `KalosSoftClipper.dsp` by Thomas Mandolini). Full attribution in [`NOTICES.md`](NOTICES.md); STK text in [`licenses/STK-4.3.txt`](licenses/STK-4.3.txt).
 
+### How this was built
+
+AMYplug is, so far, a **hybrid human/AI project**. It’s directed, specified and tested by a human — every sound-affecting change is verified by ear, and the hardware behaviour was confirmed against a real AMYboard — with the implementation written in collaboration with **Claude** (Anthropic), working from the brief in [`CLAUDE.md`](CLAUDE.md) and the research notes in [`docs/`](docs/).
+
+Mentioning it because it’s honest and because it shapes the codebase: the docs are unusually thorough (they’re the shared context), and the design decisions and their reasoning are recorded rather than assumed. Bugs are still bugs — please [report them](https://github.com/Mando-369/AMYplug/issues).
+
 This is an independent community project and is **not** affiliated with or endorsed by Shore Pine Sound Systems.
 
 Repo: https://github.com/Mando-369/AMYplug — issues and PRs welcome.

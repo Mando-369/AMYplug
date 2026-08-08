@@ -208,7 +208,7 @@ void FxEditor::paint(juce::Graphics& g)
         g.fillRoundedRectangle(tb.toFloat(), 6.0f);
         g.fillRect(tb.getX(), tb.getY() + 11, tb.getWidth(), 11);
         g.setColour(c.placeholder ? col::textDim : col::headerTextOn(c.accent));
-        g.setFont(fonts::header(12.0f).withExtraKerningFactor(0.08f));
+        g.setFont(fonts::header(15.0f).withExtraKerningFactor(0.08f));   // matches the synth's section bars
         g.drawText(c.title, tb.reduced(9, 0), juce::Justification::centredLeft);
 
         if (c.placeholder)
