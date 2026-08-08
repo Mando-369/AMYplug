@@ -105,7 +105,9 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 - **User patches** — save/load your own; organized by cartridge on import.
 - **Import DX7 `.syx`** cartridges (32-voice bulk dumps) straight into the browser.
 - **Voice modes**: Poly / Mono / **Legato** (true pitch-only slur with **glide/portamento**), plus **Unison** with detune.
-- **Polyphony: 6 notes at once by default**, for both the analog and FM engines (that’s the classic Juno-106 / DX7-era voice count). The `Voices` parameter goes **1–16** and is host-automatable — it has no knob in the UI yet, so set it from your DAW’s parameter list. **Unison** (1–4) stacks extra detuned oscillator copies *inside* each voice, so it thickens notes without using up polyphony — but it does cost CPU.
+- **Polyphony: 6 notes at once by default**, for both the analog and FM engines (that’s the classic Juno-106 / DX7-era voice count). Turn it up to **16** with the **Voices** knob in the VOICE section — it’s host-automatable and saves with the patch like everything else. **Unison** (1–4) stacks extra detuned oscillator copies *inside* each voice, thickening notes without using up polyphony.
+
+  > **The real limit is your CPU.** AMY renders every voice in software, and each one costs: the analog engine builds 6 oscillators per voice (more with Unison), and each DX7 voice runs 6 FM operators. So 16 voices with Unison 4 is *many* times the load of the 6-voice default. If you hear crackles or your DAW reports overload, lower **Voices** (or **Unison**) first, or raise your audio buffer size.
 - **Juno LFO** modes (Poly / Free / Key / Tempo-Sync).
 - **AMY’s full FX bus** on the master — EQ, chorus, echo and reverb.
 - **Two extra output effects of our own**, on top of AMY’s bus: a **Bit Crusher** (independent sample-rate + bit-depth reduction) and a **Diode Clipper** — a wave-digital-filter model of an antiparallel diode pair, for analog-style saturation rather than generic distortion. Both are Faust ports, and both are automatable like everything else.
@@ -124,7 +126,7 @@ Everything above the tabs is always visible: the **patch browser** (factory pres
 
 ![The Juno tab](docs/screenshots/juno.png)
 
-A full Juno-106-style voice. **OSC A–D** are the audio oscillators (wave, frequency, coarse/fine tuning, pulse width, level). **VCF** is the analog filter — cutoff, resonance, keyboard tracking, envelope amount and type — driven by its own **VCF ENV**, while **AMP ENV** shapes the level. **LFO** has selectable mode (Poly / Free / Key / Tempo-Sync), wave and rate, plus separate depths for pitch, PWM and filter. **VOICE** sets Poly / Mono / Legato, glide, and unison with detune.
+A full Juno-106-style voice. **OSC A–D** are the audio oscillators (wave, frequency, coarse/fine tuning, pulse width, level). **VCF** is the analog filter — cutoff, resonance, keyboard tracking, envelope amount and type — driven by its own **VCF ENV**, while **AMP ENV** shapes the level. **LFO** has selectable mode (Poly / Free / Key / Tempo-Sync), wave and rate, plus separate depths for pitch, PWM and filter. **VOICE** sets Poly / Mono / Legato, the **Voices** count (polyphony, 1–16), glide, and unison with detune.
 
 > Parameter-by-parameter mapping to the real Juno-106 (and what AMY does with each) is in [`docs/JUNO_PARAMETERS.md`](docs/JUNO_PARAMETERS.md).
 

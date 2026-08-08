@@ -119,6 +119,28 @@ void ControlPanel::addSection(const juce::String& title, juce::Colour accent)
 {
     sectionTitles.add(title);
     sectionAccents.push_back(accent);
+    sectionDimmed.push_back(false);
+}
+
+void ControlPanel::setSectionDimmed(const juce::String& title, bool dimmed)
+{
+    const int sec = sectionTitles.indexOf(title);
+    if (sec < 0 || sec >= (int) sectionDimmed.size()) return;
+    if (sectionDimmed[(size_t) sec] == dimmed) return;          // no-op: don't repaint on every tick
+    sectionDimmed[(size_t) sec] = dimmed;
+
+    // Fade this section's controls (the card + title bar are handled in paint()).
+    const float a = dimmed ? 0.4f : 1.0f;
+    for (auto& c : controls)
+        if (c->section == sec)
+        {
+            c->label.setAlpha(a);
+            if (c->knob)  c->knob->setAlpha(a);
+            if (c->combo) c->combo->setAlpha(a);
+        }
+    if (auto it = graphForSection.find(sec); it != graphForSection.end() && it->second != nullptr)
+        it->second->setAlpha(a);
+    repaint();
 }
 
 namespace
@@ -218,6 +240,9 @@ void ControlPanel::paint(juce::Graphics& g)
     for (int sec = 0; sec < (int) boxes.size(); ++sec)
     {
         auto box = boxes[(size_t) sec];
+        // A dimmed section (e.g. a DX7 operator at level 0) fades its card + title bar so
+        // it reads as "contributing nothing" at a glance, while staying fully editable.
+        const bool dim = sec < (int) sectionDimmed.size() && sectionDimmed[(size_t) sec];
         // Card: panel fill + hairline border.
         g.setColour(col::panel);
         g.fillRoundedRectangle(box.toFloat(), 6.0f);
@@ -226,13 +251,16 @@ void ControlPanel::paint(juce::Graphics& g)
 
         // Accent header bar (top corners rounded to match the card).
         auto tb = box.removeFromTop(kTitleH).toFloat();
-        const auto accent = accentOf(sectionAccents, sec);
+        // Keep `accent` at full strength so headerTextOn() picks the right contrast; the
+        // fade is applied to what's actually drawn (bar + text) instead.
+        const auto accent   = accentOf(sectionAccents, sec);
+        const float dimA    = dim ? 0.4f : 1.0f;
         juce::Path hp;
         hp.addRoundedRectangle(tb.getX(), tb.getY(), tb.getWidth(), tb.getHeight() + 6.0f,
                                6.0f, 6.0f, true, true, false, false);
-        g.setColour(accent);   // full-alpha bar so the dark title text stays readable
+        g.setColour(accent.withMultipliedAlpha(dimA));   // full-alpha bar keeps the dark title readable
         g.fillPath(hp);
-        g.setColour(col::headerTextOn(accent));
+        g.setColour(col::headerTextOn(accent).withMultipliedAlpha(dimA));
         g.setFont(fonts::header(15.0f).withExtraKerningFactor(0.14f));   // section-bar title size (all tabs)
         g.drawText(sectionTitles[sec].toUpperCase(), tb, juce::Justification::centred);
     }
@@ -1060,6 +1088,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     // also affect DX7); Unison + Detune are analog-only. VOICE sits in the JUNO top row.
     voicePanel.addSection("VOICE", col::amber);
     voicePanel.addChoice(params::id::voiceMode, "Mode");   // Poly / Mono / Legato
+    voicePanel.addKnob(params::id::numVoices, "Voices");   // polyphony, 1-16 (both engines)
     voicePanel.addKnob(params::id::glide, "Glide");        // portamento (ms)
     voicePanel.addKnob(params::id::unisonVoices, "Unison"); // stacked detuned copies
     voicePanel.addKnob(params::id::unisonDetune, "Detune"); // unison spread, cents
@@ -1379,6 +1408,20 @@ void AmyPlugEditor::timerCallback()
             // ‹ › nav arrows at full brightness so they read as normal buttons.
             for (auto* c : { (juce::Component*) &patchBox, (juce::Component*) &browserLabel })
                 c->setAlpha(factory ? 1.0f : 0.4f);
+        }
+
+        // Fade DX7 operators that output nothing (Level 0) — and their envelope rows on
+        // DX7 2/3 — so it's obvious at a glance which operators a patch actually uses.
+        // Cheap to run every tick: setSectionDimmed early-outs when nothing changed, and
+        // panels that don't own a given "OP n" section simply ignore it.
+        for (int op = 1; op <= 6; ++op)
+        {
+            bool silent = false;
+            if (auto* lv = proc.apvts().getRawParameterValue(params::id::fmOp(op, "outlvl")))
+                silent = (lv->load() <= 0.0f);
+            const juce::String title = "OP " + juce::String(op);
+            for (auto* p : { &fmOscA, &fmOscB, &fmOscC, &fmEnv1Panel, &fmEnv2Panel })
+                p->setSectionDimmed(title, silent);
         }
     }
 }

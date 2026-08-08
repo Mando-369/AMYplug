@@ -46,6 +46,11 @@ public:
     void setCellSize(int w, int h) { cellW = w; rowH = h; }
     void setControlHeight(int h) { ctrlH = h; }   // band height (label+knob+readout)
     int  preferredHeight() const;     // total height needed for all sections
+
+    // Dim a section whose controls currently do nothing (e.g. a DX7 operator at level 0):
+    // its card, title bar and controls fade, but everything stays usable so you can bring
+    // it back in. Matched by title, since callers think in names ("OP 3"), not indices.
+    void setSectionDimmed(const juce::String& title, bool dimmed);
     void paint(juce::Graphics&) override;
     void resized() override;
 
@@ -69,6 +74,7 @@ private:
     juce::AudioProcessorValueTreeState& apvts;
     juce::StringArray sectionTitles;
     std::vector<juce::Colour> sectionAccents;
+    std::vector<bool> sectionDimmed;                   // parallel to sectionTitles
     std::vector<std::unique_ptr<Control>> controls;
     std::map<int, juce::Component*> graphForSection;   // section index -> optional graph
     int cellW = 88, rowH = 100, ctrlH = kCtrlH;
