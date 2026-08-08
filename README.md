@@ -11,6 +11,26 @@ AMYplug loads AMY as a normal instrument: play it live, design and save patches,
 
 ---
 
+## ⚠️ Read this first: one instance makes sound at a time
+
+**AMY is a single global engine** — there is one of it per host process, not one per plugin instance. So **only one AMYplug can be sounding at any moment**, no matter how many you load. This is a property of AMY itself, not a bug or a licensing limit.
+
+Load a second AMYplug and it deliberately stays **silent** rather than fighting over the engine (two renderers would corrupt each other’s voices and double-pull the sample clock). Its header shows:
+
+> ○ **SILENT · engine in use by another instance**
+
+…next to a **USE ENGINE HERE** button. Click it and the engine moves to that instance immediately — the other one falls silent. That’s the fast way to hop between two AMYplugs while designing sounds; no rendering required.
+
+**To actually keep several AMYplug parts in one project:** finish a part, **bounce/freeze that track to audio**, then **remove the plugin instance** — and only then load the next one.
+
+> **Important:** *bypassing is not enough.* A bypassed instance still holds the engine. It’s released when the instance is **removed**, when it’s switched to **Hardware** mode, or when another instance takes it with **USE ENGINE HERE**.
+
+**Nothing is lost while an instance is silent.** Every instance keeps its own complete state — patch, all parameters, engine choice — saved with your DAW project and restored on reload, whether or not it owned the engine. Your **user patches are stored on disk** (`~/Library/Application Support/AMYplug/Patches/`), so they’re shared by every instance and survive across projects. A silent instance is idle, not amnesiac.
+
+**The same rule applies to Hardware mode:** there’s one physical AMYboard, so one instance owns it. The others show “board in use by another AMYplug instance” and stay idle until it’s freed.
+
+---
+
 ## Two modes
 
 | Mode | What makes the sound | When to use it |
