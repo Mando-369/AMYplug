@@ -86,6 +86,7 @@ endif()
 juce_add_console_app(amyplug_ui_tests)
 target_sources(amyplug_ui_tests PRIVATE
     EditorSizeTests.cpp
+    StressTests.cpp
     ${CMAKE_SOURCE_DIR}/src/AmyPlugProcessor.cpp
     ${CMAKE_SOURCE_DIR}/src/AmyPlugEditor.cpp
     ${CMAKE_SOURCE_DIR}/src/gui/AmyLookAndFeel.cpp
