@@ -188,11 +188,15 @@ void SoftwareBackend::pushWire(const char* msg, int len)
 
 void SoftwareBackend::drainWireFifo()
 {
+    // Snapshot BEFORE draining: a rebuild queued while this runs is not covered by this
+    // pass, and must keep graphSettled() false until the next one drains it.
+    const auto seen = pushedRebuilds.load(std::memory_order_acquire);
     const auto scope = wireFifo.read(wireFifo.getNumReady());
     for (int i = 0; i < scope.blockSize1; ++i)
         amyAddNow(wireSlots[(size_t) (scope.startIndex1 + i)].data);
     for (int i = 0; i < scope.blockSize2; ++i)
         amyAddNow(wireSlots[(size_t) (scope.startIndex2 + i)].data);
+    appliedRebuilds.store(seen, std::memory_order_release);
 }
 
 void SoftwareBackend::sendWire(const char* msg, int len)
@@ -260,5 +264,8 @@ void SoftwareBackend::rebuildFrom(const PatchModel& model)
     // them in order so AMY's live state == the canonical model.
     for (const auto& msg : model.toWireMessages())
         pushWire(msg.c_str(), (int) msg.size());
+    // Publish the count only once every message is queued, so a drain that runs
+    // concurrently cannot mark this rebuild applied before it is.
+    pushedRebuilds.fetch_add(1, std::memory_order_release);
 }
 } // namespace amyplug

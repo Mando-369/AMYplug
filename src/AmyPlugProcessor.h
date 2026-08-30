@@ -90,6 +90,19 @@ private:
     void syncModelFromParams();          // copy current APVTS values into `model`
     void cacheParamPointers();           // resolve atomic param pointers once
     void streamMacrosToBackend();        // audio thread: push changed macros to AMY
+
+    // --- osc-graph gate ---------------------------------------------------
+    // streamAnalogParams/streamFmParams address oscillators BY INDEX, and the index
+    // layout is decided by the engine (Analog = 2 + 4*unison audio oscs, FM = 8 per
+    // voice) — so they are only safe once AMY is actually running THAT graph. The live
+    // parameter flips the instant it is written; the rebuild that changes AMY's graph is
+    // deferred to the message thread and then queued, so there is a multi-block window
+    // where the two disagree. Streaming in that window addresses oscillators the current
+    // voice does not have. AMY >= 1.2.162 rejects those writes with a warning; before
+    // that it accepted them and wrote out of range.
+    static int graphId(int engine, int unison) { return engine * 8 + juce::jlimit(1, 4, unison); }
+    int  liveGraphId() const;            // what the parameters currently say
+    std::atomic<int> builtGraph { -1 };  // what the last QUEUED rebuild will make AMY
     void streamAnalogParams();           // audio thread: analog (Juno) engine streaming
     void streamFmParams();               // audio thread: FM (DX7) engine streaming
     void streamGlobalFx();               // audio thread: master volume + reverb/chorus/echo/EQ (all engines)

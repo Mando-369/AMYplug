@@ -38,6 +38,9 @@ public:
     void sendWire(const char* msg, int len) override;   // message thread -> FIFO
     void streamWire(const char* msg, int len) override; // audio thread -> AMY now
     void flushPending() override { drainWireFifo(); }   // apply queued rebuild first
+    bool graphSettled() const override
+    { return appliedRebuilds.load(std::memory_order_acquire)
+          == pushedRebuilds.load(std::memory_order_acquire); }
     void noteOn(int synth, int midiNote, float velocity) override;  // audio thread
     void noteOff(int synth, int midiNote) override;                 // audio thread
     void changeNote(int synth, int midiNote) override;              // audio thread (legato)
@@ -73,6 +76,15 @@ private:
 
     // SPSC wire-message FIFO. Fixed-size slots (no allocation on either thread).
     struct WireSlot { int len = 0; char data[256] = {}; };
+    // Rebuild bookkeeping. rebuildFrom() bumps `pushed` AFTER queueing its messages;
+    // drainWireFifo() snapshots `pushed` BEFORE draining and stores that snapshot after.
+    // Both orderings are deliberately conservative: a rebuild that races the drain is
+    // counted as still-pending, never as already-applied. Erring that way costs one
+    // block of skipped streaming; erring the other way is the out-of-range write this
+    // exists to prevent.
+    std::atomic<std::uint32_t> pushedRebuilds  { 0 };
+    std::atomic<std::uint32_t> appliedRebuilds { 0 };
+
     static constexpr int kFifoSlots = 1024;
     juce::AbstractFifo      wireFifo { kFifoSlots };
     std::vector<WireSlot>   wireSlots;       // sized kFifoSlots in the constructor

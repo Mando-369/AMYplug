@@ -486,6 +486,11 @@ void AmyPlugProcessor::rebuildEngineFromModel()
     // the take-over path does one clean rebuild once this instance owns the engine.
     if (activeKind == IAmyBackend::Kind::Software && ! engineown::ownsSoftware(this))
         return;
+    // Record the graph this rebuild will produce BEFORE queueing it. The audio thread
+    // only trusts this once the backend reports the rebuild applied (graphSettled), so
+    // publishing early is safe and publishing late would reopen the window.
+    builtGraph.store(graphId((int) model.synths[0].engine,
+                             (int) model.unisonVoices), std::memory_order_relaxed);
     if (active) active->rebuildFrom(model);
 }
 
@@ -593,9 +598,28 @@ void AmyPlugProcessor::syncModelFromParams()
     }
 }
 
+int AmyPlugProcessor::liveGraphId() const
+{
+    const int engine  = pEngine ? (int) std::lround(pEngine->load(std::memory_order_relaxed)) : 0;
+    const int unison  = pUnisonVoices
+                      ? (int) std::lround(pUnisonVoices->load(std::memory_order_relaxed)) : 1;
+    return graphId(engine, unison);
+}
+
 void AmyPlugProcessor::streamMacrosToBackend()
 {
     if (active == nullptr) return;
+    if (engineIsAnalog() || engineIsFM())
+    {
+        // Per-oscillator streaming only once AMY is running the graph the parameters
+        // describe. Both halves matter: `graphSettled` covers a rebuild that is queued
+        // but not yet applied, and the id comparison covers a parameter that changed
+        // without producing a rebuild at all. Returning early leaves every Macro::last
+        // untouched, so nothing is lost — the change streams on the first block after
+        // the graph catches up.
+        if (! active->graphSettled()) return;
+        if (builtGraph.load(std::memory_order_relaxed) != liveGraphId()) return;
+    }
     if (engineIsAnalog()) { streamAnalogParams(); return; }
     if (engineIsFM())     { streamFmParams();     return; }
     constexpr int ch = kMacroSynth;

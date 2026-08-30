@@ -42,6 +42,13 @@ public:
     // never overwrite a fresher streamed edit. Default: nothing pending.
     virtual void flushPending() {}
 
+    // True once every rebuild queued from the message thread has actually reached the
+    // engine. Live per-oscillator streaming must wait for this: streamAnalogParams /
+    // streamFmParams address oscillators BY INDEX, and until the rebuild lands those
+    // indices belong to the PREVIOUS engine's voice. Backends that apply structural
+    // messages synchronously are always settled.
+    virtual bool graphSettled() const { return true; }
+
     // Convenience note-control used by NoteRouter (RT-safe).
     virtual void noteOn(int synth, int midiNote, float velocity) = 0;
     virtual void noteOff(int synth, int midiNote) = 0;
