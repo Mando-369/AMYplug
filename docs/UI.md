@@ -1,6 +1,7 @@
 # AMYplug editor UI
 
-The editor is a fixed-size **1280×800** `juce::AudioProcessorEditor` implementing the
+The editor is a **1280×830** `juce::AudioProcessorEditor` (resizable 60-150% about that
+design surface — see below) implementing the
 "editor v2" visual redesign (source spec in `visual/design_handoff_amyplug/`). It is a
 pure view over the existing APVTS parameters — no parameter ids, ranges, or the
 processor/streaming layer changed with the reskin.
@@ -25,6 +26,89 @@ processor/streaming layer changed with the reskin.
   readable "cut-out" look on every accent.
 
 Design tokens (colours, the accent-per-section mapping) live in `src/gui/AmyColours.h`.
+
+## Editor size — picker, corner grip, custom sizes
+
+The editor is a **1280x830 design surface** scaled as a whole. Everything lives inside
+`ScaledContent` (`src/gui/ScaledContent.h`), which carries a single `AffineTransform`; all
+layout code works in design coordinates and knows nothing about scaling. Reference:
+`Code Repo/JUCE-UI-LnF__13-Editor-Size-Picker.md` (and `__02` for the content pattern).
+
+- **The size lives on the processor**, not the editor: a host destroys and recreates the
+  editor every time its window closes, so anything the editor remembers about itself dies
+  with it. `AmyPlugProcessor::uiScalePercent()` clamps in the *setter* (60-150), and rides
+  in `getStateInformation` as a `uiScale` property on the existing `AMYplugState` root.
+  Defaults to 100, so a pre-picker session still opens at the design size.
+- **Deliberately not a parameter.** It is a view preference; as a parameter it would appear
+  in the host's automation lane, be hit by "randomise all parameters", and ride in every
+  preset.
+- **The menu is presets, not a cage.** `setResizable(true, true)` gives a bottom-right grip,
+  and the window is freely draggable with a fixed aspect ratio. Menu choice, corner drag and
+  a host-driven resize all land in `resized()`, which writes the percentage back — so all
+  three are remembered, and the button is a live *readout* (drag to an odd size and it shows
+  `113%`, with no menu item ticked, which is correct: none of the presets *is* that size).
+- ⚠️ **Read the stored size BEFORE `setResizeLimits`.** It clamps the editor's *current*
+  bounds — `0x0` during construction — to the minimum, firing `resized()`, which writes that
+  back. Read it afterwards and the plugin opens at 60% forever while every menu item still
+  works. `tests/EditorSizeTests.cpp` asserts the width the editor *opened* at; reintroducing
+  the trap makes it fail with `60 == 125`.
+- **`drawCornerResizer` is overridden.** The JUCE default is bright white/grey hatching,
+  which reads as a scratch on a dark faceplate. Ours is dim, brightens on hover and goes
+  accent while dragging — the same escalation as the rest of the panel.
+- **Popup menus parent to `content`, not to the editor.** `PopupMenu::MenuWindow` skips its
+  own auto-scale path entirely once `options.getParentComponent()` is set, so a menu parented
+  to the unscaled editor would come up at 100% over a 150% panel.
+
+## Modal chrome — popup menus and dialogs
+
+A `PopupMenu` and an `AlertWindow` are **not children of the editor**, so neither inherits
+any of the above. Both need explicit wiring, and both are easy to leave stock without
+noticing — the background reference is
+`Code Repo/JUCE-UI-LnF__15-PopupMenu-in-a-Plugin-Editor.md`.
+
+**Popup menus** (every `ComboBox` dropdown, including the 128-entry patch browser):
+
+- `getOptionsForComboBoxPopupMenu` adds **`withParentComponent(editor)`**. A menu defaults
+  to its own *desktop window*: it does not move, hide or die with the plugin window, so
+  dragging the window in a DAW leaves the menu floating where it opened. `withTargetComponent`
+  (JUCE's own default here) is what makes clicking the combo again *close* the menu.
+- Setting the `PopupMenu::*` colour ids is **not** styling — it leaves stock fonts, item
+  heights and ticks. `drawPopupMenuBackground` / `Item` / `SectionHeader`,
+  `getIdealPopupMenuItemSize`, `getPopupMenuBorderSize` and `drawPopupMenuUpDownArrow` are
+  all overridden. `PopupMenu::headerTextColourId` is easy to miss: bank headings otherwise
+  draw in a default that happens to be legible.
+- The menu window is **opaque** (JUCE makes it so whenever `backgroundColourId` is), so
+  `drawPopupMenuBackground` lays the shell colour down first and paints the rounded card on
+  top — the corners then read as faceplate rather than as undrawn pixels.
+- A *parented* menu gets a stock resizable frame painted over its border, so
+  `drawResizableFrame` is a deliberate no-op. Safe because the editor is fixed-size.
+- Both editor destructors call `juce::PopupMenu::dismissAllActiveMenus()`. A popup is owned
+  by the `ModalComponentManager` and outlives the editor; it does not crash (a LookAndFeel is
+  held weakly) — it just repaints in stock grey, which is why it reads as a styling bug.
+
+**Dialogs** go through one pair of helpers, `AmyPlugEditor::beginDialog` / `showDialog`, so a
+prompt added later cannot forget any of it:
+
+- `setLookAndFeel` is applied **before** any field or button. `AlertWindow::lookAndFeelChanged`
+  re-runs `updateLayout`, and the title/message `TextLayout` bakes in whichever fonts were
+  current when it was built — set it late and the text stays stock while the buttons don't.
+- The window is then parented into the editor and re-centred (it is laid out while it still
+  has a desktop peer, so its bounds are in *screen* coordinates until then).
+- Lifetime: one `std::unique_ptr` member, moved out at the top of the modal callback, guarded
+  by a `SafePointer` to the editor — closing the plugin dismisses the dialog and fires the
+  callback asynchronously, after the editor is gone.
+- Buttons carry **explicit return-value ids**; every other way a prompt can end (escape, the
+  editor closing) yields `0`. `styleDialogChrome` gives the confirming button (id `1`) the
+  accent fill with a dark cut-out label, and text fields real indents — neither is reachable
+  from a LookAndFeel.
+- `AlertWindow::showMessageBoxAsync` is **not** used: that static goes through the *default*
+  LookAndFeel, so the box would come up stock on our faceplate.
+- `drawAlertBox` replaces `LookAndFeel_V4`'s 80px glyph with a compact badge, drawn into the
+  fixed 80px column `AlertWindow::updateLayout` reserves for any non-`NoIcon` type.
+
+⚠️ **None of the *behaviour* here is verifiable headlessly** — parenting, click-to-close and
+dismissal all need a real modal state and a window to drag. `amyplug_snapshot … chrome`
+verifies the **drawing** only; confirm the rest in a host.
 
 ## Fonts — bundled, `DeletedAtShutdown`
 
@@ -68,8 +152,15 @@ a content component that fills the rest.
 `-DAMYPLUG_BUILD_SNAPSHOT=ON`, off by default) that renders any tab straight to a PNG:
 
 ```
-amyplug_snapshot <out.png> [tabIndex]   # 0 Juno · 1-4 DX7 · 5 FX-MASTER · 6 AMYboard
+amyplug_snapshot <out.png> [tabIndex] [algo] [scale%]   # 0 Juno · 1-4 DX7 · 5 FX · 6 AMYboard
+amyplug_snapshot <out.png> chrome                       # popup menu states + both dialogs
 ```
+
+`scale%` sets the stored editor size *before* the editor is built, which is the path the
+size-picker regression lives in — `amyplug_snapshot out.png 0 0 75` renders the whole UI at
+75%. `chrome` renders the modal chrome, which can never appear in a tab snapshot: it drives the
+same LookAndFeel hooks `PopupMenu::MenuWindow` calls, and paints two real `AlertWindow`s
+offscreen. It proves the drawing, not the modal behaviour.
 
 The FX plugin has its own target (both plugins define `createPluginFilter()`, so their
 sources can't share one binary):

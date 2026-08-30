@@ -5,13 +5,21 @@
 #include "AmyPlugProcessor.h"
 #include "gui/AmyLookAndFeel.h"
 #include "gui/AmyColours.h"
+#include "gui/ScaledContent.h"
 #include "engine/FirmwareCheck.h"
+#include <functional>
 #include <memory>
 #include <vector>
 #include <map>
 
 namespace amyplug
 {
+// AlertWindow builds its own fields and hands back no pointer to them, and neither text
+// indents nor a per-button colour are reachable from a LookAndFeel — so they are applied
+// here, to every dialog, right before it is shown. Free function so the headless snapshot
+// tool renders exactly what the plugin shows.
+void styleDialogChrome(juce::AlertWindow& dialog);
+
 // Draws a DX7 4-rate/4-level envelope (attack -> L1, decays -> L2/L3, sustain hold,
 // release -> L4) as a small graph. Polls the params and repaints on change so it
 // tracks live edits and preset loads. Two flavours: an operator AMP envelope (level
@@ -279,8 +287,33 @@ private:
     void showSaveDialog();
     void importDx7();
 
+    // --- editor size ------------------------------------------------------
+    // The design surface. Everything is laid out at these numbers and scaled as a whole by
+    // `content`; no layout code below knows the window can be any other size.
+    static constexpr int kBaseWidth  = 1280;
+    static constexpr int kBaseHeight = 830;
+    void layoutContent();          // lays the editor out at the DESIGN size
+    void paintContent(juce::Graphics&);
+    void setUiScalePercent(int percent);
+    void showSizeMenu();
+
+    // Dialogs. An AlertWindow is a TOP-LEVEL window, not a child of the editor, so it
+    // inherits neither our LookAndFeel nor our lifetime — and its text layout bakes in
+    // whichever fonts the LookAndFeel had when the layout was built, so the LookAndFeel
+    // has to be set before any field or button is added. One pair of helpers so a prompt
+    // added later cannot forget either. See Code Repo/JUCE-UI-LnF__14 and __15.
+    juce::AlertWindow* beginDialog(const juce::String& title, const juce::String& message,
+                                   juce::MessageBoxIconType icon);
+    void showDialog(std::function<void (juce::AlertWindow&, int)> onResult);
+    void dismissDialog();
+
     AmyPlugProcessor& proc;
     AmyLookAndFeel   lnf;   // the AMYplug visual identity (must outlive all children)
+    // Everything visible is a child of `content`, which carries the UI-scale transform.
+    // Declared before the controls so it is destroyed after them.
+    ScaledContent    content { [this] (juce::Graphics& g) { paintContent(g); },
+                               [this] { layoutContent(); } };
+    juce::TextButton sizeButton { "100%" };   // size picker + live readout of the real size
 
     // Global top bar.
     juce::ComboBox   patchBox, userBox;
@@ -302,6 +335,7 @@ private:
     juce::TextButton importButton { "Import DX7..." };
     juce::TextButton toEditorButton { "To Editor" };   // factory DX7 preset -> FM tab
     std::unique_ptr<juce::FileChooser> fileChooser;
+    std::unique_ptr<juce::AlertWindow> dialog;   // the one live prompt, if any
     juce::ComboBox   engineBox;                    // Factory / Analog / FM
     juce::Label      browserLabel { {}, "PATCH" };
     juce::Label      userLabel    { {}, "USER" };

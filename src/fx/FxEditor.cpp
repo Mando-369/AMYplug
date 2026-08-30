@@ -89,7 +89,14 @@ void FxEditor::addPower(PowerButton& b, std::unique_ptr<ButtonAttachment>& att, 
     att = std::make_unique<ButtonAttachment>(proc.apvts(), paramId, b);
 }
 
-FxEditor::~FxEditor() { setLookAndFeel(nullptr); }
+FxEditor::~FxEditor()
+{
+    // A popup is owned by the ModalComponentManager and outlives the editor that
+    // opened it — it would keep repainting through a dead LookAndFeel. See
+    // Code Repo/JUCE-UI-LnF__15.
+    juce::PopupMenu::dismissAllActiveMenus();
+    setLookAndFeel(nullptr);
+}
 
 void FxEditor::addKnob(Knob& k, const juce::String& paramId, const juce::String& name, juce::Colour accent)
 {

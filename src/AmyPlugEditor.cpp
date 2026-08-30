@@ -952,7 +952,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         l->setColour(juce::Label::textColourId, col::textDim);
         l->setJustificationType(juce::Justification::centredLeft);
     }
-    for (auto* l : { &browserLabel, &userLabel }) addAndMakeVisible(*l);
+    for (auto* l : { &browserLabel, &userLabel }) content.addAndMakeVisible(*l);
 
     // OUT GAIN rotary (amber) lives in the header, right of the patch block.
     outGainKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 18);
@@ -961,11 +961,11 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     outGainKnob.setColour(juce::Slider::rotarySliderFillColourId, col::amber);
     outGainKnob.setNumDecimalPlacesToDisplay(1);
     outGainAtt = std::make_unique<Apvts::SliderAttachment>(s, params::id::outputGain, outGainKnob);
-    addAndMakeVisible(outGainKnob);
+    content.addAndMakeVisible(outGainKnob);
     outGainLabel.setFont(fonts::label(13.0f).withExtraKerningFactor(0.06f));
     outGainLabel.setColour(juce::Label::textColourId, col::textDim);
     outGainLabel.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(outGainLabel);
+    content.addAndMakeVisible(outGainLabel);
     buildPatchBox();
     patchBox.onChange = [this]
     {
@@ -976,10 +976,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
             selectPatch(id - 1);
         }
     };
-    addAndMakeVisible(patchBox);
+    content.addAndMakeVisible(patchBox);
     prevButton.onClick = [this] { stepPatch(-1); };
     nextButton.onClick = [this] { stepPatch(+1); };
-    addAndMakeVisible(prevButton); addAndMakeVisible(nextButton);
+    content.addAndMakeVisible(prevButton); content.addAndMakeVisible(nextButton);
 
     userBox.setTextWhenNothingSelected("User patches");
     userBox.onChange = [this]
@@ -991,7 +991,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
             proc.loadUserPatch(e.group, e.name);
         }
     };
-    addAndMakeVisible(userBox); refreshUserBox();
+    content.addAndMakeVisible(userBox); refreshUserBox();
     saveButton.onClick   = [this] { showSaveDialog(); };
     deleteButton.onClick = [this]
     {
@@ -1003,10 +1003,10 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
             refreshUserBox();
         }
     };
-    addAndMakeVisible(saveButton); addAndMakeVisible(deleteButton);
+    content.addAndMakeVisible(saveButton); content.addAndMakeVisible(deleteButton);
     importButton.onClick = [this] { importDx7(); };
     importButton.setTooltip("Import a DX7 .syx cartridge as named FM user patches");
-    addAndMakeVisible(importButton);
+    content.addAndMakeVisible(importButton);
 
     // "To Editor": decode the selected factory DX7 preset into the editable FM tab.
     // Enabled only for DX7 presets (Juno analog patches need the wider 4-osc editor).
@@ -1015,27 +1015,27 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         proc.loadFactoryPatchIntoEditor(lastPatch);   // sets engine -> timer switches the tab
     };
     toEditorButton.setTooltip("Load this factory preset's settings into the editable Juno / DX7 tab");
-    addAndMakeVisible(toEditorButton);
+    content.addAndMakeVisible(toEditorButton);
 
     if (auto* ep = dynamic_cast<juce::AudioParameterChoice*>(s.getParameter(params::id::engine)))
         engineBox.addItemList(ep->choices, 1);
     engineBox.setTooltip("Which engine drives synth 1: Factory preset, Analog (Juno tab), or FM (DX7 tab)");
     engineAtt = std::make_unique<Apvts::ComboBoxAttachment>(s, params::id::engine, engineBox);
-    addAndMakeVisible(engineBox);
-    addAndMakeVisible(engineLabel);
+    content.addAndMakeVisible(engineBox);
+    content.addAndMakeVisible(engineLabel);
 
     panicButton.setColour(juce::TextButton::buttonColourId, col::panicRed);
     panicButton.onClick = [this] { proc.requestPanic(); };
-    addAndMakeVisible(panicButton);
+    content.addAndMakeVisible(panicButton);
 
     // Always-on engine status readout (text + colour set each tick in timerCallback).
     engineStatusLabel.setJustificationType(juce::Justification::centredRight);
     engineStatusLabel.setFont(fonts::header(13.0f).withExtraKerningFactor(0.06f));
-    addAndMakeVisible(engineStatusLabel);
+    content.addAndMakeVisible(engineStatusLabel);
     // The take-over button appears only when another instance holds the engine.
     takeoverButton.setColour(juce::TextButton::buttonColourId, col::amber);
     takeoverButton.onClick = [this] { proc.takeOverSoftwareEngine(); };
-    addChildComponent(takeoverButton);
+    content.addChildComponent(takeoverButton);
 
     // --- Juno tab: two columns. OSC A|OSC B / VCF|VCF ENV / LFO|AMP ENV --------
     junoPanelL.addSection("OSC A", col::junoRed);
@@ -1206,7 +1206,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     tabs.addTab("DX7 4",     kPanel, &dx7Tab4,  false);   // pitch EG + LFO + routing
     tabs.addTab("FX-MASTER", kPanel, &fxPage,   false);   // global FX + host master stage
     tabs.addTab("AMYboard",  kPanel, &hwPanel,  false);   // MIDI-out select + connect + send patch
-    addAndMakeVisible(tabs);
+    content.addAndMakeVisible(tabs);
 
     // Open on the tab matching the loaded engine, and seed lastTab so the first
     // timer tick doesn't read this as a user click (lastEngine stays -1 so the
@@ -1223,14 +1223,152 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
         lastTab = tab0;
     }
 
+    // Size picker: a momentary button that is also a live readout of the real window size,
+    // so a corner-drag to an odd size shows "113%" rather than a label that lies.
+    sizeButton.setClickingTogglesState(false);
+    sizeButton.setTooltip("Editor size - or drag the bottom-right corner");
+    sizeButton.onClick = [this] { showSizeMenu(); };
+    content.addAndMakeVisible(sizeButton);
+
+    addAndMakeVisible(content);
+
+    // ⚠️ Read the stored size BEFORE touching the constrainer. setResizeLimits clamps the
+    // editor's CURRENT bounds — 0x0 during construction — to the minimum, which fires
+    // resized(), which writes the size back to the processor. Read it afterwards and the
+    // plugin opens at 60% forever. See Code Repo/JUCE-UI-LnF__13 §5.
+    const int storedScale = proc.uiScalePercent();
+
+    // The menu offers round numbers; the corner grip is what makes any size reachable, and
+    // every route in lands in resized(), so all of them are remembered.
+    setResizable(true, true);
+    setResizeLimits(kBaseWidth * AmyPlugProcessor::kUiScaleMin / 100,
+                    kBaseHeight * AmyPlugProcessor::kUiScaleMin / 100,
+                    kBaseWidth * AmyPlugProcessor::kUiScaleMax / 100,
+                    kBaseHeight * AmyPlugProcessor::kUiScaleMax / 100);
+    getConstrainer()->setFixedAspectRatio((double) kBaseWidth / (double) kBaseHeight);
+
     // Height fits the tallest scrolled tab body without clipping: the Juno right
     // column has 5 sections (…VOICE) ~618px; window overhead (title + 2 top rows +
     // insets + tab bar) is ~186px with the 92px header, so >= 804px keeps VOICE visible.
-    setSize(1280, 830);   // +30px over the body height, all given to the taller header
+    setUiScalePercent(storedScale);
     startTimerHz(15);
 }
 
-AmyPlugEditor::~AmyPlugEditor() { stopTimer(); setLookAndFeel(nullptr); }
+// ---------------------------------------------------------------------------
+// Editor size
+// ---------------------------------------------------------------------------
+void AmyPlugEditor::setUiScalePercent(int percent)
+{
+    percent = juce::jlimit(AmyPlugProcessor::kUiScaleMin, AmyPlugProcessor::kUiScaleMax, percent);
+    proc.setUiScalePercent(percent);
+    setSize(kBaseWidth * percent / 100, kBaseHeight * percent / 100);
+}
+
+void AmyPlugEditor::showSizeMenu()
+{
+    static constexpr int percents[] = { 75, 100, 125, 150 };
+    const int current = proc.uiScalePercent();
+
+    juce::PopupMenu menu;
+    menu.setLookAndFeel(&lnf);            // a menu is not a child, so it inherits nothing
+    menu.addSectionHeader("Editor Size");
+    for (int i = 0; i < (int) std::size(percents); ++i)
+        menu.addItem(i + 1, juce::String(percents[i]) + "%", true, percents[i] == current);
+
+    // Parented to the scaled content (so it matches the panel) and targeted on the button
+    // (so clicking it again closes the menu). showMenuAsync, never the blocking form — a
+    // plugin must not block its host.
+    menu.showMenuAsync(juce::PopupMenu::Options().withParentComponent(&content)
+                                                 .withTargetComponent(&sizeButton),
+                       [this] (int result)
+                       {
+                           if (result > 0) setUiScalePercent(percents[result - 1]);
+                       });
+}
+
+AmyPlugEditor::~AmyPlugEditor()
+{
+    stopTimer();
+    // A popup is owned by the ModalComponentManager, not by us: close the plugin window
+    // with a menu open and it stays on screen, repainting through a LookAndFeel that is
+    // about to die. It does not crash — Component holds its LookAndFeel by weak reference —
+    // which is exactly why it reads as a styling bug. Parenting (getOptionsForComboBoxPopupMenu)
+    // makes this unreachable for our own menus; the call costs nothing and covers any menu
+    // added later that forgets to parent itself.
+    juce::PopupMenu::dismissAllActiveMenus();
+    dismissDialog();
+    setLookAndFeel(nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// Dialogs
+// ---------------------------------------------------------------------------
+void styleDialogChrome(juce::AlertWindow& dialog)
+{
+    for (auto* child : dialog.getChildren())
+    {
+        if (auto* ed = dynamic_cast<juce::TextEditor*>(child))
+            ed->setIndents(9, 2);                    // stock 4px hugs the well's border
+        else if (auto* b = dynamic_cast<juce::TextButton*>(child))
+        {
+            if (b->getCommandID() != 1) continue;    // addButton() stores the return value here
+            // The confirming action carries the accent fill; its label then has to go dark,
+            // the same cut-out the section-header bars use — white on cyan is unreadable.
+            b->setColour(juce::TextButton::buttonColourId,  col::engineCyan);
+            b->setColour(juce::TextButton::textColourOffId, col::headerTextOn(col::engineCyan));
+            b->setColour(juce::TextButton::textColourOnId,  col::headerTextOn(col::engineCyan));
+        }
+    }
+}
+
+juce::AlertWindow* AmyPlugEditor::beginDialog(const juce::String& title,
+                                              const juce::String& message,
+                                              juce::MessageBoxIconType icon)
+{
+    dismissDialog();                       // one prompt at a time
+    dialog = std::make_unique<juce::AlertWindow>(title, message, icon, this);
+    // Before any field or button: setLookAndFeel re-runs AlertWindow::updateLayout, and the
+    // title/message TextLayout bakes in the fonts that were current when it was built.
+    dialog->setLookAndFeel(&lnf);
+    return dialog.get();
+}
+
+void AmyPlugEditor::showDialog(std::function<void (juce::AlertWindow&, int)> onResult)
+{
+    auto* w = dialog.get();
+    if (w == nullptr) return;
+
+    styleDialogChrome(*w);
+
+    // Parent it into the editor so it moves, hides and dies with the plugin window instead
+    // of floating over the host. It was laid out while it still had a desktop peer, so its
+    // bounds are in screen coordinates until we re-centre it here.
+    addAndMakeVisible(w);
+    w->setCentrePosition(getLocalBounds().getCentre());
+
+    juce::Component::SafePointer<AmyPlugEditor>     safeThis(this);
+    juce::Component::SafePointer<juce::AlertWindow> safeDlg(w);
+    w->enterModalState(true, juce::ModalCallbackFunction::create(
+        [safeThis, safeDlg, cb = std::move(onResult)] (int result)
+        {
+            // Tearing down the editor dismisses the dialog, which fires this callback
+            // asynchronously — by which time the editor is gone. A live SafePointer is the
+            // only proof it is still there.
+            if (safeThis == nullptr) return;
+            // ...and a dialog that was already dismissed to make room for another one must
+            // not take ownership of its replacement.
+            if (safeThis->dialog.get() != safeDlg.getComponent()) return;
+            auto owned = std::move(safeThis->dialog);   // out of the member before we use it
+            if (owned != nullptr && cb != nullptr) cb(*owned, result);
+        }), false);                                     // we own it, so not deleteWhenDismissed
+}
+
+void AmyPlugEditor::dismissDialog()
+{
+    if (dialog == nullptr) return;
+    auto owned = std::move(dialog);
+    if (owned->isCurrentlyModal()) owned->exitModalState(0);
+}
 
 void AmyPlugEditor::buildPatchBox()
 {
@@ -1274,19 +1412,22 @@ void AmyPlugEditor::stepPatch(int delta)
 
 void AmyPlugEditor::showSaveDialog()
 {
-    auto* w = new juce::AlertWindow("Save User Patch", "Patch name:", juce::MessageBoxIconType::NoIcon);
+    auto* w = beginDialog("Save User Patch", "Patch name:", juce::MessageBoxIconType::NoIcon);
     w->addTextEditor("name", "My Patch");
+    // Explicit button IDs: the callback gets the number written here, and every other way
+    // the prompt can end (escape, the editor closing) yields 0 — the do-nothing answer.
     w->addButton("Save",   1, juce::KeyPress(juce::KeyPress::returnKey));
     w->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
-    w->enterModalState(true, juce::ModalCallbackFunction::create([this, w] (int result)
+    showDialog([this] (juce::AlertWindow& dlg, int result)
     {
-        if (result == 1)
-        {
-            const auto name = w->getTextEditorContents("name").trim();
-            if (name.isNotEmpty()) { proc.saveUserPatch(name); refreshUserBox();
-                                     userBox.setText(name, juce::dontSendNotification); }
-        }
-    }), true);
+        if (result != 1) return;
+        const auto name = dlg.getTextEditorContents("name").trim();
+        if (name.isEmpty()) return;
+        proc.saveUserPatch(name);
+        refreshUserBox();
+        userBox.setText(name, juce::dontSendNotification);
+    });
+    if (auto* ed = w->getTextEditor("name")) ed->grabKeyboardFocus();
 }
 
 void AmyPlugEditor::importDx7()
@@ -1301,13 +1442,18 @@ void AmyPlugEditor::importDx7()
         if (file == juce::File {}) return;            // cancelled
         const int n = proc.importDx7Cartridge(file);
         refreshUserBox();
-        juce::AlertWindow::showMessageBoxAsync(
-            n > 0 ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon,
-            "DX7 Import",
-            n > 0 ? juce::String(n) + (n == 1 ? " voice" : " voices")
-                        + " imported into your USER patches."
-                  : "No DX7 voices found. Expected a .syx cartridge (32-voice bulk "
-                    "dump or a single-voice dump).");
+        // Not showMessageBoxAsync: that static goes through the DEFAULT LookAndFeel, so the
+        // result box would come up in stock JUCE on our faceplate.
+        auto* w = beginDialog("DX7 Import",
+                              n > 0 ? juce::String(n) + (n == 1 ? " voice" : " voices")
+                                          + " imported into your USER patches."
+                                    : "No DX7 voices found. Expected a .syx cartridge "
+                                      "(32-voice bulk dump or a single-voice dump).",
+                              n > 0 ? juce::MessageBoxIconType::InfoIcon
+                                    : juce::MessageBoxIconType::WarningIcon);
+        w->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey),
+                              juce::KeyPress(juce::KeyPress::escapeKey));
+        showDialog(nullptr);
     });
 }
 
@@ -1355,7 +1501,7 @@ void AmyPlugEditor::timerCallback()
         {
             lastBusy = busy;
             takeoverButton.setVisible(busy);
-            resized();   // re-flow the header to make room for the take-over button
+            layoutContent();   // re-flow the header to make room for the take-over button
         }
     }
 
@@ -1450,7 +1596,7 @@ void AmyPlugEditor::selectTab(int index)
 {
     tabs.setCurrentTabIndex(juce::jlimit(0, tabs.getNumTabs() - 1, index), false);
     lastTab = tabs.getCurrentTabIndex();
-    resized();
+    layoutContent();
 }
 
 void AmyPlugEditor::setEngineIndex(int idx)
@@ -1459,7 +1605,11 @@ void AmyPlugEditor::setEngineIndex(int idx)
         e->setValueNotifyingHost(e->convertTo0to1((float) juce::jlimit(0, 2, idx)));
 }
 
-void AmyPlugEditor::paint(juce::Graphics& g)
+// The editor itself paints only the letterbox: with a fixed aspect ratio there is at most a
+// pixel of it after rounding, but an unpainted strip would show host background.
+void AmyPlugEditor::paint(juce::Graphics& g) { g.fillAll(col::shellBottom); }
+
+void AmyPlugEditor::paintContent(juce::Graphics& g)
 {
     // Shell gradient (neutral chrome).
     g.setGradientFill({ col::shellTop, 0.0f, 0.0f,
@@ -1487,11 +1637,24 @@ void AmyPlugEditor::paint(juce::Graphics& g)
 
 void AmyPlugEditor::resized()
 {
-    auto full = getLocalBounds().reduced(12);
+    // Fit the design surface into whatever size the window now is — whether that came from
+    // the menu, a corner drag, or the host resizing us. Writing the result back here is what
+    // makes a corner-drag persist, and what keeps the button honest as a readout.
+    const int percent = content.fitInto(kBaseWidth, kBaseHeight, getLocalBounds());
+    proc.setUiScalePercent(percent);
+    sizeButton.setButtonText(juce::String(percent) + "%");
+}
+
+void AmyPlugEditor::layoutContent()
+{
+    auto full = content.getLocalBounds().reduced(12);
 
     // --- header: brand | patch browser | OUT GAIN | status / engine·panic ---
     auto header = full.removeFromTop(92);             // +30px, for the bigger brand wordmark
-    header.removeFromLeft(215);                       // brand wordmark reserve (painted in paint())
+    auto brand = header.removeFromLeft(215);          // brand wordmark reserve (painted in paintContent)
+    // Size picker sits under the wordmark's subtitle — chrome next to chrome, clear of the
+    // patch browser. The wordmark occupies y 20..78 in content coords (see paintContent).
+    sizeButton.setBounds(brand.getX() + 4, 80, 58, 22);
     header = header.withSizeKeepingCentre(header.getWidth(), 62);   // centre the control band
 
     // Right cluster: status (top row), engine + PANIC (bottom row).

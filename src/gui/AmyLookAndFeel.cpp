@@ -2,6 +2,7 @@
 #include "AmyLookAndFeel.h"
 #include "AmyColours.h"
 #include "AmyFonts.h"
+#include "ScaledContent.h"
 
 namespace amyplug
 {
@@ -28,10 +29,28 @@ AmyLookAndFeel::AmyLookAndFeel()
     setColour(juce::ComboBox::textColourId,       col::textPrimary);
     setColour(juce::ComboBox::arrowColourId,      col::textFaint);
 
-    setColour(juce::PopupMenu::backgroundColourId,          col::panel);
-    setColour(juce::PopupMenu::textColourId,                col::textPrimary);
+    // Popup menus. headerTextColourId is easy to miss — section headings otherwise draw in
+    // a stock default that happens to be legible, so the miss survives review.
+    setColour(juce::PopupMenu::backgroundColourId,            col::panel);
+    setColour(juce::PopupMenu::textColourId,                  col::textPrimary);
+    setColour(juce::PopupMenu::headerTextColourId,            col::textDim);
     setColour(juce::PopupMenu::highlightedBackgroundColourId, col::engineCyan.withAlpha(0.20f));
-    setColour(juce::PopupMenu::highlightedTextColourId,     col::textPrimary);
+    setColour(juce::PopupMenu::highlightedTextColourId,       col::textPrimary);
+
+    // Dialogs.
+    setColour(juce::AlertWindow::backgroundColourId, col::shellTop);
+    setColour(juce::AlertWindow::textColourId,       col::textPrimary);
+    setColour(juce::AlertWindow::outlineColourId,    col::hairline);
+
+    // Text entry (the Save-patch name field, and any editable value box).
+    setColour(juce::TextEditor::backgroundColourId,      col::groove);
+    setColour(juce::TextEditor::textColourId,            col::textPrimary);
+    setColour(juce::TextEditor::outlineColourId,         col::comboBorder);
+    setColour(juce::TextEditor::focusedOutlineColourId,  col::engineCyan);
+    setColour(juce::TextEditor::highlightColourId,       col::engineCyan.withAlpha(0.30f));
+    setColour(juce::TextEditor::highlightedTextColourId, col::textPrimary);
+    setColour(juce::TextEditor::shadowColourId,          juce::Colours::transparentBlack);
+    setColour(juce::CaretComponent::caretColourId,       col::engineCyan);
 
     setColour(juce::Label::textColourId, col::textDim);
 
@@ -149,7 +168,95 @@ void AmyLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& labe
 }
 
 juce::Font AmyLookAndFeel::getComboBoxFont(juce::ComboBox&) { return fonts::label(18.0f); }
-juce::Font AmyLookAndFeel::getPopupMenuFont()               { return fonts::label(19.0f); }
+
+// ===========================================================================
+// Popup menus
+// ===========================================================================
+// Metrics live here rather than in each hook so an item, a section header and the
+// ideal-size calculation can't drift apart.
+namespace
+{
+constexpr int   kMenuRowH     = 26;    // minimum row height (top-bar combos ask for 24)
+constexpr float kMenuRadius   = 5.0f;  // menu card corner
+constexpr float kMenuMaxText  = 19.0f; // cap on the item font
+
+// Item font, shrunk to fit a short row so text never spills out of its own cell.
+juce::Font menuItemFont(int rowHeight)
+{
+    return fonts::label(juce::jmin(kMenuMaxText, (float) rowHeight * 0.74f));
+}
+} // namespace
+
+juce::Font AmyLookAndFeel::getPopupMenuFont() { return fonts::label(kMenuMaxText); }
+
+int AmyLookAndFeel::getPopupMenuBorderSize() { return 5; }
+
+// A PopupMenu defaults to its OWN DESKTOP WINDOW: it is not in the editor's component
+// hierarchy, so it doesn't move, hide or die with the plugin window — drag the window in
+// a DAW with a menu open and the menu stays floating where it opened. Parenting it to the
+// editor fixes that and keeps it inside the plugin's own frame. `withTargetComponent`
+// (already set by the base) is what makes clicking the combo a second time CLOSE the menu.
+juce::PopupMenu::Options AmyLookAndFeel::getOptionsForComboBoxPopupMenu(juce::ComboBox& box,
+                                                                        juce::Label& label)
+{
+    auto opts = LookAndFeel_V4::getOptionsForComboBoxPopupMenu(box, label)
+                    .withStandardItemHeight(juce::jmax(kMenuRowH, label.getHeight()));
+
+    // Parent to the SCALED CONTENT, not to the editor. PopupMenu::MenuWindow skips its own
+    // auto-scale path entirely once options.getParentComponent() is set, so a menu parented to
+    // the (unscaled) editor would come up at 100% over a 150% panel. As a child of the
+    // transform it scales with everything else.
+    if (auto* content = box.findParentComponentOfClass<ScaledContent>())
+        return opts.withParentComponent(content);
+
+    // No scaled content (a plain editor, or a box not yet in a hierarchy — getTopLevelComponent
+    // returns the box itself then, and parenting a menu to the 26px control that opened it
+    // would be worse than leaving it on the desktop).
+    auto* top = box.getTopLevelComponent();
+    return top != &box ? opts.withParentComponent(top) : opts;
+}
+
+// Once a menu is parented, PopupMenu::MenuWindow paints a stock resizable frame over the
+// border region (two translucent black rects) — right on top of our card edge. We own that
+// border in drawPopupMenuBackground, so draw nothing. Safe because the editor is fixed-size:
+// nothing else in this plugin puts a resizable frame on screen.
+void AmyLookAndFeel::drawResizableFrame(juce::Graphics&, int, int, const juce::BorderSize<int>&) {}
+
+void AmyLookAndFeel::drawPopupMenuBackground(juce::Graphics& g, int width, int height)
+{
+    auto r = juce::Rectangle<float>(0.0f, 0.0f, (float) width, (float) height);
+
+    // PopupMenu makes its window opaque whenever backgroundColourId is, so every pixel has
+    // to be painted: lay the shell colour down first, then the rounded card on top. The
+    // corners then read as faceplate rather than as undrawn noise.
+    g.fillAll(col::shellBottom);
+
+    auto card = r.reduced(0.5f);
+    g.setGradientFill({ col::panelRaised, card.getCentreX(), card.getY(),
+                        col::panel,       card.getCentreX(), card.getBottom(), false });
+    g.fillRoundedRectangle(card, kMenuRadius);
+
+    g.setColour(col::hairline);
+    g.drawRoundedRectangle(card, kMenuRadius, 1.0f);
+    g.setColour(juce::Colours::white.withAlpha(0.05f));      // 1px top highlight
+    g.drawLine(card.getX() + kMenuRadius, card.getY() + 1.5f,
+               card.getRight() - kMenuRadius, card.getY() + 1.5f, 1.0f);
+}
+
+void AmyLookAndFeel::getIdealPopupMenuItemSize(const juce::String& text, bool isSeparator,
+                                               int standardMenuItemHeight,
+                                               int& idealWidth, int& idealHeight)
+{
+    if (isSeparator)
+    {
+        idealWidth  = 50;
+        idealHeight = 9;
+        return;
+    }
+    idealHeight = juce::jmax(kMenuRowH, standardMenuItemHeight);
+    idealWidth  = (int) juce::GlyphArrangement::getStringWidth(menuItemFont(idealHeight), text)
+                + idealHeight + 34;      // tick gutter + right padding
+}
 
 void AmyLookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Rectangle<int>& area,
                                        bool isSeparator, bool isActive, bool isHighlighted,
@@ -161,26 +268,219 @@ void AmyLookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Rectangle<
     {
         auto r = area.reduced(8, 0).toFloat();
         g.setColour(col::hairline);
-        g.fillRect(r.withHeight(1.0f).withY(r.getCentreY()));
+        g.fillRect(r.withHeight(1.0f).withY(std::floor(r.getCentreY())));
         return;
     }
+
+    const auto highlight = findColour(juce::PopupMenu::highlightedBackgroundColourId);
+    const auto accent    = highlight.withAlpha(1.0f);
+
+    auto row = area.reduced(3, 1);
     if (isHighlighted && isActive)
     {
-        g.setColour(findColour(juce::PopupMenu::highlightedBackgroundColourId));
-        g.fillRect(area);
+        g.setColour(highlight);
+        g.fillRoundedRectangle(row.toFloat(), 3.0f);
+        g.setColour(accent);                                   // accent edge on the lit row
+        g.fillRoundedRectangle(row.toFloat().withWidth(2.5f), 1.0f);
     }
-    g.setColour(isActive ? (isHighlighted ? findColour(juce::PopupMenu::highlightedTextColourId)
-                                          : findColour(juce::PopupMenu::textColourId))
-                         : col::textFaint);
-    if (textColour != nullptr) g.setColour(*textColour);
-    g.setFont(getPopupMenuFont());
-    auto r = area.reduced(10, 0);
-    if (isTicked)
+
+    auto colour = isActive ? (isHighlighted ? findColour(juce::PopupMenu::highlightedTextColourId)
+                                            : findColour(juce::PopupMenu::textColourId))
+                           : col::textFaint;
+    if (textColour != nullptr) colour = *textColour;
+
+    // The tick lives in a fixed left gutter so ticked and unticked rows share a text edge.
+    row = row.reduced(7, 0);
+    auto gutter = row.removeFromLeft(juce::jmax(19, area.getHeight() * 3 / 4));
+
+    if (icon != nullptr)
     {
-        g.fillEllipse((float) r.getX(), (float) r.getCentreY() - 2.0f, 4.0f, 4.0f);
+        icon->drawWithin(g, gutter.toFloat().reduced(2.0f),
+                         juce::RectanglePlacement::centred, 1.0f);
     }
-    g.drawFittedText(text, r.withTrimmedLeft(10), juce::Justification::centredLeft, 1);
-    juce::ignoreUnused(shortcutKeyText, hasSubMenu, icon);
+    else if (isTicked)
+    {
+        auto t = gutter.toFloat().withSizeKeepingCentre(9.0f, 7.0f).translated(-1.5f, 0.0f);
+        juce::Path tick;
+        tick.startNewSubPath(t.getX(), t.getCentreY());
+        tick.lineTo(t.getCentreX() - 1.0f, t.getBottom());
+        tick.lineTo(t.getRight(), t.getY());
+        g.setColour(isActive ? accent : col::textFaint);
+        g.strokePath(tick, { 1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded });
+    }
+
+    if (hasSubMenu)
+    {
+        auto a = row.removeFromRight(area.getHeight()).toFloat().reduced((float) area.getHeight() * 0.36f);
+        juce::Path arrow;
+        arrow.startNewSubPath(a.getX(), a.getY());
+        arrow.lineTo(a.getRight(), a.getCentreY());
+        arrow.lineTo(a.getX(), a.getBottom());
+        g.setColour(colour.withMultipliedAlpha(0.7f));
+        g.strokePath(arrow, { 1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded });
+    }
+    else if (shortcutKeyText.isNotEmpty())
+    {
+        const auto scFont = fonts::mono((float) area.getHeight() * 0.5f);
+        auto sc = row.removeFromRight((int) juce::GlyphArrangement::getStringWidth(scFont, shortcutKeyText) + 12);
+        g.setFont(scFont);
+        g.setColour(colour.withMultipliedAlpha(0.55f));
+        g.drawFittedText(shortcutKeyText, sc, juce::Justification::centredRight, 1);
+    }
+
+    g.setColour(colour);
+    g.setFont(menuItemFont(area.getHeight()));
+    g.drawFittedText(text, row, juce::Justification::centredLeft, 1);
+}
+
+// Bank names in the patch browser ("JUNO", "DX7", "PCM", user groups). Small tracked caps
+// over a hairline, matching the section-header bars on the faceplate.
+void AmyLookAndFeel::drawPopupMenuSectionHeader(juce::Graphics& g, const juce::Rectangle<int>& area,
+                                                const juce::String& sectionName)
+{
+    auto r = area.reduced(10, 0);
+    g.setColour(findColour(juce::PopupMenu::headerTextColourId));
+    g.setFont(fonts::header(juce::jmin(13.0f, (float) area.getHeight() * 0.40f))
+                  .withExtraKerningFactor(0.10f));
+    g.drawFittedText(sectionName.toUpperCase(), r.withTrimmedBottom(5),
+                     juce::Justification::bottomLeft, 1);
+    g.setColour(col::hairline);
+    g.fillRect(r.getX(), r.getBottom() - 3, r.getWidth(), 1);
+}
+
+void AmyLookAndFeel::drawPopupMenuUpDownArrow(juce::Graphics& g, int width, int height,
+                                              bool isScrollUpArrow)
+{
+    // Drawn over the already-painted card, so only the glyph is needed.
+    auto a = juce::Rectangle<float>((float) width, (float) height)
+                 .withSizeKeepingCentre(11.0f, 6.0f);
+    juce::Path p;
+    if (isScrollUpArrow) { p.startNewSubPath(a.getX(), a.getBottom());
+                           p.lineTo(a.getCentreX(), a.getY());
+                           p.lineTo(a.getRight(), a.getBottom()); }
+    else                 { p.startNewSubPath(a.getX(), a.getY());
+                           p.lineTo(a.getCentreX(), a.getBottom());
+                           p.lineTo(a.getRight(), a.getY()); }
+    g.setColour(col::textDim);
+    g.strokePath(p, { 1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded });
+}
+
+// ===========================================================================
+// Corner grip
+// ===========================================================================
+// ResizableCornerComponent draws through this, and the default is bright white/grey
+// hatching — on a dark faceplate that reads as a scratch, not a handle. Keep it dim: it is
+// a hint that the edge is draggable, not a control competing with the designed ones.
+void AmyLookAndFeel::drawCornerResizer(juce::Graphics& g, int w, int h,
+                                       bool over, bool dragging)
+{
+    const auto colour = dragging ? col::engineCyan : over ? col::textDim : col::textFaint;
+    g.setColour(colour.withAlpha(over || dragging ? 0.95f : 0.5f));
+
+    const float fw = (float) w, fh = (float) h;
+    const float step = juce::jmin(fw, fh) * 0.3f;
+    for (int i = 1; i <= 3; ++i)
+    {
+        const float inset = step * (float) i;
+        g.drawLine(fw - inset, fh - 2.0f, fw - 2.0f, fh - inset, 1.2f);
+    }
+}
+
+// ===========================================================================
+// Dialogs (AlertWindow) and text entry
+// ===========================================================================
+int        AmyLookAndFeel::getAlertWindowButtonHeight()  { return 30; }
+juce::Font AmyLookAndFeel::getAlertWindowTitleFont()     { return fonts::header(21.0f).withExtraKerningFactor(0.05f); }
+juce::Font AmyLookAndFeel::getAlertWindowMessageFont()   { return fonts::label(18.0f); }
+juce::Font AmyLookAndFeel::getAlertWindowFont()          { return fonts::label(15.0f); }
+
+// drawButtonText upper-cases, so measure the string that actually gets drawn — sizing off
+// the mixed-case original clips "Cancel" to "CANCE...".
+juce::Array<int> AmyLookAndFeel::getWidthsForTextButtons(juce::AlertWindow&,
+                                                         const juce::Array<juce::TextButton*>& buttons)
+{
+    juce::Array<int> widths;
+    const int h = getAlertWindowButtonHeight();
+    for (auto* b : buttons)
+        widths.add(juce::jmax(92, (int) juce::GlyphArrangement::getStringWidth(
+                                       getTextButtonFont(*b, h), b->getButtonText().toUpperCase()) + 34));
+    return widths;
+}
+
+void AmyLookAndFeel::drawAlertBox(juce::Graphics& g, juce::AlertWindow& alert,
+                                  const juce::Rectangle<int>& textArea, juce::TextLayout& layout)
+{
+    auto full = alert.getLocalBounds().toFloat().reduced(0.5f);
+    const float radius = 6.0f;
+
+    // Same vertical gradient as the plugin shell, so a dialog reads as part of AMYplug
+    // rather than as the host's own alert.
+    g.setGradientFill({ col::shellTop,    full.getCentreX(), full.getY(),
+                        col::shellBottom, full.getCentreX(), full.getBottom(), false });
+    g.fillRoundedRectangle(full, radius);
+
+    // Kind is carried by a top accent stripe instead of LookAndFeel_V4's 80px glyph, which
+    // eats a third of the dialog and belongs to a different design language.
+    const auto accent = alert.getAlertType() == juce::MessageBoxIconType::WarningIcon ? col::amber
+                      : alert.getAlertType() == juce::MessageBoxIconType::InfoIcon    ? col::engineCyan
+                      : alert.getAlertType() == juce::MessageBoxIconType::QuestionIcon? col::junoBlue
+                                                                                      : col::hairline;
+    {
+        juce::Graphics::ScopedSaveState save(g);
+        juce::Path clip;
+        clip.addRoundedRectangle(full, radius);
+        g.reduceClipRegion(clip);
+        g.setColour(accent);
+        g.fillRect(full.withHeight(3.0f));
+    }
+
+    g.setColour(col::hairline);
+    g.drawRoundedRectangle(full, radius, 1.0f);
+
+    // AlertWindow::updateLayout reserves a fixed 80px column on the left for any icon type
+    // and sizes the window around it, so an icon dialog has that space whether we use it or
+    // not. Fill it with a compact badge rather than LookAndFeel_V4's 80px glyph.
+    const bool hasIcon = alert.getAlertType() != juce::MessageBoxIconType::NoIcon;
+    const float iconSpace = hasIcon ? 80.0f : 0.0f;
+    if (hasIcon)
+    {
+        auto badge = juce::Rectangle<float>(34.0f, 34.0f)
+                         .withCentre({ full.getX() + iconSpace * 0.5f,
+                                       (float) textArea.getY() + 32.0f });
+        g.setColour(accent.withAlpha(0.14f));
+        g.fillEllipse(badge);
+        g.setColour(accent.withAlpha(0.55f));
+        g.drawEllipse(badge, 1.2f);
+        g.setColour(accent);
+        g.setFont(fonts::header(20.0f));
+        g.drawText(alert.getAlertType() == juce::MessageBoxIconType::WarningIcon  ? "!"
+                 : alert.getAlertType() == juce::MessageBoxIconType::QuestionIcon ? "?" : "i",
+                   badge, juce::Justification::centred, false);
+    }
+
+    // Title + message. The colours were baked into the layout from AlertWindow::textColourId
+    // when it was built, so this only positions it.
+    layout.draw(g, textArea.toFloat().withTrimmedLeft(iconSpace)
+                                     .withTrimmedTop(14.0f).reduced(8.0f, 0.0f));
+}
+
+void AmyLookAndFeel::fillTextEditorBackground(juce::Graphics& g, int w, int h, juce::TextEditor& ed)
+{
+    auto r = juce::Rectangle<float>(0.0f, 0.0f, (float) w, (float) h).reduced(0.5f);
+    g.setColour(ed.findColour(juce::TextEditor::backgroundColourId));
+    g.fillRoundedRectangle(r, 3.0f);
+    g.setColour(juce::Colours::black.withAlpha(0.35f));      // inset top shadow, as the combo well
+    g.drawLine(r.getX() + 3.0f, r.getY() + 1.5f, r.getRight() - 3.0f, r.getY() + 1.5f, 1.0f);
+}
+
+void AmyLookAndFeel::drawTextEditorOutline(juce::Graphics& g, int w, int h, juce::TextEditor& ed)
+{
+    if (! ed.isEnabled()) return;
+    auto r = juce::Rectangle<float>(0.0f, 0.0f, (float) w, (float) h).reduced(0.5f);
+    const bool focused = ed.hasKeyboardFocus(true) && ! ed.isReadOnly();
+    g.setColour(ed.findColour(focused ? juce::TextEditor::focusedOutlineColourId
+                                      : juce::TextEditor::outlineColourId));
+    g.drawRoundedRectangle(r, 3.0f, focused ? 1.6f : 1.0f);
 }
 
 // ===========================================================================
@@ -206,7 +506,9 @@ void AmyLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& b,
     }
     g.setColour(fill);
     g.fillRoundedRectangle(r, 4.0f);
-    g.setColour(accented ? col::panicBorder : col::comboBorder);
+    // Lighter rim of the button's own colour — the rule the panicBorder token encodes for
+    // PANIC, generalised so any accent (e.g. a dialog's primary action) gets a matching edge.
+    g.setColour(accented ? backgroundColour.withMultipliedBrightness(1.14f) : col::comboBorder);
     g.drawRoundedRectangle(r, 4.0f, 1.0f);
 }
 

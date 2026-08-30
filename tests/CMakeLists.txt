@@ -76,8 +76,53 @@ if(APPLE)
         VERBATIM)
 endif()
 
+# Tests that need the whole plugin — the real processor, libamy, the editor and the bundled
+# fonts (the same source set the snapshot tool compiles). Two kinds live here:
+#   EditorSizeTests  — the size-picker regression is in editor CONSTRUCTION (JUCE-UI-LnF__13
+#                      §5), which no pure-logic test can reach. Runs in ctest.
+#   StressTests      — § 2 of docs/TEST_PROTOCOL.md, tagged "[.stress]" so Catch2 hides them
+#                      from --list-tests and ctest never picks them up. They take minutes.
+#                      Run for a release:  amyplug_ui_tests "[stress]"
+juce_add_console_app(amyplug_ui_tests)
+target_sources(amyplug_ui_tests PRIVATE
+    EditorSizeTests.cpp
+    ${CMAKE_SOURCE_DIR}/src/AmyPlugProcessor.cpp
+    ${CMAKE_SOURCE_DIR}/src/AmyPlugEditor.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/AmyLookAndFeel.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/AmyFonts.cpp
+    ${CMAKE_SOURCE_DIR}/src/engine/SoftwareBackend.cpp
+    ${CMAKE_SOURCE_DIR}/src/engine/HardwareBackend.cpp
+    ${CMAKE_SOURCE_DIR}/src/engine/SerialPort.cpp
+    ${CMAKE_SOURCE_DIR}/src/engine/SerialTransport.cpp
+    ${CMAKE_SOURCE_DIR}/src/engine/FirmwareCheck.cpp
+    ${CMAKE_SOURCE_DIR}/src/engine/AmyWire.cpp
+    ${CMAKE_SOURCE_DIR}/src/engine/amy_platform_stubs.c
+    ${CMAKE_SOURCE_DIR}/src/midi/NoteRouter.cpp
+    ${CMAKE_SOURCE_DIR}/src/state/PatchModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/state/PatchLibrary.cpp
+    ${CMAKE_SOURCE_DIR}/src/state/Dx7Import.cpp)
+target_include_directories(amyplug_ui_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src "${AMYPLUG_GENERATED_DIR}")
+add_dependencies(amyplug_ui_tests amyplug_patch_names)
+target_compile_definitions(amyplug_ui_tests PRIVATE
+    JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+    JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(amyplug_ui_tests PRIVATE
+    Catch2::Catch2WithMain
+    libamy AmyPlugAssets
+    juce::juce_audio_utils
+    juce::juce_audio_processors
+    juce::juce_gui_extra
+    juce::juce_recommended_config_flags)
+if(APPLE)
+    add_custom_command(TARGET amyplug_ui_tests POST_BUILD
+        COMMAND codesign --force --sign - "$<TARGET_FILE:amyplug_ui_tests>"
+        VERBATIM)
+endif()
+
 include(CTest)
 include(Catch)
 catch_discover_tests(amyplug_tests)
 catch_discover_tests(amyplug_engine_tests)
 catch_discover_tests(amyplug_logic_tests)
+catch_discover_tests(amyplug_ui_tests)

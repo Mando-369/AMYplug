@@ -82,7 +82,21 @@ public:
     bool         ownsHardwareBoard() const;                        // true if THIS drives the board
     bool         hardwareBoardHeldByOther() const;                 // true if ANOTHER instance holds it
 
+    // --- editor size ------------------------------------------------------
+    // A host destroys and recreates the editor every time its window closes, so anything
+    // the editor remembers about itself dies with it — the size preference has to live here.
+    // Deliberately NOT a parameter: it is a view preference, and as a parameter it would show
+    // up in the host's automation lane, be hit by "randomise all", and ride in every preset.
+    static constexpr int kUiScaleMin = 60;    // percent of the design surface
+    static constexpr int kUiScaleMax = 150;
+    int  uiScalePercent() const noexcept { return uiScale; }
+    // Clamped here rather than at the call sites: a stale session file with a nonsense value
+    // must not be able to produce an unusable window.
+    void setUiScalePercent(int percent) { uiScale = juce::jlimit(kUiScaleMin, kUiScaleMax, percent); }
+
 private:
+    int  uiScale = 100;   // editor size, percent of the design surface
+
     void parameterChanged(const juce::String& id, float newValue) override;
     void handleAsyncUpdate() override;   // message thread: structural rebuild
     void applyHardwareConnection();      // open/close the board port per mode+ownership

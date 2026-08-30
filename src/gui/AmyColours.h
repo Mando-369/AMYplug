@@ -31,7 +31,8 @@ inline const C lfoGreen       { 0xff83cc9c };  // LFO
 inline const C amber          { 0xffe8a13c };  // master / VOICE / OUT GAIN
 inline const C statusGreen    { 0xff5fd08a };
 inline const C panicRed       { 0xffc23b36 };
-inline const C panicBorder    { 0xffd85049 };
+inline const C panicBorder    { 0xffd85049 };   // reference: drawButtonBackground derives
+                                               // this from the fill (brightness x1.14)
 
 // --- knob internals --------------------------------------------------------
 inline const C arcTrack      { 0xff29323d };   // unfilled knob arc

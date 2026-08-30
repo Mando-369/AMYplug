@@ -1248,6 +1248,7 @@ void AmyPlugProcessor::getStateInformation(juce::MemoryBlock& dest)
         if (hw->isConnected())      root.setProperty("hwDevice", hw->connectedName(), nullptr);
         if (hw->serialConnected())  root.setProperty("hwSerial", hw->serialPortName(), nullptr);
     }
+    root.setProperty("uiScale", uiScale, nullptr);   // editor size (view preference)
     if (auto xml = root.createXml()) copyXmlToBinary(*xml, dest);
 }
 
@@ -1270,6 +1271,9 @@ void AmyPlugProcessor::setStateInformation(const void* data, int size)
         // grabs the board (the recall-hijack bug). See docs/HARDWARE_MODE.md.
         setDesiredHardwarePorts(root.getProperty("hwDevice", juce::String()).toString(),
                                 root.getProperty("hwSerial", juce::String()).toString());
+        // Defaults to 100 so a session written before the size picker existed still opens
+        // at the design size. Goes through the setter, so a nonsense value is clamped.
+        setUiScalePercent((int) root.getProperty("uiScale", 100));
     }
 }
 
