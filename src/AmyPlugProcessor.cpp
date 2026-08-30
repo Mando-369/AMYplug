@@ -702,14 +702,16 @@ void AmyPlugProcessor::streamAnalogParams()
         if (resync || hz != lastSyncHz)
         {
             lastSyncHz = hz;
-            char b[48]; std::snprintf(b, sizeof b, "i1v1f%g,0", hz);
+            // ",0,,,,,0" = const, note 0, ..., BEND 0. Fully specify the LFO's freq coefs
+            // rather than relying on the build-time message having zeroed the bend one.
+            char b[48]; std::snprintf(b, sizeof b, "i1v1f%g,0,,,,,0", hz);
             active->streamWire(b, (int) std::strlen(b));
         }
         mLfoFreq.last = std::nanf("");             // leaving Sync re-asserts the manual freq
     }
     else
     {
-        one(mLfoFreq, "i1v1f%g,0");                // manual freq (Poly / Free / Key)
+        one(mLfoFreq, "i1v1f%g,0,,,,,0");          // manual freq (Poly / Free / Key); bend 0
         lastSyncHz = -1.0;
     }
     auto lfoDepth = [&] (Macro& m, char letter)   // letter 'f' (pitch) or 'd' (pwm)

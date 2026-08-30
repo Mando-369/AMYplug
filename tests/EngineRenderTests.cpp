@@ -395,3 +395,48 @@ TEST_CASE("FM ALGO pitch: the EG0 pitch-env term raises the voice one octave", "
     REQUIRE(raised > base * 1.8);
     REQUIRE(raised < base * 2.2);
 }
+
+// The LFO bend leak. AMY defaults EVERY osc to logfreq_coefs[COEF_BEND] = 1.0, and an
+// omitted or EMPTY coef field parses as UNSET — no delta, so the default stands. An LFO
+// whose freq coefs stop before index 6 therefore follows the pitch wheel, dragging the
+// modulation RATE with it. StateTests asserts PatchModel emits the zero; this asserts what
+// AMY actually does with it, so a submodule update that changes those semantics is caught.
+//
+// The shapes below mirror PatchModel's LFO oscillators, but at an audible rate: coefficient
+// behaviour is frequency-independent and zero-crossing counting is exact at 440 Hz and
+// hopeless at 8 Hz. `pitchBendRatio` returns bent/base for +2 semitones (0.1667 octaves).
+namespace
+{
+double pitchBendRatio(const char* oscSetup)
+{
+    amy_config_t c = amy_default_config();
+    c.audio = AMY_AUDIO_IS_NONE; c.midi = AMY_MIDI_IS_NONE;
+    c.platform.multicore = 0; c.platform.multithread = 0;
+    amy_start(c);
+    amy_add_message((char*) oscSetup);
+    amy_add_message((char*) "v0n60l1Z");
+    renderStats(20);
+    const double base = fundamentalHz(120);
+    amy_add_message((char*) "s0.16666667Z");     // +2 semitones, in octaves
+    renderStats(20);
+    const double bent = fundamentalHz(120);
+    amy_stop();
+    return base > 1.0 ? bent / base : 0.0;
+}
+} // namespace
+
+TEST_CASE("pitch bend moves the audio oscs but not the LFOs", "[engine][bend]")
+{
+    // 2^(2/12) = 1.1225. The audio oscillators MUST bend — zeroing their coef would
+    // silently kill the pitch wheel, so this half of the test matters just as much.
+    CHECK(pitchBendRatio("v0w0a1f440,,,,,0Z")     > 1.10);   // Analog audio osc shape
+    CHECK(pitchBendRatio("v0w0a1f0,1,0,1,0,0Z")   > 1.10);   // DX7 ALGO osc shape
+
+    // The LFO shapes must not move at all.
+    CHECK(pitchBendRatio("v0w0a1f440,0,,,,,0Z")   == 1.0);   // Analog LFO  (7 fields)
+    CHECK(pitchBendRatio("v0w0a1f440,,,,,,0Z")    == 1.0);   // DX7 LFO     (7 fields)
+
+    // Guard the off-by-one: five commas lands the zero on COEF_MOD, not COEF_BEND, and the
+    // LFO keeps bending while the message looks plausible.
+    CHECK(pitchBendRatio("v0w0a1f440,,,,,0Z")     > 1.10);
+}

@@ -55,6 +55,29 @@ e.g. `filter_freq='50,,,,1'` = 50 Hz base + EG1. `amp` multiplies (not sums) its
 nonzero terms. Two envelope generators per osc; any osc can modulate any other via
 `mod_source`.
 
+⚠️ **An omitted or EMPTY field means "leave it alone", not zero.** `parse_coef_message`
+sets unspecified entries to UNSET, and `EVENT_TO_DELTA_COEFS` emits no delta for an unset
+coef — so the oscillator keeps whatever it already had. That matters because `reset_osc`
+defaults every osc to `logfreq_coefs[COEF_NOTE] = 1.0` **and `[COEF_BEND] = 1.0`: an
+oscillator used as an LFO follows the pitch wheel unless you explicitly zero index 6.**
+
+The two defaults are **not** equally dangerous, and the asymmetry is in `hold_and_modify`:
+
+```c
+ctrl_inputs[COEF_NOTE] = AMY_IS_SET(synth[osc]->midi_note) ? logfreq_for_midi_note(..) : 0;
+ctrl_inputs[COEF_BEND] = amy_global.pitch_bend;     // a GLOBAL — no is-set guard
+```
+
+A note coefficient is inert on an oscillator the synth never gives a `midi_note` to, which is
+the case for both engines' LFOs — verified in the voice path, where they hold their requested
+rate across notes 48/60/72. A **bend** coefficient bites on every oscillator, always. So
+`COEF_NOTE = 1.0` on an LFO is harmless; `COEF_BEND = 1.0` is the bug.
+AMY does this for its own internal LFOs (`amy.c` chorus, `interp_partials.c`,
+`cv_trigger.c`); AMYplug does it in `PatchModel::emitAnalog`/`emitFm`. Count the commas —
+the zero has to land in field **6**, so `f440,,,,,,0` (six commas); five puts it on
+`COEF_MOD` and the LFO keeps bending. Covered by `tests/EngineRenderTests.cpp`
+("pitch bend moves the audio oscs but not the LFOs").
+
 ## Patch banks
 
 | Range | Bank |

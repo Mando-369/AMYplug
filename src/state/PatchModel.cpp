@@ -92,7 +92,12 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s,
         + "B" + adsrBp(a.vcfA, a.vcfD, a.vcfS, a.vcfR)
         + "c2L1Z").toStdString());
 
-    // osc 1 — LFO (note-coef 0 keeps it at lfoFreq regardless of the played note).
+    // osc 1 — LFO (note-coef 0 keeps it at lfoFreq regardless of the played note, and
+    // bend-coef 0 keeps it there regardless of the pitch wheel — AMY defaults EVERY osc to
+    // logfreq_coefs[COEF_BEND] = 1.0, and an omitted or empty coef field is parsed as UNSET,
+    // which emits no delta and so leaves that default in place. Without the explicit zero a
+    // pitch bend shifts the modulation RATE, which is not what a wheel is for. AMY zeroes it
+    // the same way for its own internal LFOs — amy.c (chorus), interp_partials.c, cv_trigger.c.
     // Free/Sync phase-lock the per-voice LFO copies at build: a single P0 aligns
     // every voice's osc1, and identical freq off the same clock keeps them in
     // lockstep (one global LFO). Poly omits it (each copy free-runs); Key resets
@@ -100,7 +105,8 @@ void emitAnalog(std::vector<std::string>& out, const PatchModel::Synth& s,
     // host tempo — lfoFreq is only the fallback baked here.
     {
         const bool phaseLock = (a.lfoMode == analoglfo::Free || a.lfoMode == analoglfo::Sync);
-        juce::String lfo = pre + "v1w" + juce::String(a.lfoWave) + "f" + F(a.lfoFreq) + ",0";
+        juce::String lfo = pre + "v1w" + juce::String(a.lfoWave)
+                         + "f" + F(a.lfoFreq) + ",0,,,,,0";   // const, note 0, ..., bend 0
         if (phaseLock) lfo += "P0";
         out.emplace_back((lfo + "Z").toStdString());
     }
@@ -198,10 +204,23 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
     }
 
     // osc 1 — the LFO. wave + speed (Hz); amp const 1, cosine phase like DX7 (fm.py).
+    // The trailing ",,,,,,0" on the freq coefs zeroes COEF_BEND: SIX commas, because the
+    // zero has to land in field index 6 — five would set COEF_MOD instead. AMY defaults every
+    // osc to logfreq_coefs[COEF_BEND] = 1.0, and empty/omitted coef fields parse as UNSET,
+    // which emits no delta — so without this the pitch wheel drags the vibrato RATE with it.
+    // fm.py sends a bare freq= here and inherits the same leak; we deliberately differ.
+    //
+    // The NOTE coef is deliberately left at AMY's default 1.0, and that is NOT a second leak:
+    // hold_and_modify feeds COEF_NOTE only when the oscillator has a midi_note
+    //     ctrl_inputs[COEF_NOTE] = AMY_IS_SET(midi_note) ? logfreq_for_midi_note(..) : 0
+    // and the synth sets midi_note only on the note-carrying oscs, never on the LFO. Verified
+    // in the voice path: the LFO holds its requested rate at notes 48/60/72. COEF_BEND has no
+    // such guard — it reads the amy_global.pitch_bend directly — which is exactly why the bend
+    // leaked through and the note did not.
     out.emplace_back((pre + "v1"
         + "w" + juce::String(amyplug::dx7lfo::lfoWaveToAmy(fm.lfoWave))
         + "a1"
-        + "f" + F((float) amyplug::dx7lfo::lfoSpeedToHz(fm.lfoSpeed))
+        + "f" + F((float) amyplug::dx7lfo::lfoSpeedToHz(fm.lfoSpeed)) + ",,,,,,0"
         + "P0.25"
         + "Z").toStdString());
 

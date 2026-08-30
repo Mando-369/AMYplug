@@ -117,6 +117,49 @@ TEST_CASE("amp-ADSR macro overrides bp0 only for Juno, not DX7 (pitch-env safety
     REQUIRE(anyContains(dx7.toWireMessages(), "i1F"));
 }
 
+TEST_CASE("both engines' LFO oscillators ignore pitch bend", "[state][analog][fm]")
+{
+    // AMY defaults EVERY oscillator to logfreq_coefs[COEF_BEND] = 1.0 (amy.c reset_osc), and
+    // an omitted or EMPTY coefficient field parses as UNSET, which emits no delta and leaves
+    // that default in place. So an LFO whose freq coefs stop before index 6 inherits the
+    // bend — the pitch wheel drags the modulation RATE with it. AMY zeroes it explicitly
+    // wherever it uses an osc as an LFO (amy.c chorus, interp_partials.c, cv_trigger.c);
+    // these two are ours. Measured before the fix: a +2-semitone bend moved the LFO rate.
+    auto oscOneMessage = [] (const PatchModel& m) -> std::string {
+        for (const auto& s : m.toWireMessages())
+            if (s.find("v1w") != std::string::npos) return s;   // osc 1 = the LFO, both engines
+        return {};
+    };
+    // The 7th freq field is COEF_BEND. Anything shorter inherits AMY's 1.0.
+    auto bendIsZeroed = [] (const std::string& msg) {
+        const auto f = msg.find('f');
+        if (f == std::string::npos) return false;
+        const auto end = msg.find_first_not_of("0123456789.,-+eE", f + 1);
+        const std::string coefs = msg.substr(f + 1, end - f - 1);
+        int field = 0; std::string last;
+        for (std::size_t i = 0, start = 0; i <= coefs.size(); ++i)
+            if (i == coefs.size() || coefs[i] == ',')
+            { if (field == 6) last = coefs.substr(start, i - start); start = i + 1; ++field; }
+        return field >= 7 && last == "0";
+    };
+
+    PatchModel analog; analog.synths[0].engine = PatchModel::Engine::Analog;
+    const auto analogLfo = oscOneMessage(analog);
+    REQUIRE_FALSE(analogLfo.empty());
+    CHECK(bendIsZeroed(analogLfo));
+
+    PatchModel fm; fm.synths[0].engine = PatchModel::Engine::FM;
+    const auto fmLfo = oscOneMessage(fm);
+    REQUIRE_FALSE(fmLfo.empty());
+    CHECK(bendIsZeroed(fmLfo));
+
+    // ...and the AUDIO oscillators must still bend: they leave index 6 alone, so they keep
+    // AMY's default 1.0. Zeroing them here would silently kill the pitch wheel.
+    for (const auto& msg : analog.toWireMessages())
+        if (msg.find("v2w") != std::string::npos || msg.find("v3w") != std::string::npos)
+            CHECK_FALSE(bendIsZeroed(msg));
+}
+
 TEST_CASE("Analog engine builds the 4-oscillator subtractive voice", "[state][analog]")
 {
     PatchModel m;
