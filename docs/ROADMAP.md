@@ -285,6 +285,10 @@ session onto the board.
 - Versioned releases; user docs; demo video.
 **DoD:** tagged release with notarized AU/VST3 and a clean first-run experience.
 
+Run **`docs/TEST_PROTOCOL.md`** end-to-end before tagging, and keep the signed-off copy with
+the tag. It gates on the automated suite plus the things no test can reach: hanging notes,
+recall, modal chrome, editor resize, Hardware mode and multi-instance arbitration.
+
 ---
 
 ### Known risks / open questions
