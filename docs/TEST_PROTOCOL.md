@@ -28,6 +28,48 @@ git status --short && git log --oneline -1
 git -C third_party/amy log --oneline -1
 ```
 
+### 0.1 On a machine that has never built this — read this first
+
+⚠️ **JUCE is deliberately NOT vendored.** `.gitmodules` declares it, but there is no gitlink
+in the tree, so `git submodule update --init` does nothing for JUCE. `scripts/bootstrap.sh`
+papers over that by running `git submodule add -b master …/JUCE`, which pulls **whatever JUCE
+tip is today** and **dirties the working tree** — both wrong for a release run, and §0 above
+requires a clean tree.
+
+Clone a **pinned** JUCE and point the build at it, exactly the way CI does:
+
+```bash
+git clone --depth 1 --branch 8.0.13 https://github.com/juce-framework/JUCE.git "$HOME/JUCE"
+export JUCE="$HOME/JUCE"
+
+git clone https://github.com/Mando-369/AMYplug.git && cd AMYplug
+git checkout <release-branch-or-tag>
+git submodule update --init third_party/amy     # AMY only; JUCE comes from $JUCE
+
+cmake --preset mac-release -DAMYPLUG_JUCE_DIR="$JUCE"
+```
+
+Every later `cmake --preset mac-release` in this document inherits `AMYPLUG_JUCE_DIR` from the
+cache, so it only has to be passed once.
+
+> **Three JUCE versions are currently in play** — CI pins **8.0.13**, the primary dev machine
+> runs **8.0.14**, and `bootstrap.sh` would give a release machine **master**. Pin deliberately
+> and record what you used in §4.3; "AMYplug 0.x" without a JUCE version is an unactionable
+> bug report.
+
+Also needed on a fresh machine:
+
+| | |
+|---|---|
+| **Xcode** (full, not just Command Line Tools) | the `mac-release` preset uses the Xcode generator, and `auval` needs a working `xcode-select` |
+| **CMake** | `brew install cmake` |
+| **pluginval** | download the macOS build from <https://github.com/Tracktion/pluginval/releases> and unzip it; §1.3 assumes `$PLUGINVAL` points at the binary |
+| **Homebrew LLVM** *(only for the RTSan row of §2)* | `brew install llvm` — Apple clang cannot do RTSan |
+
+The build is **universal (arm64 + x86_64)** by default, so expect roughly double the compile
+time. For a faster smoke run — but **not** for the artefacts you ship — add
+`-DCMAKE_OSX_ARCHITECTURES=arm64`.
+
 ---
 
 ## 1. Automated gate — all of this must be green
@@ -62,10 +104,10 @@ tests. Everything a user actually touches is in § 3.
 ### 1.3 pluginval — strictness 10, run four times
 
 ```bash
+# e.g. export PLUGINVAL=/Applications/pluginval.app/Contents/MacOS/pluginval
 VST3=$(find build/mac-release -name "AMYplug.vst3" -maxdepth 6 | head -n1)
 for i in 1 2 3 4; do
-  ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate "$VST3" \
-    2>&1 | tail -3
+  "$PLUGINVAL" --strictness-level 10 --validate "$VST3" 2>&1 | tail -3
 done
 ```
 
