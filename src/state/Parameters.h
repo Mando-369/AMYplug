@@ -41,6 +41,14 @@ namespace id
     inline constexpr auto clipDrive     = "clip_drive";      // WDF saturator drive (THD), dB
     inline constexpr auto bcFreq        = "bc_freq";         // bitcrusher downsample target (Hz)
     inline constexpr auto bcBits        = "bc_bits";         // bitcrusher bit depth (2..16)
+    // FX on/off. Part of the preset (a patch with its reverb off IS a different patch),
+    // so automatable, recalled, and they dirty the preset like any other control.
+    inline constexpr auto reverbOn      = "reverb_on";
+    inline constexpr auto chorusOn      = "chorus_on";
+    inline constexpr auto echoOn        = "echo_on";
+    inline constexpr auto eqOn          = "eq_on";
+    inline constexpr auto crushOn       = "crush_on";
+    inline constexpr auto clipOn        = "clip_on";
     inline constexpr auto pitchBendRange= "pitch_bend_range";
     // Performance / voicing (all engines). Glide is AMY-native portamento (i<synth>m);
     // voice mode + unison are handled in NoteRouter.
@@ -271,6 +279,14 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::eqLow, 1 }, "EQ Low", eqRange(), 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::eqMid, 1 }, "EQ Mid", eqRange(), 0.0f));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { id::eqHigh, 1 }, "EQ High", eqRange(), 0.0f));
+
+    // FX on/off — default ON so every existing session and preset sounds as it did.
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { id::reverbOn, 1 }, "Reverb On",  true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { id::chorusOn, 1 }, "Chorus On",  true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { id::echoOn,   1 }, "Echo On",    true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { id::eqOn,     1 }, "EQ On",      true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { id::crushOn,  1 }, "Crusher On", true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { id::clipOn,   1 }, "Clipper On", true));
 
     // --- FM (DX7) engine ------------------------------------------------------
     // Algorithm: a 32-entry menu (1..32); the editor draws the operator diagram for

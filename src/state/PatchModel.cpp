@@ -328,14 +328,16 @@ std::vector<std::string> PatchModel::toWireMessages() const
           out.emplace_back(w.str()); }
     }
     { WireBuilder w; w.volume(masterVolume); out.emplace_back(w.str()); }
-    { WireBuilder w; w.raw("h").raw((F(reverb) + "," + F(reverbSize) + "," + F(reverbDamping) + ",3000").toStdString().c_str());
+    // Off = the effect's neutral value on the wire; the stored level is untouched.
+    { WireBuilder w; w.raw("h").raw((F(reverbOn ? reverb : 0.0f) + "," + F(reverbSize) + "," + F(reverbDamping) + ",3000").toStdString().c_str());
       out.emplace_back(w.str()); }
-    { WireBuilder w; w.raw("k").raw((F(chorus) + ",320," + F(chorusRate) + "," + F(chorusDepth)).toStdString().c_str());
+    { WireBuilder w; w.raw("k").raw((F(chorusOn ? chorus : 0.0f) + ",320," + F(chorusRate) + "," + F(chorusDepth)).toStdString().c_str());
       out.emplace_back(w.str()); }
-    { WireBuilder w; w.raw("M").raw((F(echo) + "," + F(echoTime) + ",743," + F(echoFeedback) + "," + F(echoTone)).toStdString().c_str());
+    { WireBuilder w; w.raw("M").raw((F(echoOn ? echo : 0.0f) + "," + F(echoTime) + ",743," + F(echoFeedback) + "," + F(echoTone)).toStdString().c_str());
       out.emplace_back(w.str()); }
     { WireBuilder w; w.raw("x")
-        .raw((juce::String(eqLow,2) + "," + juce::String(eqMid,2) + "," + juce::String(eqHigh,2)).toStdString().c_str());
+        .raw((juce::String(eqOn ? eqLow : 0.0f, 2) + "," + juce::String(eqOn ? eqMid : 0.0f, 2) + ","
+              + juce::String(eqOn ? eqHigh : 0.0f, 2)).toStdString().c_str());   // off = flat
       out.emplace_back(w.str()); }
 
     return out;
@@ -346,6 +348,9 @@ juce::ValueTree PatchModel::toValueTree() const
     juce::ValueTree root { kStateType };
     root.setProperty("masterVolume", masterVolume, nullptr);
     root.setProperty("reverb", reverb, nullptr);
+    root.setProperty("reverbOn", reverbOn, nullptr); root.setProperty("chorusOn", chorusOn, nullptr);
+    root.setProperty("echoOn",   echoOn,   nullptr); root.setProperty("eqOn",     eqOn,     nullptr);
+    root.setProperty("crushOn",  crushOn,  nullptr); root.setProperty("clipOn",   clipOn,   nullptr);
     root.setProperty("chorus", chorus, nullptr);
     root.setProperty("echo",   echo,   nullptr);
     root.setProperty("eqLow",  eqLow,  nullptr);
@@ -447,6 +452,10 @@ void PatchModel::fromValueTree(const juce::ValueTree& tree)
     if (! tree.hasType(kStateType)) return;
     masterVolume = (float) tree.getProperty("masterVolume", 1.0);
     reverb = (float) tree.getProperty("reverb", 0.0);
+    // Absent in every file written before the toggles existed -> ON, so nothing changes.
+    reverbOn = (bool) tree.getProperty("reverbOn", true); chorusOn = (bool) tree.getProperty("chorusOn", true);
+    echoOn   = (bool) tree.getProperty("echoOn",   true); eqOn     = (bool) tree.getProperty("eqOn",     true);
+    crushOn  = (bool) tree.getProperty("crushOn",  true); clipOn   = (bool) tree.getProperty("clipOn",   true);
     chorus = (float) tree.getProperty("chorus", 0.0);
     echo   = (float) tree.getProperty("echo",   0.0);
     eqLow  = (float) tree.getProperty("eqLow",  0.0);

@@ -150,6 +150,9 @@ public:
     // (it scales by 0.1*volume), so 4.0 ~= -8 dB on a single voice.
     float masterVolume = 4.0f;
     float reverb = 0.0f, chorus = 0.0f, echo = 0.0f;   // effect mix levels
+    // On/off per effect. Off is emitted as the effect's neutral value (level 0, EQ flat)
+    // while the knobs keep their settings, so switching back on restores the sound.
+    bool  reverbOn = true, chorusOn = true, echoOn = true, eqOn = true, crushOn = true, clipOn = true;
     float eqLow = 0.0f, eqMid = 0.0f, eqHigh = 0.0f;   // dB, AMY 3-band EQ ('x')
     // Deeper effect params (the rest of AMY's h/k/M lists). Defaults mirror AMY.
     float reverbSize = 0.85f, reverbDamping = 0.5f;

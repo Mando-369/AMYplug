@@ -189,6 +189,8 @@ private:
     std::atomic<float>* pBcFreq    = nullptr;
     std::atomic<float>* pBcBits    = nullptr;
     std::atomic<float>* pClipDrive = nullptr;
+    std::atomic<float>* pReverbOn = nullptr, *pChorusOn = nullptr, *pEchoOn = nullptr,
+                      * pEqOn = nullptr, *pCrushOn = nullptr, *pClipOn = nullptr;   // FX switches
     // True final output gain (JUCE-side), after the bitcrusher + saturator. AMY's
     // "Synth Vol" (master_volume -> V) is applied upstream inside the engine.
     std::atomic<float>* pOutputGain = nullptr;
@@ -199,7 +201,21 @@ private:
 
     // Cached APVTS atomics for RT-safe macro streaming from processBlock. The
     // last* values are touched only on the audio thread (change detection).
-    struct Macro { std::atomic<float>* ptr = nullptr; float last = std::nanf(""); };
+    // A streamed macro. `on`/`off` gate it: while the effect's switch is off, the value
+    // streamed is `off` (the effect's neutral) regardless of the knob, so the knob keeps
+    // its setting and switching back on restores the sound.
+    struct Macro
+    {
+        std::atomic<float>* ptr = nullptr;
+        float last = std::nanf("");
+        std::atomic<float>* on  = nullptr;   // null = never gated
+        float off = 0.0f;
+        float target() const noexcept
+        {
+            const float v = ptr->load(std::memory_order_relaxed);
+            return (on != nullptr && on->load(std::memory_order_relaxed) < 0.5f) ? off : v;
+        }
+    };
     Macro mCutoff, mReso, mVolume, mReverb, mChorus, mEcho;
     Macro mAttack, mDecay, mSustain, mRelease;   // ADSR -> one bp0 message
     std::atomic<float>* pBendRange = nullptr;    // pitch-bend range (semitones)

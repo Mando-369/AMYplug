@@ -108,16 +108,52 @@ const juce::Colour kPanel  = col::tabActive;     // tab / panel-area fill
 // ===========================================================================
 // ControlPanel
 // ===========================================================================
-void ControlPanel::addSection(const juce::String& title, juce::Colour accent)
+void PowerButton::paintButton(juce::Graphics& g, bool over, bool)
+{
+    const bool on = getToggleState();
+    auto r = getLocalBounds().toFloat().reduced(1.5f);
+    const float d = juce::jmin(r.getWidth(), r.getHeight());
+    auto c = juce::Rectangle<float>(d, d).withCentre(r.getCentre());
+    g.setColour(ink.withAlpha(on ? 1.0f : (over ? 0.55f : 0.35f)));
+    // The glyph: an arc with a gap at the top, and a stroke down into it.
+    juce::Path p;
+    const float gap = 0.62f;   // radians either side of 12 o'clock
+    p.addCentredArc(c.getCentreX(), c.getCentreY(), d * 0.42f, d * 0.42f, 0.0f,
+                    gap, juce::MathConstants<float>::twoPi - gap, true);
+    p.startNewSubPath(c.getCentreX(), c.getY() + d * 0.02f);
+    p.lineTo(c.getCentreX(), c.getCentreY() - d * 0.02f);
+    g.strokePath(p, juce::PathStrokeType(1.9f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+void ControlPanel::addSection(const juce::String& title, juce::Colour accent, const juce::String& toggleParamId)
 {
     sectionTitles.add(title);
     sectionAccents.push_back(accent);
     sectionDimmed.push_back(false);
+    sectionPower.push_back(nullptr);
+    sectionPowerAtt.push_back(nullptr);
+    if (toggleParamId.isEmpty()) return;
+
+    const int sec = sectionTitles.size() - 1;
+    auto btn = std::make_unique<PowerButton>();
+    btn->setInk(col::headerTextOn(accent));
+    // The attachment moves the button for a host/preset change as well as a click, and
+    // any toggle change lands here — so the dim follows the PARAMETER, not the mouse.
+    auto* raw = btn.get();
+    btn->onStateChange = [this, sec, raw] { setSectionDimmedAt(sec, ! raw->getToggleState()); };
+    addAndMakeVisible(*btn);
+    sectionPowerAtt.back() = std::make_unique<Apvts::ButtonAttachment>(apvts, toggleParamId, *btn);
+    sectionPower.back()    = std::move(btn);
+    setSectionDimmedAt(sec, ! sectionPower.back()->getToggleState());   // initial state
 }
 
 void ControlPanel::setSectionDimmed(const juce::String& title, bool dimmed)
 {
-    const int sec = sectionTitles.indexOf(title);
+    setSectionDimmedAt(sectionTitles.indexOf(title), dimmed);
+}
+
+void ControlPanel::setSectionDimmedAt(int sec, bool dimmed)
+{
     if (sec < 0 || sec >= (int) sectionDimmed.size()) return;
     if (sectionDimmed[(size_t) sec] == dimmed) return;          // no-op: don't repaint on every tick
     sectionDimmed[(size_t) sec] = dimmed;
@@ -265,7 +301,9 @@ void ControlPanel::resized()
     for (int sec = 0; sec < (int) boxes.size(); ++sec)
     {
         auto box = boxes[(size_t) sec];
-        box.removeFromTop(kTitleH);
+        auto bar = box.removeFromTop(kTitleH);
+        if (sec < (int) sectionPower.size() && sectionPower[(size_t) sec] != nullptr)
+            sectionPower[(size_t) sec]->setBounds(bar.removeFromRight(kTitleH + 4).reduced(3, 2));
         box.removeFromTop(4);   // padding between the header bar and the knob labels
 
         // Viewer (if any) sits in a fixed-width slot on the LEFT, vertically centred.
@@ -1161,29 +1199,29 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     //       left  col: EQ, ECHO, BIT CRUSHER
     //       right col: CHORUS, REVERB, DISTORTION
     fxPanelL.setCellSize(84, 90);
-    fxPanelL.addSection("EQ", col::junoBlue);
+    fxPanelL.addSection("EQ", col::junoBlue, params::id::eqOn);
     fxPanelL.addKnob(params::id::eqLow, "Low");
     fxPanelL.addKnob(params::id::eqMid, "Mid");
     fxPanelL.addKnob(params::id::eqHigh, "High");
-    fxPanelL.addSection("ECHO", col::filterViolet);
+    fxPanelL.addSection("ECHO", col::filterViolet, params::id::echoOn);
     fxPanelL.addKnob(params::id::echo, "Level");
     fxPanelL.addKnob(params::id::echoTime, "Time");
     fxPanelL.addKnob(params::id::echoFeedback, "F.back");
     fxPanelL.addKnob(params::id::echoTone, "Tone");
-    fxPanelL.addSection("BIT CRUSHER", col::amber);
+    fxPanelL.addSection("BIT CRUSHER", col::amber, params::id::crushOn);
     fxPanelL.addKnob(params::id::bcFreq, "Freq");           // bitcrusher: downsample rate
     fxPanelL.addKnob(params::id::bcBits, "Bit");            // bitcrusher: bit depth
 
     fxPanelR.setCellSize(84, 90);
-    fxPanelR.addSection("CHORUS", col::engineCyan);
+    fxPanelR.addSection("CHORUS", col::engineCyan, params::id::chorusOn);
     fxPanelR.addKnob(params::id::chorus, "Level");
     fxPanelR.addKnob(params::id::chorusRate, "Rate");
     fxPanelR.addKnob(params::id::chorusDepth, "Depth");
-    fxPanelR.addSection("REVERB", col::lfoGreen);
+    fxPanelR.addSection("REVERB", col::lfoGreen, params::id::reverbOn);
     fxPanelR.addKnob(params::id::reverb, "Level");
     fxPanelR.addKnob(params::id::reverbSize, "Size");
     fxPanelR.addKnob(params::id::reverbDamping, "Damp");
-    fxPanelR.addSection("DIODE CLIPPER", col::junoRed);
+    fxPanelR.addSection("DIODE CLIPPER", col::junoRed, params::id::clipOn);
     fxPanelR.addKnob(params::id::clipDrive, "Drive");       // WDF diode saturator (analog warmth)
     fxPanelR.addKnob(params::id::masterVolume, "Synth Vol"); // AMY engine volume (upstream)
 

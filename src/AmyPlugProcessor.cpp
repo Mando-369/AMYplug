@@ -137,6 +137,16 @@ void AmyPlugProcessor::cacheParamPointers()
     mEqLow.ptr     = state.getRawParameterValue(params::id::eqLow);
     mEqMid.ptr     = state.getRawParameterValue(params::id::eqMid);
     mEqHigh.ptr    = state.getRawParameterValue(params::id::eqHigh);
+    // FX switches: gate the LEVEL macro of each bus effect (size/rate/etc. are inert at
+    // level 0) and all three EQ gains.
+    pReverbOn = state.getRawParameterValue(params::id::reverbOn);
+    pChorusOn = state.getRawParameterValue(params::id::chorusOn);
+    pEchoOn   = state.getRawParameterValue(params::id::echoOn);
+    pEqOn     = state.getRawParameterValue(params::id::eqOn);
+    pCrushOn  = state.getRawParameterValue(params::id::crushOn);
+    pClipOn   = state.getRawParameterValue(params::id::clipOn);
+    mReverb.on = pReverbOn; mChorus.on = pChorusOn; mEcho.on = pEchoOn;
+    mEqLow.on = mEqMid.on = mEqHigh.on = pEqOn;          // off values default to 0 = flat
     mReverbSize.ptr  = state.getRawParameterValue(params::id::reverbSize);
     mReverbDamp.ptr  = state.getRawParameterValue(params::id::reverbDamping);
     mChorusRate.ptr  = state.getRawParameterValue(params::id::chorusRate);
@@ -352,12 +362,16 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     // board colours its own output).
     if (activeKind == IAmyBackend::Kind::Software && buffer.getNumChannels() > 0)
     {
+        const bool crushOn = pCrushOn == nullptr || pCrushOn->load(std::memory_order_relaxed) >= 0.5f;
+        const bool clipOn  = pClipOn  == nullptr || pClipOn->load(std::memory_order_relaxed)  >= 0.5f;
         if (pBcFreq)    crush.setFreqHz(pBcFreq->load(std::memory_order_relaxed));
         if (pBcBits)    crush.setBits(pBcBits->load(std::memory_order_relaxed));
-        if (pClipDrive) clip.setDriveDb(pClipDrive->load(std::memory_order_relaxed));
+        // Clipper OFF = drive 0, not a true bypass: the diode stage doubles as the 0 dBFS
+        // safety ceiling, and switching an effect off must not remove the limiter.
+        if (pClipDrive) clip.setDriveDb(clipOn ? pClipDrive->load(std::memory_order_relaxed) : 0.0f);
         float* chans[2] = { buffer.getWritePointer(0),
                             buffer.getNumChannels() > 1 ? buffer.getWritePointer(1) : nullptr };
-        crush.process(chans, buffer.getNumChannels(), buffer.getNumSamples());
+        if (crushOn) crush.process(chans, buffer.getNumChannels(), buffer.getNumSamples());   // true bypass
         clip.process(chans, buffer.getNumChannels(), buffer.getNumSamples());
 
         // Final output gain — the true end of the chain. Ramped per block so
@@ -566,6 +580,9 @@ void AmyPlugProcessor::syncModelFromParams()
     if (mEqLow.ptr)  model.eqLow  = mEqLow.ptr->load();
     if (mEqMid.ptr)  model.eqMid  = mEqMid.ptr->load();
     if (mEqHigh.ptr) model.eqHigh = mEqHigh.ptr->load();
+    auto onOf = [] (std::atomic<float>* p) { return p == nullptr || p->load() >= 0.5f; };
+    model.reverbOn = onOf(pReverbOn); model.chorusOn = onOf(pChorusOn); model.echoOn = onOf(pEchoOn);
+    model.eqOn     = onOf(pEqOn);     model.crushOn  = onOf(pCrushOn);  model.clipOn = onOf(pClipOn);
     model.reverbSize    = rd(params::id::reverbSize,    0.85f);
     model.reverbDamping = rd(params::id::reverbDamping, 0.5f);
     model.chorusRate    = rd(params::id::chorusRate,    0.5f);
@@ -1023,7 +1040,7 @@ void AmyPlugProcessor::streamGlobalFx()
         for (auto* m : ms)
         {
             if (m->ptr == nullptr) continue;
-            const float target = m->ptr->load(std::memory_order_relaxed);
+            const float target = m->target();                 // gated by the effect's switch
             if (std::isnan(m->last)) { m->last = target; moving = true; continue; } // first call: send once
             const float eps = 1.0e-5f * (1.0f + std::fabs(target));
             if (std::fabs(target - m->last) > eps)
@@ -1142,6 +1159,9 @@ void AmyPlugProcessor::applyPreset(const PatchModel& preset)
     setP(params::id::reverb,       preset.reverb);
     setP(params::id::chorus,       preset.chorus);
     setP(params::id::echo,         preset.echo);
+    setP(params::id::reverbOn, preset.reverbOn ? 1.0f : 0.0f); setP(params::id::chorusOn, preset.chorusOn ? 1.0f : 0.0f);
+    setP(params::id::echoOn,   preset.echoOn   ? 1.0f : 0.0f); setP(params::id::eqOn,     preset.eqOn     ? 1.0f : 0.0f);
+    setP(params::id::crushOn,  preset.crushOn  ? 1.0f : 0.0f); setP(params::id::clipOn,   preset.clipOn   ? 1.0f : 0.0f);
 
     // Engine + analog (Juno) controls. Engine choice index: 0 Factory, 1 Analog, 2 FM.
     setP(params::id::engine, s.engine == PatchModel::Engine::FM     ? 2.0f

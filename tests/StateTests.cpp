@@ -541,3 +541,29 @@ TEST_CASE("Analog unison stacks detuned osc copies (chained)", "[state][analog][
     REQUIRE(b.unisonVoices == 2);
     REQUIRE(b.unisonDetune == 25.0f);
 }
+
+TEST_CASE("FX switches: off emits the effect's neutral value and round-trips", "[state][fx]")
+{
+    PatchModel m;
+    m.reverb = 0.7f;  m.reverbOn = false;          // level kept, effect silent
+    m.chorus = 0.4f;  m.chorusOn = true;
+    m.echo   = 0.5f;  m.echoOn   = false;
+    m.eqLow  = 6.0f;  m.eqMid = -3.0f; m.eqHigh = 2.0f; m.eqOn = false;   // flat on the wire
+    const auto w = m.toWireMessages();
+    REQUIRE(anyContains(w, "h0.0000,"));            // reverb level 0...
+    REQUIRE(anyContains(w, "k0.4000,"));            // ...chorus still at its level...
+    REQUIRE(anyContains(w, "M0.0000,"));            // ...echo silenced
+    REQUIRE(anyContains(w, "x0.00,0.00,0.00"));     // EQ flat, the gains untouched in the model
+    REQUIRE(m.eqLow == 6.0f);
+
+    // The switches ride in the file, and a file from before they existed reads as ON.
+    PatchModel back; back.fromValueTree(m.toValueTree());
+    REQUIRE_FALSE(back.reverbOn); REQUIRE(back.chorusOn); REQUIRE_FALSE(back.echoOn);
+    REQUIRE_FALSE(back.eqOn);     REQUIRE(back.crushOn);  REQUIRE(back.clipOn);
+
+    auto old = m.toValueTree();
+    for (auto* k : { "reverbOn", "chorusOn", "echoOn", "eqOn", "crushOn", "clipOn" })
+        old.removeProperty(k, nullptr);
+    PatchModel legacy; legacy.fromValueTree(old);
+    REQUIRE(legacy.reverbOn); REQUIRE(legacy.eqOn); REQUIRE(legacy.crushOn);
+}

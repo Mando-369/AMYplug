@@ -61,6 +61,13 @@ TEST_CASE("loaded preset identity and dirty mark", "[preset]")
         CHECK_FALSE(p.isPresetDirty());               // selecting a patch IS a load
     }
 
+    // --- an FX switch IS part of the preset: full inclusion, it dirties -----------------
+    {
+        AmyPlugProcessor p;
+        set(p, params::id::reverbOn, 0.0f);
+        CHECK(p.isPresetDirty());
+    }
+
     // --- parameters no preset owns must not dirty it ---------------------------------
     {
         AmyPlugProcessor p;

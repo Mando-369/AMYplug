@@ -40,6 +40,19 @@ private:
     float lastR[4] { -1, -1, -1, -1 }, lastL[4] { -1, -1, -1, -1 };
     bool pitch = false;   // pitch EG (centre at 50) vs operator amp EG (floor at 0)
 };
+// A power switch drawn as the universal glyph, sized for a section-header bar. Ink is
+// the bar's cut-out colour; OFF is the same glyph at low alpha, so a card reads as
+// "present but silent" rather than as missing a control.
+class PowerButton final : public juce::Button
+{
+public:
+    PowerButton() : juce::Button("power") { setClickingTogglesState(true); }
+    void setInk(juce::Colour c) { ink = c; }
+    void paintButton(juce::Graphics&, bool over, bool down) override;
+private:
+    juce::Colour ink = juce::Colours::black;
+};
+
 // A panel of labelled controls (rotaries + choice combos) grouped into titled
 // sections laid out in columns — used for the Juno engine tab and the FX rack.
 class ControlPanel : public juce::Component
@@ -47,7 +60,10 @@ class ControlPanel : public juce::Component
 public:
     explicit ControlPanel(juce::AudioProcessorValueTreeState& s) : apvts(s) {}
 
-    void addSection(const juce::String& title, juce::Colour accent = amyplug::colours::engineCyan);
+    // `toggleParamId`: a bool parameter that switches the section on and off. It gets a
+    // PowerButton in the header bar, and the card dims while it is off.
+    void addSection(const juce::String& title, juce::Colour accent = amyplug::colours::engineCyan,
+                    const juce::String& toggleParamId = {});
     void addKnob(const juce::String& paramId, const juce::String& name);
     void addChoice(const juce::String& paramId, const juce::String& name);
     void addGraph(juce::Component& g);   // reserve a viewer at the LEFT of the current section's row
@@ -81,9 +97,12 @@ private:
     int baseBodyHeight(int sec) const { return graphForSection.count(sec) ? kGraphH : rowH; }
 
     juce::AudioProcessorValueTreeState& apvts;
+    void setSectionDimmedAt(int sec, bool dimmed);
     juce::StringArray sectionTitles;
     std::vector<juce::Colour> sectionAccents;
     std::vector<bool> sectionDimmed;                   // parallel to sectionTitles
+    std::vector<std::unique_ptr<PowerButton>>               sectionPower;      // null where no toggle
+    std::vector<std::unique_ptr<Apvts::ButtonAttachment>>   sectionPowerAtt;
     std::vector<std::unique_ptr<Control>> controls;
     std::map<int, juce::Component*> graphForSection;   // section index -> optional graph
     int cellW = 88, rowH = 100, ctrlH = kCtrlH;
