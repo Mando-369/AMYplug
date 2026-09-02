@@ -3,6 +3,23 @@
 Scratch notes for whoever (or whatever) picks up `docs/TEST_PROTOCOL.md` on the test machine.
 Not part of the protocol; delete or update freely.
 
+## ⚠️ The test machine runs the ZIP, not a source build
+
+The M1 tests `dist/AMYplug-macOS.zip` via `install.sh` — it does not `git pull` or build.
+Three consequences:
+
+- **Only the zip's date says what is under test.** The zip that was on the dev machine until
+  2026-09-02 22:01 was built on **2026-08-08** — before every commit on this branch. Any test
+  done against it tested none of this work. Copy the **22:01** zip (or newer) over first.
+- `install.sh` clears Gatekeeper quarantine and ad-hoc re-signs each bundle, so the unsigned
+  archive does load. All five bundles are ad-hoc signed and universal (arm64 + x86_64).
+- The plugin under test is then whatever the DEV machine built — JUCE **8.0.14**, not the
+  pinned 8.0.13 CI uses. Record that in §4.3. To test the 8.0.13 build instead, build on the
+  M1 per protocol §0.1 and package there.
+
+Rebuild the zip after every change you want tested: `./scripts/package.sh` on the dev
+machine (it stages `build/mac-release` — so build first).
+
 ## What is being tested
 
 Branch `feat/ui-chrome-size-picker-and-engine-fixes`, six commits on top of `7ba9e51`:
