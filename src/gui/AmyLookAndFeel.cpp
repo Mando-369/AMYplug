@@ -366,6 +366,22 @@ void AmyLookAndFeel::drawPopupMenuUpDownArrow(juce::Graphics& g, int width, int 
 }
 
 // ===========================================================================
+// Tree view
+// ===========================================================================
+// The stock open/close box is a bordered square with a +/-; a chevron reads as a
+// disclosure at this size and matches the combo caret.
+void AmyLookAndFeel::drawTreeviewPlusMinusBox(juce::Graphics& g, const juce::Rectangle<float>& area,
+                                              juce::Colour, bool isOpen, bool isMouseOver)
+{
+    auto a = area.withSizeKeepingCentre(7.0f, 7.0f);
+    juce::Path p;
+    if (isOpen) { p.startNewSubPath(a.getX(), a.getY() + 1.5f); p.lineTo(a.getCentreX(), a.getBottom() - 1.0f); p.lineTo(a.getRight(), a.getY() + 1.5f); }
+    else        { p.startNewSubPath(a.getX() + 1.5f, a.getY()); p.lineTo(a.getRight() - 1.0f, a.getCentreY()); p.lineTo(a.getX() + 1.5f, a.getBottom()); }
+    g.setColour(isMouseOver ? col::textPrimary : col::textDim);
+    g.strokePath(p, juce::PathStrokeType(1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+// ===========================================================================
 // Corner grip
 // ===========================================================================
 // ResizableCornerComponent draws through this, and the default is bright white/grey

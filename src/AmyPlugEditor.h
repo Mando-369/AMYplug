@@ -7,6 +7,8 @@
 #include "gui/AmyColours.h"
 #include "gui/ScaledContent.h"
 #include "state/PresetRef.h"
+#include "state/PresetCatalog.h"
+#include "gui/PresetsPage.h"
 #include "engine/FirmwareCheck.h"
 #include <functional>
 #include <memory>
@@ -51,6 +53,20 @@ public:
     void paintButton(juce::Graphics&, bool over, bool down) override;
 private:
     juce::Colour ink = juce::Colours::black;
+};
+
+// The header's preset read-out: "Bank · Name", plus " *" once anything has moved. A
+// Button, not a Label with a mouseUp: Button::mouseUp gates on wasDown && wasOver, which
+// is what lets clicking it a second time CLOSE the menu it opened (JUCE-UI-LnF__15 §7).
+class PresetField final : public juce::Button
+{
+public:
+    PresetField() : juce::Button("preset") { setTriggeredOnMouseDown(true); }
+    void setText(juce::String bank, juce::String name, bool dirty);
+    void paintButton(juce::Graphics&, bool over, bool down) override;
+private:
+    juce::String bank, name;
+    bool dirty = false;
 };
 
 // A panel of labelled controls (rotaries + choice combos) grouped into titled
@@ -283,6 +299,7 @@ private:
 };
 
 class AmyPlugEditor final : public juce::AudioProcessorEditor,
+                      public DialogHost,
                             private juce::Timer
 {
 public:
@@ -300,10 +317,9 @@ private:
     using Apvts = juce::AudioProcessorValueTreeState;
 
     void timerCallback() override;
-    void buildPatchBox();
-    void refreshUserBox();
-    void stepPatch(int delta);
-    void selectPatch(int patchNumber);
+    void loadPreset(const PresetRef&);
+    void stepPreset(int delta);           // ‹ › over the flat catalogue, wrapping
+    void showPresetMenu();                // the field's menu: FACTORY banks, USER banks, Presets tab
     void showSaveDialog();
     void importDx7();
 
@@ -323,9 +339,13 @@ private:
     // has to be set before any field or button is added. One pair of helpers so a prompt
     // added later cannot forget either. See Code Repo/JUCE-UI-LnF__14 and __15.
     juce::AlertWindow* beginDialog(const juce::String& title, const juce::String& message,
-                                   juce::MessageBoxIconType icon);
-    void showDialog(std::function<void (juce::AlertWindow&, int)> onResult);
+                                   juce::MessageBoxIconType icon) override;
+    void showDialog(std::function<void (juce::AlertWindow&, int)> onResult) override;
     void dismissDialog();
+
+    // Tabs by name. PRESETS is first, so a fresh Factory-engine instance opens on the
+    // browser; the engine tabs decide the engine, PRESETS/FX/AMYBOARD leave it alone.
+    enum Tab { Presets = 0, Juno, Dx7_1, Dx7_2, Dx7_3, Dx7_4, Fx, Hardware };
 
     AmyPlugProcessor& proc;
     AmyLookAndFeel   lnf;   // the AMYplug visual identity (must outlive all children)
@@ -336,7 +356,7 @@ private:
     juce::TextButton sizeButton { "100%" };   // size picker + live readout of the real size
 
     // Global top bar.
-    juce::ComboBox   patchBox, userBox;
+    PresetField      presetField;
     juce::Slider     outGainKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow };
     juce::Label      outGainLabel { {}, "OUT GAIN" };
     std::unique_ptr<Apvts::SliderAttachment> outGainAtt;
@@ -351,14 +371,11 @@ private:
     juce::TextButton prevButton   { "<" };
     juce::TextButton nextButton   { ">" };
     juce::TextButton saveButton   { "Save..." };
-    juce::TextButton deleteButton { "Delete" };
     juce::TextButton importButton { "Import DX7..." };
     juce::TextButton toEditorButton { "To Editor" };   // factory DX7 preset -> FM tab
     std::unique_ptr<juce::FileChooser> fileChooser;
     std::unique_ptr<juce::AlertWindow> dialog;   // the one live prompt, if any
     juce::ComboBox   engineBox;                    // Factory / Analog / FM
-    juce::Label      browserLabel { {}, "PATCH" };
-    juce::Label      userLabel    { {}, "USER" };
     juce::Label      engineLabel  { {}, "ENGINE" };
     std::unique_ptr<Apvts::ComboBoxAttachment> engineAtt;
 
@@ -393,13 +410,13 @@ private:
     TwoColumnPanels  fxCols    { fxPanelL, fxPanelR };
     TabPage          fxPage { fxCols, "FX-", "MASTER", juce::String::fromUTF8("EQ \xC2\xB7 CHORUS \xC2\xB7 ECHO \xC2\xB7 REVERB \xC2\xB7 CRUSH \xC2\xB7 DIST") };
     HardwarePanel    hwPanel   { proc };            // AMYboard tab
+    PresetsPage      presetsPage { proc, *this, [this] { importDx7(); } };   // PRESETS tab
 
     void setEngineIndex(int idx);   // 0 Factory, 1 Analog, 2 FM
 
-    std::vector<PatchLibrary::Entry> userEntries;   // mirrors the USER combo items
 
     int  lastPatch  = -1;
-    juce::String lastUserShown, lastPatchShown;   // what the browser fields currently say
+    juce::String lastFieldShown;                    // what the preset field currently says
     int  lastEngine = -1;   // tri-state so the first tick always applies the dim
     int  lastTab    = -1;   // detect user tab clicks to drive the engine
     int  lastAlgo   = -1;   // refresh the algorithm diagram when it changes

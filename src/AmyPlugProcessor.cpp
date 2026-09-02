@@ -69,7 +69,7 @@ AmyPlugProcessor::AmyPlugProcessor()
         if (auto* r = dynamic_cast<juce::RangedAudioParameter*>(p))
             if (r->paramID != params::id::mode && r->paramID != params::id::pitchBendRange
                 && r->paramID != params::id::patchA)
-                state.addParameterListener(r->paramID, &dirtyWatcher);
+                dirtyWatcher.watch(*r);
 
     // A fresh instance is "on" whatever factory patch the parameters default to — that is
     // what the browser showed before identity existed, so keep it.
@@ -200,6 +200,8 @@ bool AmyPlugProcessor::engineIsFM() const
 
 AmyPlugProcessor::~AmyPlugProcessor()
 {
+    // Detach the dirty watcher before the parameters it listens to go away.
+    for (auto* p : getParameters()) p->removeListener(&dirtyWatcher);
     // Free the global tokens so another still-loaded instance can grab the engine / board.
     engineown::releaseSoftware(this);
     engineown::releaseHardware(this);
@@ -1115,10 +1117,22 @@ bool AmyPlugProcessor::loadUserPatch(const juce::String& group, const juce::Stri
 
 int AmyPlugProcessor::importDx7Cartridge(const juce::File& file)
 {
+    return importDx7Cartridge(file, file.getFileNameWithoutExtension());
+}
+
+void AmyPlugProcessor::relabelLoadedPreset(const juce::String& bank, const juce::String& name)
+{
+    loadedFactory.store(-1, std::memory_order_relaxed);
+    loadedUserBank = bank;
+    loadedUserName = name;
+}
+
+int AmyPlugProcessor::importDx7Cartridge(const juce::File& file, const juce::String& bank)
+{
     const auto voices = Dx7Import::parseFile(file);
-    // Group the cartridge's voices under a folder named after the file, so they
-    // don't clutter the user's own patch list.
-    const juce::String group = file.getFileNameWithoutExtension();
+    // The bank is the caller's choice — pre-filled with the cartridge's name in the UI,
+    // but a user may just as well merge it into a bank they already keep.
+    const juce::String group = bank;
     int imported = 0;
     juce::StringArray used;
     for (const auto& v : voices)

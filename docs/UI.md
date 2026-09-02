@@ -152,7 +152,7 @@ a content component that fills the rest.
 `-DAMYPLUG_BUILD_SNAPSHOT=ON`, off by default) that renders any tab straight to a PNG:
 
 ```
-amyplug_snapshot <out.png> [tabIndex] [algo] [scale%]   # 0 Juno · 1-4 DX7 · 5 FX · 6 AMYboard
+amyplug_snapshot <out.png> [tabIndex] [algo] [scale%]   # 0 Presets · 1 Juno · 2-5 DX7 · 6 FX · 7 AMYboard
 amyplug_snapshot <out.png> chrome                       # popup menu states + both dialogs
 ```
 

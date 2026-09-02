@@ -5,7 +5,7 @@
 // quirks that block screenshotting the Standalone. Used to iterate on the UI.
 //
 //   amyplug_snapshot <out.png> [tabIndex] [algo] [scalePercent]
-//     tabIndex: 0 Juno · 1-4 DX7 1-4 · 5 FX-MASTER · 6 AMYboard   (default 0)
+//     tabIndex: 0 Presets · 1 Juno · 2-5 DX7 1-4 · 6 FX-MASTER · 7 AMYboard   (default 0)
 //     algo:     1-32 DX7 algorithm, 0 = leave alone
 //     scale:    editor size in percent (60-150); the editor opens at whatever the
 //               processor has stored, which is what the size picker persists.
@@ -181,7 +181,7 @@ int main(int argc, char** argv)
     // DX7->FM). Set before constructing the editor, which picks its tab from this.
     if (auto* e = proc.apvts().getParameter(amyplug::params::id::engine))
     {
-        const int eng = (tab == 0) ? 1 : (tab >= 1 && tab <= 4) ? 2 : 0;
+        const int eng = (tab == 1) ? 1 : (tab >= 2 && tab <= 5) ? 2 : 0;
         e->setValueNotifyingHost(e->convertTo0to1((float) eng));
     }
     if (algo >= 1 && algo <= 32)

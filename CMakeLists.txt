@@ -95,6 +95,7 @@ target_sources(AMYplug PRIVATE
     src/AmyPlugProcessor.cpp
     src/AmyPlugEditor.cpp
     src/gui/AmyLookAndFeel.cpp
+    src/gui/PresetsPage.cpp
     src/gui/AmyFonts.cpp
     src/engine/SoftwareBackend.cpp
     src/engine/HardwareBackend.cpp
@@ -184,6 +185,7 @@ if(AMYPLUG_BUILD_SNAPSHOT)
         src/AmyPlugProcessor.cpp
         src/AmyPlugEditor.cpp
         src/gui/AmyLookAndFeel.cpp
+        src/gui/PresetsPage.cpp
         src/gui/AmyFonts.cpp
         src/engine/SoftwareBackend.cpp
         src/engine/HardwareBackend.cpp

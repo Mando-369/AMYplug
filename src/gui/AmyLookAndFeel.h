@@ -53,6 +53,10 @@ public:
     // A parented menu gets a stock frame painted over its border; we own that edge.
     void drawResizableFrame(juce::Graphics&, int w, int h, const juce::BorderSize<int>&) override;
 
+    // Tree view (the Presets tab's directory) ------------------------------
+    void drawTreeviewPlusMinusBox(juce::Graphics&, const juce::Rectangle<float>& area,
+                                  juce::Colour background, bool isOpen, bool isMouseOver) override;
+
     // Corner grip -----------------------------------------------------------
     void drawCornerResizer(juce::Graphics&, int w, int h, bool over, bool dragging) override;
 

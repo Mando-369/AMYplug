@@ -977,13 +977,12 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     setLookAndFeel(&lnf);   // the AMYplug visual identity, inherited by all children
 
     // --- top bar ----------------------------------------------------------
-    for (auto* l : { &browserLabel, &userLabel, &engineLabel })
+    for (auto* l : { &engineLabel })
     {
         l->setFont(fonts::label(12.0f).withExtraKerningFactor(0.06f));
         l->setColour(juce::Label::textColourId, col::textDim);
         l->setJustificationType(juce::Justification::centredLeft);
     }
-    for (auto* l : { &browserLabel, &userLabel }) content.addAndMakeVisible(*l);
 
     // OUT GAIN rotary (amber) lives in the header, right of the patch block.
     outGainKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 18);
@@ -997,44 +996,15 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     outGainLabel.setColour(juce::Label::textColourId, col::textDim);
     outGainLabel.setJustificationType(juce::Justification::centred);
     content.addAndMakeVisible(outGainLabel);
-    buildPatchBox();
-    patchBox.onChange = [this]
-    {
-        const int id = patchBox.getSelectedId();
-        if (id > 0)
-        {
-            setEngineIndex(0);                    // selecting a factory preset
-            selectPatch(id - 1);
-        }
-    };
-    content.addAndMakeVisible(patchBox);
-    prevButton.onClick = [this] { stepPatch(-1); };
-    nextButton.onClick = [this] { stepPatch(+1); };
+    // Preset row. One field names what is loaded (bank · name, " *" once edited); ‹ ›
+    // step the flat catalogue; the field's menu and the PRESETS tab do the browsing.
+    presetField.onClick = [this] { showPresetMenu(); };
+    content.addAndMakeVisible(presetField);
+    prevButton.onClick = [this] { stepPreset(-1); };
+    nextButton.onClick = [this] { stepPreset(+1); };
     content.addAndMakeVisible(prevButton); content.addAndMakeVisible(nextButton);
-
-    userBox.setTextWhenNothingSelected("User patches");
-    userBox.onChange = [this]
-    {
-        const int id = userBox.getSelectedId();
-        if (id > 0 && id <= (int) userEntries.size())
-        {
-            const auto& e = userEntries[(size_t) (id - 1)];
-            proc.loadUserPatch(e.group, e.name);
-        }
-    };
-    content.addAndMakeVisible(userBox); refreshUserBox();
-    saveButton.onClick   = [this] { showSaveDialog(); };
-    deleteButton.onClick = [this]
-    {
-        const int id = userBox.getSelectedId();
-        if (id > 0 && id <= (int) userEntries.size())
-        {
-            const auto& e = userEntries[(size_t) (id - 1)];
-            proc.patchLibrary().remove(e.group, e.name);
-            refreshUserBox();
-        }
-    };
-    content.addAndMakeVisible(saveButton); content.addAndMakeVisible(deleteButton);
+    saveButton.onClick   = [this] { presetsPage.saveAs(); };
+    content.addAndMakeVisible(saveButton);
     importButton.onClick = [this] { importDx7(); };
     importButton.setTooltip("Import a DX7 .syx cartridge as named FM user patches");
     content.addAndMakeVisible(importButton);
@@ -1230,6 +1200,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     tabs.setColour(juce::TabbedComponent::backgroundColourId, kPanel);
     tabs.setColour(juce::TabbedComponent::outlineColourId, col::hairline);
     tabs.setTabBarDepth(30);
+    tabs.addTab("Presets",   kPanel, &presetsPage, false); // browser: tree · list · info
     tabs.addTab("Juno",      kPanel, &junoPage, false);   // 2 columns + VOICE/title row
     tabs.addTab("DX7 1",     kPanel, &dx7Tab1,  false);   // algorithm + oscillators
     tabs.addTab("DX7 2",     kPanel, &dx7Tab2,  false);   // operator envelopes OP1-3
@@ -1248,8 +1219,8 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
             eng0 = juce::jlimit(0, 2, (int) std::lround(e->load()));
         // Reopen on the AMYboard tab (6) if the session was in Hardware mode; else the
         // tab that matches the loaded engine (Analog->Juno 0, FM->DX7 1 = tab 1).
-        const int tab0 = (proc.currentMode() == IAmyBackend::Kind::Hardware) ? 6
-                       : (eng0 == 1) ? 0 : (eng0 == 2) ? 1 : tabs.getCurrentTabIndex();
+        const int tab0 = (proc.currentMode() == IAmyBackend::Kind::Hardware) ? Tab::Hardware
+                       : (eng0 == 1) ? Tab::Juno : (eng0 == 2) ? Tab::Dx7_1 : Tab::Presets;
         tabs.setCurrentTabIndex(tab0, false);
         lastTab = tab0;
     }
@@ -1374,8 +1345,8 @@ void AmyPlugEditor::showDialog(std::function<void (juce::AlertWindow&, int)> onR
     // Parent it into the editor so it moves, hides and dies with the plugin window instead
     // of floating over the host. It was laid out while it still had a desktop peer, so its
     // bounds are in screen coordinates until we re-centre it here.
-    addAndMakeVisible(w);
-    w->setCentrePosition(getLocalBounds().getCentre());
+    content.addAndMakeVisible(w);                              // scales with the picker
+    w->setCentrePosition(content.getLocalBounds().getCentre());
 
     juce::Component::SafePointer<AmyPlugEditor>     safeThis(this);
     juce::Component::SafePointer<juce::AlertWindow> safeDlg(w);
@@ -1401,64 +1372,120 @@ void AmyPlugEditor::dismissDialog()
     if (owned->isCurrentlyModal()) owned->exitModalState(0);
 }
 
-void AmyPlugEditor::buildPatchBox()
+void PresetField::setText(juce::String b, juce::String n, bool d)
 {
-    patchBox.clear(juce::dontSendNotification);
-    juce::String bank;
-    for (int i = 0; i < kBuiltinPatchCount; ++i)
+    bank = std::move(b); name = std::move(n); dirty = d;
+    repaint();
+}
+
+void PresetField::paintButton(juce::Graphics& g, bool over, bool down)
+{
+    auto r = getLocalBounds().toFloat().reduced(0.5f);
+    g.setColour(down ? col::comboFill.darker(0.2f) : col::comboFill);
+    g.fillRoundedRectangle(r, 3.0f);
+    g.setColour(juce::Colours::black.withAlpha(0.35f));
+    g.drawLine(r.getX() + 3, r.getY() + 1.5f, r.getRight() - 3, r.getY() + 1.5f, 1.0f);
+    g.setColour(over ? col::comboBorder.brighter(0.3f) : col::comboBorder);
+    g.drawRoundedRectangle(r, 3.0f, 1.0f);
+
+    // Caret, as the combo boxes draw it.
+    { juce::Path p; const float ax = r.getRight() - 10.0f, ay = r.getCentreY();
+      p.startNewSubPath(ax - 3.5f, ay - 2.0f); p.lineTo(ax, ay + 2.5f); p.lineTo(ax + 3.5f, ay - 2.0f);
+      g.setColour(col::textFaint);
+      g.strokePath(p, juce::PathStrokeType(1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded)); }
+
+    auto text = getLocalBounds().reduced(10, 0).withTrimmedRight(16);
+    const auto f = fonts::label(18.0f);
+    g.setFont(f);
+    if (bank.isNotEmpty())
     {
-        const juce::String b = factoryBankOf(i);
-        if (b != bank) { patchBox.addSectionHeading(b); bank = b; }
-        patchBox.addItem(kBuiltinPatchNames[i], i + 1);
+        const auto b = bank + juce::String::fromUTF8("  \xC2\xB7  ");
+        const int bw = (int) juce::GlyphArrangement::getStringWidth(f, b);
+        g.setColour(col::textDim);
+        g.drawText(b, text.removeFromLeft(bw), juce::Justification::centredLeft);
+    }
+    g.setColour(col::textPrimary);
+    g.drawFittedText(name.isEmpty() ? "-" : name, text, juce::Justification::centredLeft, 1);
+    if (dirty)
+    {
+        const int nw = (int) juce::GlyphArrangement::getStringWidth(f, name) + 6;
+        g.setColour(col::amber);
+        g.drawText("*", text.withTrimmedLeft(juce::jmin(nw, text.getWidth() - 12)), juce::Justification::centredLeft);
     }
 }
 
-void AmyPlugEditor::refreshUserBox()
+void AmyPlugEditor::loadPreset(const PresetRef& ref)
 {
-    userBox.clear(juce::dontSendNotification);
-    userEntries = proc.patchLibrary().entries();
-    int id = 1;
-    juce::String curGroup = "\x01";                  // sentinel != any real group name
-    for (const auto& e : userEntries)
+    if (ref.isFactory())
     {
-        if (e.group != curGroup)                     // new group -> section heading
+        setEngineIndex(0);                    // a factory preset plays through the Factory engine
+        if (auto* p = proc.apvts().getParameter(params::id::patchA))
+            p->setValueNotifyingHost(p->convertTo0to1((float) ref.factoryIndex));
+    }
+    else if (ref.isUser())
+        proc.loadUserPatch(ref.bank, ref.name);
+}
+
+void AmyPlugEditor::stepPreset(int delta)
+{
+    proc.patchLibrary().refresh();
+    loadPreset(PresetCatalog::build(proc.patchLibrary()).step(proc.loadedPreset(), delta));
+}
+
+void AmyPlugEditor::showPresetMenu()
+{
+    auto& lib = proc.patchLibrary();
+    lib.refresh();                            // a preset saved elsewhere shows without a reload
+    const auto loaded = proc.loadedPreset();
+
+    juce::PopupMenu m;
+    m.setLookAndFeel(&lnf);                   // a menu is not a child: it inherits nothing
+    m.addSectionHeader("FACTORY");
+    struct Bank { const char* name; int from, to; };
+    for (auto b : { Bank { "Juno", 0, 127 }, Bank { "DX7", 128, 255 },
+                    Bank { "Piano", 256, 256 }, Bank { "AMYboard", 257, kBuiltinPatchCount - 1 } })
+    {
+        juce::PopupMenu sub;
+        for (int i = b.from; i <= b.to; ++i)
+            sub.addItem(1 + i, kBuiltinPatchNames[i], true, loaded.isFactory() && loaded.factoryIndex == i);
+        m.addSubMenu(b.name, sub);
+    }
+
+    // USER: banks as submenus, the top level first. Ticked, not disabled, so re-loading
+    // the preset you are on is how you get back to it after turning something.
+    const auto entries = lib.entries();       // copied into the callback: resolve by NAME
+    m.addSeparator();
+    m.addSectionHeader("USER");
+    if (entries.empty())
+        m.addItem(-1, "(no user presets yet)", false);
+    juce::String curBank = "\x01"; juce::PopupMenu sub;
+    for (size_t k = 0; k < entries.size(); ++k)
+    {
+        const auto& e = entries[k];
+        if (e.group != curBank)
         {
-            curGroup = e.group;
-            userBox.addSectionHeading(e.group.isEmpty() ? "My Patches" : e.group);
+            if (curBank != "\x01") m.addSubMenu(curBank.isEmpty() ? "My Patches" : curBank, sub);
+            sub = juce::PopupMenu(); curBank = e.group;
         }
-        userBox.addItem(e.name, id++);
+        sub.addItem(1000 + (int) k, e.name, true, loaded == PresetRef::user(e.group, e.name));
     }
+    if (curBank != "\x01") m.addSubMenu(curBank.isEmpty() ? "My Patches" : curBank, sub);
+    m.addSeparator();
+    m.addItem(9000, "Open Presets tab...");
+
+    // Parented to the scaled content so it matches the panel; targeted on the field so a
+    // second click CLOSES it. showMenuAsync — a plugin must never block its host.
+    m.showMenuAsync(juce::PopupMenu::Options().withParentComponent(&content).withTargetComponent(&presetField),
+                    [this, entries] (int r)
+                    {
+                        if (r >= 1 && r <= kBuiltinPatchCount)              loadPreset(PresetRef::factory(r - 1));
+                        else if (r >= 1000 && r - 1000 < (int) entries.size())
+                        { const auto& e = entries[(size_t) (r - 1000)]; loadPreset(PresetRef::user(e.group, e.name)); }
+                        else if (r == 9000)                                  selectTab(Tab::Presets);
+                    });
 }
 
-void AmyPlugEditor::selectPatch(int patchNumber)
-{
-    if (auto* param = proc.apvts().getParameter(params::id::patchA))
-        param->setValueNotifyingHost(param->convertTo0to1((float) patchNumber));
-}
-
-void AmyPlugEditor::stepPatch(int delta)
-{
-    selectPatch(juce::jlimit(0, kBuiltinPatchCount - 1, (lastPatch >= 0 ? lastPatch : 0) + delta));
-}
-
-void AmyPlugEditor::showSaveDialog()
-{
-    auto* w = beginDialog("Save User Patch", "Patch name:", juce::MessageBoxIconType::NoIcon);
-    w->addTextEditor("name", "My Patch");
-    // Explicit button IDs: the callback gets the number written here, and every other way
-    // the prompt can end (escape, the editor closing) yields 0 — the do-nothing answer.
-    w->addButton("Save",   1, juce::KeyPress(juce::KeyPress::returnKey));
-    w->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
-    showDialog([this] (juce::AlertWindow& dlg, int result)
-    {
-        if (result != 1) return;
-        const auto name = dlg.getTextEditorContents("name").trim();
-        if (name.isEmpty()) return;
-        proc.saveUserPatch(name);
-        refreshUserBox();                    // the timer mirrors the new identity into the box
-    });
-    if (auto* ed = w->getTextEditor("name")) ed->grabKeyboardFocus();
-}
+void AmyPlugEditor::showSaveDialog() { presetsPage.saveAs(); }
 
 void AmyPlugEditor::importDx7()
 {
@@ -1470,20 +1497,30 @@ void AmyPlugEditor::importDx7()
     {
         const auto file = fc.getResult();
         if (file == juce::File {}) return;            // cancelled
-        const int n = proc.importDx7Cartridge(file);
-        refreshUserBox();
-        // Not showMessageBoxAsync: that static goes through the DEFAULT LookAndFeel, so the
-        // result box would come up in stock JUCE on our faceplate.
-        auto* w = beginDialog("DX7 Import",
-                              n > 0 ? juce::String(n) + (n == 1 ? " voice" : " voices")
-                                          + " imported into your USER patches."
-                                    : "No DX7 voices found. Expected a .syx cartridge "
-                                      "(32-voice bulk dump or a single-voice dump).",
-                              n > 0 ? juce::MessageBoxIconType::InfoIcon
-                                    : juce::MessageBoxIconType::WarningIcon);
-        w->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey),
-                              juce::KeyPress(juce::KeyPress::escapeKey));
-        showDialog(nullptr);
+
+        // BANK: pre-filled with the cartridge's name, and entirely the user's to change —
+        // pick an existing bank to merge into, or type a new one.
+        auto* w = beginDialog("Import DX7 Cartridge", file.getFileName(), juce::MessageBoxIconType::NoIcon);
+        PresetsPage::addBankBox(*w, proc.patchLibrary().banks(), file.getFileNameWithoutExtension());
+        w->addButton("Import", 1, juce::KeyPress(juce::KeyPress::returnKey));
+        w->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+        showDialog([this, file] (juce::AlertWindow& dlg, int r)
+        {
+            if (r != 1) return;
+            const int n = proc.importDx7Cartridge(file, PresetsPage::bankFromBox(dlg));
+            presetsPage.refresh();
+            // Not showMessageBoxAsync: that static goes through the DEFAULT LookAndFeel.
+            auto* res = beginDialog("DX7 Import",
+                                    n > 0 ? juce::String(n) + (n == 1 ? " voice" : " voices")
+                                                + " imported into your USER patches."
+                                          : "No DX7 voices found. Expected a .syx cartridge "
+                                            "(32-voice bulk dump or a single-voice dump).",
+                                    n > 0 ? juce::MessageBoxIconType::InfoIcon
+                                          : juce::MessageBoxIconType::WarningIcon);
+            res->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey),
+                                    juce::KeyPress(juce::KeyPress::escapeKey));
+            showDialog(nullptr);
+        });
     });
 }
 
@@ -1535,24 +1572,18 @@ void AmyPlugEditor::timerCallback()
         }
     }
 
-    // The browser fields reflect the processor's loaded-preset identity — name plus a
-    // trailing " *" once anything has moved. It is state on the processor (survives the
-    // editor being destroyed and the session reloading), so the editor only mirrors it.
+    // The preset field mirrors the processor's loaded-preset identity — bank · name plus
+    // a trailing " *" once anything has moved. It is state on the processor (survives the
+    // editor being destroyed and the session reloading), so the editor only reflects it.
     {
         const auto ref   = proc.loadedPreset();
         const bool dirty = proc.isPresetDirty();
-        const juce::String userWant  = ref.isUser()    ? ref.name + (dirty ? " *" : "") : juce::String();
-        const juce::String patchWant = ref.isFactory() ? ref.name + (dirty ? " *" : "") : juce::String();
-        if (userWant != lastUserShown)
+        const juce::String key = juce::String((int) ref.source) + "|" + ref.bank + "|" + ref.name + (dirty ? "*" : "");
+        if (key != lastFieldShown)
         {
-            lastUserShown = userWant;
-            if (userWant.isEmpty()) userBox.setSelectedId(0, juce::dontSendNotification);
-            else                    userBox.setText(userWant, juce::dontSendNotification);
-        }
-        if (patchWant != lastPatchShown && patchWant.isNotEmpty())
-        {
-            lastPatchShown = patchWant;
-            patchBox.setText(patchWant, juce::dontSendNotification);
+            lastFieldShown = key;
+            presetField.setText(ref.isUser() && ref.bank.isEmpty() ? juce::String("My Patches") : ref.bank,
+                                ref.name, dirty);
         }
     }
 
@@ -1562,8 +1593,6 @@ void AmyPlugEditor::timerCallback()
         if (n != lastPatch)
         {
             lastPatch = n;
-            patchBox.setSelectedId(n + 1, juce::dontSendNotification);
-            lastPatchShown.clear();          // re-mirror the identity text (with any " *")
             // "To Editor" decodes factory Juno (0..127) and DX7 (128..255) presets;
             // piano/amyboard (256..257) have no editable structure.
             toEditorButton.setEnabled(n >= 0 && n <= 255);
@@ -1583,36 +1612,33 @@ void AmyPlugEditor::timerCallback()
     {
         int eng = juce::jlimit(0, 2, (int) std::lround(e->load()));
 
-        // A user tab click activates that tab's engine. Tabs: 0 Juno, 1-4 DX7,
-        // 5 FX-MASTER, 6 AMYboard (FX/AMYboard don't change the engine).
+        // A user tab click activates that tab's engine. PRESETS, FX-MASTER and AMYboard
+        // leave the engine alone.
         const int curTab = tabs.getCurrentTabIndex();
+        const bool onDx7 = (curTab >= Tab::Dx7_1 && curTab <= Tab::Dx7_4);
         if (curTab != lastTab)
         {
             lastTab = curTab;
-            const int tabEng = (curTab == 0) ? 1 : (curTab >= 1 && curTab <= 4) ? 2 : eng;
+            const int tabEng = (curTab == Tab::Juno) ? 1 : onDx7 ? 2 : eng;
             if (tabEng != eng) { setEngineIndex(tabEng); eng = tabEng; }
         }
 
         if (eng != lastEngine)
         {
             lastEngine = eng;
-            // Analog -> Juno (0); FM -> keep the current DX7 tab (1-4) or default to DX7 1.
-            const int wantTab = (eng == 1) ? 0
-                              : (eng == 2) ? ((curTab >= 1 && curTab <= 4) ? curTab : 1)
+            // Analog -> Juno; FM -> keep the current DX7 tab or default to DX7 1.
+            const int wantTab = (eng == 1) ? Tab::Juno
+                              : (eng == 2) ? (onDx7 ? curTab : Tab::Dx7_1)
                               : curTab;
             if (wantTab != tabs.getCurrentTabIndex())
             { tabs.setCurrentTabIndex(wantTab, false); lastTab = wantTab; }
 
-            const bool analog = (eng == 1), fm = (eng == 2), factory = (eng == 0);
+            const bool analog = (eng == 1), fm = (eng == 2);
             junoPage.setEnabled(analog); junoPage.setAlpha(analog ? 1.0f : 0.4f);
             for (auto* p : { (juce::Component*) &fmOscA, (juce::Component*) &fmOscB,
                              (juce::Component*) &fmOscC, (juce::Component*) &fmEnv1Panel,
                              (juce::Component*) &fmEnv2Panel, (juce::Component*) &fmModPanel })
             { p->setEnabled(fm); p->setAlpha(fm ? 1.0f : 0.4f); }
-            // Dim the factory-patch name (it no longer reflects your edits) but keep the
-            // ‹ › nav arrows at full brightness so they read as normal buttons.
-            for (auto* c : { (juce::Component*) &patchBox, (juce::Component*) &browserLabel })
-                c->setAlpha(factory ? 1.0f : 0.4f);
         }
 
         // Fade DX7 operators that output nothing (Level 0) — and their envelope rows on
@@ -1740,31 +1766,15 @@ void AmyPlugEditor::layoutContent()
     outGainKnob.setBounds(gain.reduced(2, 0));
     header.removeFromRight(16);
 
-    // Patch browser block. The two trailing action buttons (Import DX7 / To Editor) are
-    // aligned in a vertical column — same width, same left edge — anchored just past the
-    // wider row-2 group (Save + Delete) so they read as a stacked pair, not staggered.
-    const int kActionW = 96;
-    auto row1 = header.removeFromTop(26);
-    browserLabel.setBounds(row1.removeFromLeft(42));
-    row1.removeFromLeft(4);
-    patchBox.setBounds(row1.removeFromLeft(220));
-    row1.removeFromLeft(6);
-    prevButton.setBounds(row1.removeFromLeft(30));
-    row1.removeFromLeft(3);
-    nextButton.setBounds(row1.removeFromLeft(30));
-    header.removeFromTop(10);
-    auto row2 = header.removeFromTop(26);
-    userLabel.setBounds(row2.removeFromLeft(42));
-    row2.removeFromLeft(4);
-    userBox.setBounds(row2.removeFromLeft(220));
-    row2.removeFromLeft(6);
-    saveButton.setBounds(row2.removeFromLeft(64));
-    row2.removeFromLeft(4);
-    deleteButton.setBounds(row2.removeFromLeft(62));
-    // Shared left edge for both action buttons: just past Delete (the wider row's end).
-    const int actionX = row2.getX() + 8;
-    importButton.setBounds(actionX, row1.getY(), kActionW, row1.getHeight());
-    toEditorButton.setBounds(actionX, row2.getY(), kActionW, row2.getHeight());
+    // Preset row: ‹ › [ bank · name ] SAVE… IMPORT DX7… TO EDITOR, one row centred in
+    // the band. The full browser is the PRESETS tab; this is the quick path.
+    auto row = header.withSizeKeepingCentre(header.getWidth(), 30);
+    prevButton.setBounds(row.removeFromLeft(30));  row.removeFromLeft(3);
+    nextButton.setBounds(row.removeFromLeft(30));  row.removeFromLeft(8);
+    presetField.setBounds(row.removeFromLeft(340)); row.removeFromLeft(8);
+    saveButton.setBounds(row.removeFromLeft(72));  row.removeFromLeft(4);
+    importButton.setBounds(row.removeFromLeft(112)); row.removeFromLeft(4);
+    toEditorButton.setBounds(row.removeFromLeft(96));
 
     full.removeFromTop(10);
     auto r = full;

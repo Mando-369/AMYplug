@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "AmyPlugProcessor.h"
+#include "AmyPlugEditor.h"
 #include "state/Parameters.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <memory>
@@ -152,6 +153,29 @@ TEST_CASE("loaded preset identity and dirty mark", "[preset]")
         CHECK(q.loadedPreset().isFactory());
         CHECK(q.loadedPreset().factoryIndex == 200);
         CHECK_FALSE(q.isPresetDirty());
+    }
+
+    // --- opening the editor must not touch the sound, so it must not dirty the preset ---
+    // Every attachment sends an initial UI<-parameter update; none may send one the other
+    // way. If this fails, the list below names the parameter that moved, and therefore the
+    // control that wrote it.
+    {
+        AmyPlugProcessor p;
+        p.prepareToPlay(48000.0, 512);
+        REQUIRE_FALSE(p.isPresetDirty());
+        {
+            AmyPlugEditor editor(p);
+            if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+                mm->runDispatchLoopUntil(200);
+            juce::StringArray moved;
+            for (auto* param : p.getParameters())
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*>(param))
+                    if (std::abs(r->getValue() - r->getDefaultValue()) > 1.0e-6f)
+                        moved.add(r->paramID + " = " + juce::String(r->getValue()) + " (default " + juce::String(r->getDefaultValue()) + ")");
+            INFO("parameters moved by constructing the editor:\n" << moved.joinIntoString("\n"));
+            CHECK_FALSE(p.isPresetDirty());
+            CHECK(moved.isEmpty());
+        }
     }
 
     dir.deleteRecursively();

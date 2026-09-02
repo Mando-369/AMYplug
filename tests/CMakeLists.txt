@@ -54,6 +54,7 @@ target_sources(amyplug_logic_tests PRIVATE
     StateTests.cpp
     PatchLibraryTests.cpp
     PatchNamesTests.cpp
+    PresetCatalogTests.cpp
     Dx7ImportTests.cpp
     ${CMAKE_SOURCE_DIR}/src/midi/NoteRouter.cpp
     ${CMAKE_SOURCE_DIR}/src/state/PatchModel.cpp
@@ -93,6 +94,7 @@ target_sources(amyplug_ui_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/AmyPlugProcessor.cpp
     ${CMAKE_SOURCE_DIR}/src/AmyPlugEditor.cpp
     ${CMAKE_SOURCE_DIR}/src/gui/AmyLookAndFeel.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/PresetsPage.cpp
     ${CMAKE_SOURCE_DIR}/src/gui/AmyFonts.cpp
     ${CMAKE_SOURCE_DIR}/src/engine/SoftwareBackend.cpp
     ${CMAKE_SOURCE_DIR}/src/engine/HardwareBackend.cpp

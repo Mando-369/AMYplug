@@ -10,6 +10,8 @@
 #include "state/PatchLibrary.h"
 #include "state/Parameters.h"
 #include "state/PresetRef.h"
+#include <atomic>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <cmath>
@@ -69,9 +71,13 @@ public:
     PresetRef loadedPreset() const;                                            // message thread
     bool      isPresetDirty() const noexcept { return presetDirty.load(std::memory_order_relaxed); }
     void      markPresetClean() noexcept     { presetDirty.store(false, std::memory_order_relaxed); }
+    // The loaded preset was renamed or moved on disk: follow it. The sound and the dirty
+    // mark are untouched — nothing the user hears changed, only the label.
+    void      relabelLoadedPreset(const juce::String& bank, const juce::String& name);
     // Import a DX7 .syx cartridge: every voice becomes a named FM user patch.
     // Returns the number of voices imported (0 if the file isn't a DX7 dump).
-    int  importDx7Cartridge(const juce::File& file);
+    int  importDx7Cartridge(const juce::File& file);                           // bank = the file's name
+    int  importDx7Cartridge(const juce::File& file, const juce::String& bank);
     // Decode a built-in DX7/ALGO preset into the FM editor as an editable patch.
     // Returns false if the patch isn't FM (e.g. a Juno analog preset).
     bool loadFactoryPatchIntoEditor(int patchNumber);
@@ -116,14 +122,34 @@ private:
     std::atomic<bool> presetDirty   { false };
 
     // Sets the dirty mark from wherever a parameter moves — including the audio thread
-    // under host automation — so its whole body is one atomic store (JUCE-UI-LnF__14 §8).
+    // under host automation — so its body is atomic stores only (JUCE-UI-LnF__14 §8).
     // Registered on every parameter a preset owns; NOT on mode or the bend range, or
     // switching to Hardware would read as "you edited the patch".
-    struct DirtyWatcher final : public juce::AudioProcessorValueTreeState::Listener
+    //
+    // Listens to the PARAMETERS directly and compares against the last value it saw,
+    // rather than trusting the APVTS adapter's callback: that adapter fires on the FIRST
+    // write to a parameter even when the value is unchanged (its `listenersNeedCalling`
+    // starts true), so a host pushing current values after construction would mark every
+    // patch modified. A write that changes nothing is not an edit.
+    struct DirtyWatcher final : public juce::AudioProcessorParameter::Listener
     {
         explicit DirtyWatcher(std::atomic<bool>& f) : flag(f) {}
-        void parameterChanged(const juce::String&, float) override { flag.store(true, std::memory_order_relaxed); }
+        void watch(juce::AudioProcessorParameter& p)
+        {
+            const auto i = (size_t) p.getParameterIndex();
+            if (i >= last.size()) last.resize(i + 1);
+            last[i] = p.getValue();
+            p.addListener(this);
+        }
+        void parameterValueChanged(int index, float newValue) override
+        {
+            auto& seen = last[(size_t) index];                   // sized in watch(); never grows after
+            const float prev = seen.exchange(newValue, std::memory_order_relaxed);
+            if (prev != newValue) flag.store(true, std::memory_order_relaxed);
+        }
+        void parameterGestureChanged(int, bool) override {}
         std::atomic<bool>& flag;
+        std::deque<std::atomic<float>> last;                      // deque: atomics can't be moved
     } dirtyWatcher { presetDirty };
 
     void parameterChanged(const juce::String& id, float newValue) override;
