@@ -83,7 +83,7 @@ cmake --preset mac-release && cmake --build --preset mac-release
 New warnings are not automatically a blocker, but read them. A warning in `src/` that was
 not there last release is a finding until someone says otherwise.
 
-### 1.2 Unit tests — 71 cases, 1314 assertions
+### 1.2 Unit tests — 77 cases, ~1400 assertions
 
 ```bash
 ctest --preset mac-release --output-on-failure
@@ -95,8 +95,8 @@ Four targets, and knowing which one broke tells you where to look:
 |---|--:|---|---|
 | `amyplug_tests` | 11 | Wire-message builder (`AmyWire`), SysEx framing, BitCrusher, WDF clipper | nothing — pure logic |
 | `amyplug_engine_tests` | 10 | The **real AMY engine** renders, silences on note-off, honours panic; FM octave tuning; pitch bend moves the audio oscs but **not** the LFOs | libamy |
-| `amyplug_logic_tests` | 49 | `NoteRouter` lifecycle (every note-on balanced, sustain, mono stack, transport stop), `PatchModel` round-trip, DX7 import/decode, patch library, both engines' wire emission | JUCE, no GUI |
-| `amyplug_ui_tests` | 1 (16 assertions) | Editor **construction**: opens at the stored size, corner grip present, presets clear the constrainer, a dragged size survives a state round-trip | full editor + libamy + fonts |
+| `amyplug_logic_tests` | 54 | `NoteRouter` lifecycle (every note-on balanced, sustain, mono stack, transport stop), `PatchModel` round-trip, DX7 import/decode, patch library + **bank operations**, both engines' wire emission, **FX switches**, the preset catalogue | JUCE, no GUI |
+| `amyplug_ui_tests` | 2 | Editor **construction** (opens at the stored size, corner grip, a dragged size survives a round-trip, **constructing the editor dirties nothing**) and the **loaded-preset identity + dirty mark** at the real processor | full editor + libamy + fonts |
 
 ⚠️ **A green `ctest` does not mean the plugin works.** These are logic and construction
 tests. Everything a user actually touches is in § 3.
@@ -216,6 +216,7 @@ The unit tests prove `NoteRouter`'s bookkeeping. They cannot prove the audio sto
 ### 3.2 Recall — save/load must be bit-for-bit
 
 - [ ] Build a sound on each engine (Factory / Analog / DX7), save the project, reopen → **identical sound**
+- [ ] …and the header field and PRESETS info show the **same preset name**, with the same `*` state, after the reload
 - [ ] Same, with a **user patch** loaded from the browser
 - [ ] Same, after a **DX7 `.syx` import**
 - [ ] Editor size persists (see § 3.4)
@@ -234,6 +235,7 @@ this proves the *behaviour*, and the two fail independently.
 - [ ] **Save…** dialog: text field focused, Return saves, Escape cancels, name lands in the USER list
 - [ ] **Import DX7…**: result dialog is ours (not a stock system box), and it is centred in the plugin window
 - [ ] At 150%: menus and dialogs scale **with** the panel, not at 100% over it
+- [ ] ⚠️ *Watch item:* the preset field's menu was once reported as "opens and closes immediately" on an M1, not reproduced since. If it recurs, note the editor size and the host before anything else.
 
 ### 3.4 Editor size — needs a window to drag
 
@@ -271,7 +273,24 @@ Reference: `docs/HARDWARE_MODE.md`. **Check the sample master clock first.**
 - [ ] All six cards audibly do something; defaults are a true bypass where documented
 - [ ] State recalls with the project
 
-### 3.8 First-run experience
+### 3.8 Presets, banks and FX switches — needs a real host and the file system
+
+The unit tests cover the library and the identity at the processor. This is the user's side.
+
+- [ ] Turn any knob → `*` appears in the header field, the PRESETS info reads **Modified**; Save clears it
+- [ ] Load a user preset, reload the project → the **name** comes back (the bug that started this)
+- [ ] Delete that preset's file in the Finder, reload → the name still shows (an orphan), the sound is the session's
+- [ ] ‹ › step through factory AND user presets, and wrap at both ends
+- [ ] The field's menu: FACTORY and USER banks as submenus, the loaded one ticked; clicking the field again closes it
+- [ ] PRESETS tab: click a row loads it; the tree filters; search filters; the loaded row stays marked
+- [ ] Save As… with a **new bank typed** into the BANK box → the bank appears in the tree, still there after a rescan
+- [ ] Make a folder by hand in the presets folder → it shows in the tree while empty
+- [ ] Rename / Move to Bank / Delete a preset — each confirms, each is undoable from the **Trash**
+- [ ] Right-click a user bank → Rename Bank / Delete Bank; deleting the last preset in a bank prunes the bank
+- [ ] Import DX7: the BANK box pre-fills with the cartridge's name; change it to an existing bank → the voices merge there
+- [ ] Every FX card's power button: off is audibly silent for that effect, the knob keeps its value, on restores it; it recalls with the project; toggling it marks the preset `*`
+
+### 3.9 First-run experience
 
 - [ ] Install on a machine that has **never** had AMYplug → both formats found by the host
 - [ ] Default patch makes sound on the first note with no configuration
@@ -290,7 +309,7 @@ cmake --preset mac-release && cmake --build --preset mac-release
 
 - [ ] Archive contains AU + VST3 + Standalone for AMYplug, AU + VST3 for AMYplugFX
 - [ ] `install.sh`, `README.md`, `LICENSE`, `NOTICES.md`, `licenses/` present
-- [ ] Unzip on a clean machine and run `install.sh` → § 3.8 passes
+- [ ] Unzip on a clean machine and run `install.sh` → § 3.9 passes
 
 ### 4.2 Known gaps at time of writing
 
@@ -331,7 +350,8 @@ Put this in the release notes — a bug report against "AMYplug 0.x" is unaction
 | 3.5 | Hardware mode | | | |
 | 3.6 | Multi-instance | | | |
 | 3.7 | AMYplugFX | | | |
-| 3.8 | First run | | | |
+| 3.8 | Presets, banks, FX switches | | | |
+| 3.9 | First run | | | |
 | 4.1 | Package | | | |
 
 **Release blocked by any failure in § 1, § 3.1 or § 3.2.** Everything else is a judgement

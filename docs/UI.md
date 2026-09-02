@@ -59,6 +59,44 @@ layout code works in design coordinates and knows nothing about scaling. Referen
   own auto-scale path entirely once `options.getParentComponent()` is set, so a menu parented
   to the unscaled editor would come up at 100% over a 150% panel.
 
+## Presets — identity, dirty mark, banks, the PRESETS tab
+
+Reference: `Code Repo/JUCE-UI-LnF__14-Preset-System.md`.
+
+**The loaded preset is state on the processor, not the editor** (`PresetRef`: a factory
+index, or a user bank + name). A host destroys the editor on every window close, so the
+editor only *mirrors* it. It rides in the session on the `AMYplugState` root and is
+re-resolved by **name** on restore — never re-loaded from disk, because the session's own
+values are what the user last heard and a file of the same name on this machine may not be
+the same file. An orphan shows its name. Before this existed, a reload brought the sound
+back and left the field blank.
+
+**Dirty mark.** `presetDirty` is set from wherever a parameter moves — including the audio
+thread under host automation — so the watcher's body is atomic stores only, and the editor
+polls it. Excluded: `mode` (where the sound comes from, not what it is), the bend range,
+and `patchA` (that one *is* the identity; moving it means "load this factory patch").
+⚠️ The watcher listens to the **parameters directly** and compares values itself: the APVTS
+adapter fires on the *first* write to a parameter even when the value is unchanged, so a
+host pushing current values after construction would mark every patch modified. Save and
+load both end clean. Full inclusion: the FX on/off switches dirty it like any knob.
+
+**Banks are subfolders** of the preset folder, one level. `PatchLibrary::banks()` lists the
+*folder* tree, so a bank made in the Finder shows while still empty. Every operation
+resolves a preset by its display name (the file name is a sanitised form of it), refuses
+to clobber, and deletes to the **Trash**; an emptied bank is pruned, ignoring the
+`.DS_Store` the Finder leaves behind.
+
+**The PRESETS tab** (`src/gui/PresetsPage`) is tab 0: tree · list · info + actions. Click a
+row to load. Right-click a user bank to rename or delete it. **The header** keeps one field
+— `‹ › [ bank · name * ]` — whose menu is FACTORY and USER banks as submenus with the loaded
+preset *ticked*, not disabled; ‹ › walk one flat catalogue (`PresetCatalog`) and wrap.
+**BANK is an editable ComboBox** wherever a prompt needs one — Save As, Move to Bank, DX7
+import (pre-filled with the cartridge's name, the choice entirely the user's).
+
+**FX switches** (`reverb_on` … `clip_on`) are parameters with a `PowerButton` in each FX
+card's bar; off streams the effect's neutral value while the knobs keep their settings.
+The clipper is drive 0, not a bypass — it doubles as the 0 dBFS ceiling.
+
 ## Modal chrome — popup menus and dialogs
 
 A `PopupMenu` and an `AlertWindow` are **not children of the editor**, so neither inherits
