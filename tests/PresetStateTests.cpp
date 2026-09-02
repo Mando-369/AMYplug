@@ -1,0 +1,151 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later OR MIT
+//
+// The loaded-preset identity and its dirty mark, at the processor. These guard the bug
+// that started it: a session reload brought the SOUND back and left the browser field
+// saying nothing, because nothing recorded which preset had been loaded.
+//
+// Needs the real processor (a user load moves every parameter through applyPreset), so
+// it lives in the full-plugin test target beside EditorSizeTests.
+#include <catch2/catch_test_macros.hpp>
+
+#include "AmyPlugProcessor.h"
+#include "state/Parameters.h"
+#include <juce_gui_basics/juce_gui_basics.h>
+#include <memory>
+
+using namespace amyplug;
+
+namespace
+{
+juce::File tempLibraryDir()
+{
+    auto d = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                 .getChildFile("amyplug_preset_" + juce::String(juce::Time::getHighResolutionTicks()));
+    d.createDirectory();
+    return d;
+}
+
+void set(AmyPlugProcessor& p, const char* id, float v)
+{
+    auto* param = p.apvts().getParameter(id);
+    REQUIRE(param != nullptr);
+    param->setValueNotifyingHost(param->convertTo0to1(v));
+}
+} // namespace
+
+TEST_CASE("loaded preset identity and dirty mark", "[preset]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto dir = tempLibraryDir();
+
+    // --- a fresh instance is "on" the factory patch the parameters default to ----------
+    {
+        AmyPlugProcessor p;
+        const auto ref = p.loadedPreset();
+        CHECK(ref.isFactory());
+        CHECK(ref.factoryIndex == 0);
+        CHECK(ref.bank == "Juno");
+        CHECK_FALSE(p.isPresetDirty());
+    }
+
+    // --- turning a knob makes it dirty; picking a factory patch makes it clean again ----
+    {
+        AmyPlugProcessor p;
+        set(p, params::id::filterCutoff, 1234.0f);
+        CHECK(p.isPresetDirty());
+
+        set(p, params::id::patchA, 130.0f);           // a DX7 factory patch
+        CHECK(p.loadedPreset().isFactory());
+        CHECK(p.loadedPreset().factoryIndex == 130);
+        CHECK(p.loadedPreset().bank == "DX7");
+        CHECK_FALSE(p.isPresetDirty());               // selecting a patch IS a load
+    }
+
+    // --- parameters no preset owns must not dirty it ---------------------------------
+    {
+        AmyPlugProcessor p;
+        set(p, params::id::pitchBendRange, 12.0f);
+        CHECK_FALSE(p.isPresetDirty());
+        // (mode is exercised in the host: switching it also opens a serial port here.)
+    }
+
+    // --- save -> on that user preset, clean; edit -> dirty; load -> clean -------------
+    {
+        AmyPlugProcessor p;
+        p.patchLibrary().setDirectory(dir);
+        set(p, params::id::filterCutoff, 2222.0f);
+        p.saveUserPatch("Test Bank", "My Lead");
+
+        auto ref = p.loadedPreset();
+        CHECK(ref.isUser());
+        CHECK(ref.bank == "Test Bank");
+        CHECK(ref.name == "My Lead");
+        CHECK_FALSE(p.isPresetDirty());
+
+        set(p, params::id::filterReso, 0.9f);
+        CHECK(p.isPresetDirty());
+
+        // Loading it back moves every parameter (which trips the mark) and must end CLEAN.
+        REQUIRE(p.loadUserPatch("Test Bank", "My Lead"));
+        CHECK(p.loadedPreset() == ref);
+        CHECK_FALSE(p.isPresetDirty());
+    }
+
+    // --- the identity and the mark survive a session round-trip ----------------------
+    {
+        juce::MemoryBlock blob;
+        {
+            AmyPlugProcessor p;
+            p.patchLibrary().setDirectory(dir);
+            REQUIRE(p.loadUserPatch("Test Bank", "My Lead"));
+            set(p, params::id::filterReso, 0.55f);        // dirty on purpose
+            REQUIRE(p.isPresetDirty());
+            p.getStateInformation(blob);
+        }
+
+        // Remove the file before restoring: the name must come back WITHOUT the preset
+        // being re-loaded from disk (JUCE-UI-LnF__14 §2/§8 — an orphan shows its name).
+        for (const auto& f : dir.findChildFiles(juce::File::findFilesAndDirectories, true))
+            f.deleteRecursively();
+
+        AmyPlugProcessor q;
+        q.patchLibrary().setDirectory(dir);
+        q.setStateInformation(blob.getData(), (int) blob.getSize());
+
+        const auto ref = q.loadedPreset();
+        CHECK(ref.isUser());
+        CHECK(ref.bank == "Test Bank");
+        CHECK(ref.name == "My Lead");
+        CHECK(q.isPresetDirty());                          // the mark rides too
+        // ...and the SOUND is the session's own values, not a reload.
+        auto* reso = q.apvts().getRawParameterValue(params::id::filterReso);
+        REQUIRE(reso != nullptr);
+        CHECK(reso->load() == 0.55f);
+    }
+
+    // --- a session written before identity existed falls back to patchA --------------
+    {
+        juce::MemoryBlock blob;
+        {
+            AmyPlugProcessor p;
+            set(p, params::id::patchA, 200.0f);
+            p.getStateInformation(blob);
+        }
+        // Strip the identity properties to simulate the old format.
+        auto xml = juce::XmlDocument::parse(juce::String::fromUTF8((const char*) blob.getData(), (int) blob.getSize()));
+        // getStateInformation writes binary-wrapped XML; go through the same helper the
+        // processor uses to unwrap it.
+        AmyPlugProcessor q;
+        auto tree = juce::ValueTree::fromXml(*juce::AudioProcessor::getXmlFromBinary(blob.getData(), (int) blob.getSize()));
+        for (auto* prop : { "presetSource", "presetFactory", "presetBank", "presetName", "presetDirty" })
+            tree.removeProperty(prop, nullptr);
+        juce::MemoryBlock old;
+        juce::AudioProcessor::copyXmlToBinary(*tree.createXml(), old);
+        q.setStateInformation(old.getData(), (int) old.getSize());
+        CHECK(q.loadedPreset().isFactory());
+        CHECK(q.loadedPreset().factoryIndex == 200);
+        CHECK_FALSE(q.isPresetDirty());
+    }
+
+    dir.deleteRecursively();
+}

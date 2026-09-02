@@ -80,12 +80,15 @@ endif()
 # fonts (the same source set the snapshot tool compiles). Two kinds live here:
 #   EditorSizeTests  — the size-picker regression is in editor CONSTRUCTION (JUCE-UI-LnF__13
 #                      §5), which no pure-logic test can reach. Runs in ctest.
+#   PresetStateTests — loaded-preset identity + dirty mark; a user load moves every
+#                      parameter through the real applyPreset. Runs in ctest.
 #   StressTests      — § 2 of docs/TEST_PROTOCOL.md, tagged "[.stress]" so Catch2 hides them
 #                      from --list-tests and ctest never picks them up. They take minutes.
 #                      Run for a release:  amyplug_ui_tests "[stress]"
 juce_add_console_app(amyplug_ui_tests)
 target_sources(amyplug_ui_tests PRIVATE
     EditorSizeTests.cpp
+    PresetStateTests.cpp
     StressTests.cpp
     ${CMAKE_SOURCE_DIR}/src/AmyPlugProcessor.cpp
     ${CMAKE_SOURCE_DIR}/src/AmyPlugEditor.cpp

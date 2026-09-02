@@ -58,6 +58,23 @@ AmyPlugProcessor::AmyPlugProcessor()
     }
     // NOTE: unisonDetune is deliberately NOT structural — it only re-tunes existing
     // oscillators, which streamAnalogParams does live (no rebuild → no dropout).
+
+    // Dirty mark: every parameter a preset owns. Excluded: `mode` (Software/Hardware is
+    // where the sound comes from, not what it is), the bend range (a performance setting
+    // no preset carries), and `patchA` — that one IS the identity: moving it means "load
+    // this factory patch", which parameterChanged handles by re-pointing the identity and
+    // clearing the mark. Registering the watcher on it too would set the mark straight
+    // back, because listeners fire in registration order.
+    for (auto* p : getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*>(p))
+            if (r->paramID != params::id::mode && r->paramID != params::id::pitchBendRange
+                && r->paramID != params::id::patchA)
+                state.addParameterListener(r->paramID, &dirtyWatcher);
+
+    // A fresh instance is "on" whatever factory patch the parameters default to — that is
+    // what the browser showed before identity existed, so keep it.
+    if (auto* p = state.getRawParameterValue(params::id::patchA))
+        loadedFactory.store((int) std::lround(p->load()), std::memory_order_relaxed);
 }
 
 void AmyPlugProcessor::cacheParamPointers()
@@ -1047,11 +1064,18 @@ void AmyPlugProcessor::handleAsyncUpdate()
     lfoResyncPending.store(true, std::memory_order_relaxed);
 }
 
-void AmyPlugProcessor::saveUserPatch(const juce::String& name)
+void AmyPlugProcessor::saveUserPatch(const juce::String& name) { saveUserPatch(juce::String(), name); }
+
+void AmyPlugProcessor::saveUserPatch(const juce::String& bank, const juce::String& name)
 {
     std::lock_guard<std::recursive_mutex> lk(modelMutex);
     syncModelFromParams();          // capture the live preset into the model
-    patchLib.save(name, model);
+    if (! patchLib.save(bank, name, model)) return;
+    // What you just saved is, by definition, what you are on — and it is clean.
+    loadedFactory.store(-1, std::memory_order_relaxed);
+    loadedUserBank = bank;
+    loadedUserName = name;
+    presetDirty.store(false, std::memory_order_relaxed);
 }
 
 bool AmyPlugProcessor::loadUserPatch(const juce::String& name)
@@ -1064,7 +1088,11 @@ bool AmyPlugProcessor::loadUserPatch(const juce::String& group, const juce::Stri
     PatchModel preset;
     if (! patchLib.load(group, name, preset))
         return false;
-    applyPreset(preset);
+    applyPreset(preset);            // moves every parameter -> the dirty mark trips; clear it below
+    loadedFactory.store(-1, std::memory_order_relaxed);
+    loadedUserBank = group;
+    loadedUserName = name;
+    presetDirty.store(false, std::memory_order_relaxed);
     return true;
 }
 
@@ -1224,12 +1252,28 @@ bool AmyPlugProcessor::loadFactoryPatchIntoEditor(int patchNumber)
     return false;                                // piano / amyboard / unknown structure
 }
 
-void AmyPlugProcessor::parameterChanged(const juce::String&, float)
+void AmyPlugProcessor::parameterChanged(const juce::String& id, float newValue)
 {
+    // Selecting a factory patch — from the browser or from host automation — IS loading a
+    // preset: the identity becomes that patch and the dirty mark clears. Atomics only;
+    // this can run on the audio thread. (A user-preset load also moves patchA and lands
+    // here first; loadUserPatch then overrides the identity, so the final state is right.)
+    if (id == params::id::patchA)
+    {
+        loadedFactory.store((int) std::lround(newValue), std::memory_order_relaxed);
+        presetDirty.store(false, std::memory_order_relaxed);
+    }
     // Everything (incl. the Software/Hardware mode switch, which may amy_start/stop)
     // is applied on the message thread in handleAsyncUpdate — never inline here,
     // since this can fire from the audio thread under host automation.
     triggerAsyncUpdate();
+}
+
+PresetRef AmyPlugProcessor::loadedPreset() const
+{
+    const int f = loadedFactory.load(std::memory_order_relaxed);
+    if (f >= 0) return PresetRef::factory(f);
+    return PresetRef::user(loadedUserBank, loadedUserName);
 }
 
 void AmyPlugProcessor::getStateInformation(juce::MemoryBlock& dest)
@@ -1249,6 +1293,16 @@ void AmyPlugProcessor::getStateInformation(juce::MemoryBlock& dest)
         if (hw->serialConnected())  root.setProperty("hwSerial", hw->serialPortName(), nullptr);
     }
     root.setProperty("uiScale", uiScale, nullptr);   // editor size (view preference)
+    // The loaded preset's NAME rides with the sound. Without this a reload brought the
+    // parameters back and left the browser field saying nothing.
+    {
+        const auto ref = loadedPreset();
+        root.setProperty("presetSource", ref.isFactory() ? "factory" : ref.isUser() ? "user" : "", nullptr);
+        root.setProperty("presetFactory", ref.factoryIndex, nullptr);
+        root.setProperty("presetBank",    ref.bank, nullptr);
+        root.setProperty("presetName",    ref.name, nullptr);
+        root.setProperty("presetDirty",   isPresetDirty(), nullptr);
+    }
     if (auto xml = root.createXml()) copyXmlToBinary(*xml, dest);
 }
 
@@ -1274,6 +1328,28 @@ void AmyPlugProcessor::setStateInformation(const void* data, int size)
         // Defaults to 100 so a session written before the size picker existed still opens
         // at the design size. Goes through the setter, so a nonsense value is clamped.
         setUiScalePercent((int) root.getProperty("uiScale", 100));
+
+        // Restore the loaded-preset identity AFTER replaceState: restoring the tree moved
+        // every parameter and so tripped the dirty mark. Re-resolve by NAME and stop — never
+        // reload the preset here; the session's own values are what the user last heard.
+        // A session from before identity existed falls back to "the factory patch patchA
+        // says", which is what its browser was showing when it was saved.
+        const juce::String src = root.getProperty("presetSource", juce::String()).toString();
+        if (src == "user")
+        {
+            loadedFactory.store(-1, std::memory_order_relaxed);
+            loadedUserBank = root.getProperty("presetBank", juce::String()).toString();
+            loadedUserName = root.getProperty("presetName", juce::String()).toString();
+        }
+        else
+        {
+            int f = (int) root.getProperty("presetFactory", -1);
+            if (src != "factory" || f < 0)
+                if (auto* p = state.getRawParameterValue(params::id::patchA)) f = (int) std::lround(p->load());
+            loadedFactory.store(f, std::memory_order_relaxed);
+            loadedUserBank.clear(); loadedUserName.clear();
+        }
+        presetDirty.store((bool) root.getProperty("presetDirty", false), std::memory_order_relaxed);
     }
 }
 

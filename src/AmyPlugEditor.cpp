@@ -103,13 +103,6 @@ namespace
 const juce::Colour kBg     = col::shellTop;      // window body (gradient top)
 const juce::Colour kPanel  = col::tabActive;     // tab / panel-area fill
 
-const char* bankOf(int p)
-{
-    if (p <= 127) return "Juno";
-    if (p <= 255) return "DX7";
-    if (p == 256) return "Piano";
-    return "AMYboard";
-}
 } // namespace
 
 // ===========================================================================
@@ -1376,7 +1369,7 @@ void AmyPlugEditor::buildPatchBox()
     juce::String bank;
     for (int i = 0; i < kBuiltinPatchCount; ++i)
     {
-        const juce::String b = bankOf(i);
+        const juce::String b = factoryBankOf(i);
         if (b != bank) { patchBox.addSectionHeading(b); bank = b; }
         patchBox.addItem(kBuiltinPatchNames[i], i + 1);
     }
@@ -1424,8 +1417,7 @@ void AmyPlugEditor::showSaveDialog()
         const auto name = dlg.getTextEditorContents("name").trim();
         if (name.isEmpty()) return;
         proc.saveUserPatch(name);
-        refreshUserBox();
-        userBox.setText(name, juce::dontSendNotification);
+        refreshUserBox();                    // the timer mirrors the new identity into the box
     });
     if (auto* ed = w->getTextEditor("name")) ed->grabKeyboardFocus();
 }
@@ -1505,6 +1497,27 @@ void AmyPlugEditor::timerCallback()
         }
     }
 
+    // The browser fields reflect the processor's loaded-preset identity — name plus a
+    // trailing " *" once anything has moved. It is state on the processor (survives the
+    // editor being destroyed and the session reloading), so the editor only mirrors it.
+    {
+        const auto ref   = proc.loadedPreset();
+        const bool dirty = proc.isPresetDirty();
+        const juce::String userWant  = ref.isUser()    ? ref.name + (dirty ? " *" : "") : juce::String();
+        const juce::String patchWant = ref.isFactory() ? ref.name + (dirty ? " *" : "") : juce::String();
+        if (userWant != lastUserShown)
+        {
+            lastUserShown = userWant;
+            if (userWant.isEmpty()) userBox.setSelectedId(0, juce::dontSendNotification);
+            else                    userBox.setText(userWant, juce::dontSendNotification);
+        }
+        if (patchWant != lastPatchShown && patchWant.isNotEmpty())
+        {
+            lastPatchShown = patchWant;
+            patchBox.setText(patchWant, juce::dontSendNotification);
+        }
+    }
+
     if (auto* raw = proc.apvts().getRawParameterValue(params::id::patchA))
     {
         const int n = juce::jlimit(0, kBuiltinPatchCount - 1, (int) std::lround(raw->load()));
@@ -1512,6 +1525,7 @@ void AmyPlugEditor::timerCallback()
         {
             lastPatch = n;
             patchBox.setSelectedId(n + 1, juce::dontSendNotification);
+            lastPatchShown.clear();          // re-mirror the identity text (with any " *")
             // "To Editor" decodes factory Juno (0..127) and DX7 (128..255) presets;
             // piano/amyboard (256..257) have no editable structure.
             toEditorButton.setEnabled(n >= 0 && n <= 255);

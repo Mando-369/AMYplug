@@ -9,6 +9,7 @@
 #include "state/PatchModel.h"
 #include "state/PatchLibrary.h"
 #include "state/Parameters.h"
+#include "state/PresetRef.h"
 #include <memory>
 #include <mutex>
 #include <cmath>
@@ -55,9 +56,19 @@ public:
     void         requestPanic();     // flushes all notes (RT flag + immediate HW send)
 
     // User-patch (preset) save/load, used by the editor's browser.
-    void saveUserPatch(const juce::String& name);
+    void saveUserPatch(const juce::String& name);                              // top-level bank
+    void saveUserPatch(const juce::String& bank, const juce::String& name);
     bool loadUserPatch(const juce::String& name);
     bool loadUserPatch(const juce::String& group, const juce::String& name);
+
+    // --- the loaded preset and its dirty mark -------------------------------
+    // Which preset the browser field should name, and whether anything has moved since.
+    // Lives on the processor because a host destroys the editor on every window close,
+    // and rides in the session state so the NAME recalls with the sound (it did not
+    // before: the parameters came back, the field said "User patches").
+    PresetRef loadedPreset() const;                                            // message thread
+    bool      isPresetDirty() const noexcept { return presetDirty.load(std::memory_order_relaxed); }
+    void      markPresetClean() noexcept     { presetDirty.store(false, std::memory_order_relaxed); }
     // Import a DX7 .syx cartridge: every voice becomes a named FM user patch.
     // Returns the number of voices imported (0 if the file isn't a DX7 dump).
     int  importDx7Cartridge(const juce::File& file);
@@ -96,6 +107,24 @@ public:
 
 private:
     int  uiScale = 100;   // editor size, percent of the design surface
+
+    // Loaded-preset identity. The audio thread may touch ONLY the atomics: host automation
+    // moving patchA re-points the identity at a factory patch without building a string.
+    // The user-preset strings are written and read on the message thread alone.
+    std::atomic<int>  loadedFactory { -1 };      // >= 0: that factory patch is loaded
+    juce::String      loadedUserBank, loadedUserName;   // meaningful when loadedFactory < 0
+    std::atomic<bool> presetDirty   { false };
+
+    // Sets the dirty mark from wherever a parameter moves — including the audio thread
+    // under host automation — so its whole body is one atomic store (JUCE-UI-LnF__14 §8).
+    // Registered on every parameter a preset owns; NOT on mode or the bend range, or
+    // switching to Hardware would read as "you edited the patch".
+    struct DirtyWatcher final : public juce::AudioProcessorValueTreeState::Listener
+    {
+        explicit DirtyWatcher(std::atomic<bool>& f) : flag(f) {}
+        void parameterChanged(const juce::String&, float) override { flag.store(true, std::memory_order_relaxed); }
+        std::atomic<bool>& flag;
+    } dirtyWatcher { presetDirty };
 
     void parameterChanged(const juce::String& id, float newValue) override;
     void handleAsyncUpdate() override;   // message thread: structural rebuild

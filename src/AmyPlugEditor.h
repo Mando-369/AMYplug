@@ -6,6 +6,7 @@
 #include "gui/AmyLookAndFeel.h"
 #include "gui/AmyColours.h"
 #include "gui/ScaledContent.h"
+#include "state/PresetRef.h"
 #include "engine/FirmwareCheck.h"
 #include <functional>
 #include <memory>
@@ -379,6 +380,7 @@ private:
     std::vector<PatchLibrary::Entry> userEntries;   // mirrors the USER combo items
 
     int  lastPatch  = -1;
+    juce::String lastUserShown, lastPatchShown;   // what the browser fields currently say
     int  lastEngine = -1;   // tri-state so the first tick always applies the dim
     int  lastTab    = -1;   // detect user tab clicks to drive the engine
     int  lastAlgo   = -1;   // refresh the algorithm diagram when it changes
