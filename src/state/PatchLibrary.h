@@ -34,10 +34,28 @@ public:
     bool save(const juce::String& name, const PatchModel& model);
     bool load(const juce::String& name, PatchModel& model) const;
     bool remove(const juce::String& name);
-    // Group-aware operations (group "" == root).
+    // Group-aware operations (group "" == root). remove() sends the file to the TRASH,
+    // never unlinks it — a mis-click should not be the end of an afternoon's dialling —
+    // and prunes the bank if that emptied it, ignoring hidden files (the Finder leaves a
+    // .DS_Store in any folder it has been shown, and a bank kept alive by one of those is
+    // a bank the user believes they emptied).
     bool save(const juce::String& group, const juce::String& name, const PatchModel& model);
     bool load(const juce::String& group, const juce::String& name, PatchModel& model) const;
     bool remove(const juce::String& group, const juce::String& name);
+
+    // --- banks: one level of subfolders --------------------------------------------
+    // A bank is a subfolder of the preset folder. banks() lists the FOLDER tree, not the
+    // presets in it: a folder made in the Finder must show up while it is still empty —
+    // which is how a bank usually starts (JUCE-UI-LnF__14 §6/§7). The root ("") is
+    // implicit and never listed. Names are sanitised with File::createLegalFileName.
+    juce::StringArray banks() const;
+    bool createBank(const juce::String& bank);
+    bool renameBank(const juce::String& from, const juce::String& to);     // refuses to clobber
+    bool deleteBank(const juce::String& bank);                              // to the trash, contents and all
+    bool movePreset(const juce::String& fromBank, const juce::String& name,
+                    const juce::String& toBank);                            // refuses to clobber; prunes the source
+    bool renamePreset(const juce::String& bank, const juce::String& from,
+                      const juce::String& to);                              // refuses to clobber
 
     static constexpr const char* kFileExt   = ".amypatch";
     static constexpr const char* kRootType  = "AMYplugUserPatch";
@@ -45,6 +63,8 @@ public:
 private:
     juce::File groupDir(const juce::String& group) const;
     juce::File fileFor(const juce::String& group, const juce::String& name) const;
+    juce::File findPresetFile(const juce::String& group, const juce::String& name) const; // by DISPLAY name
+    void       pruneIfEmpty(const juce::String& group);                                     // ignores hidden files
 
     juce::File         dir;
     juce::StringArray  cachedNames;                    // root-group display names, sorted
