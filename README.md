@@ -143,6 +143,8 @@ AMY’s built-in presets are stored as the engine’s own patch data, not as kno
 
 **“To Editor” bridges the two.** It decodes the selected factory preset into the editable engine, fills in every knob, and jumps you to the matching tab — Juno presets (0–127) to **Juno**, DX7 presets (128–255) to the **DX7** tabs. From there it’s yours to change and **Save…** as a user patch.
 
+> If the patch you are on has unsaved edits, anything that would replace it — the ‹ › arrows, the preset menu, a row in the Presets tab, or **To Editor** — asks first, and offers **Save As…**. Switching **engine** does not ask, because it does not need to: the Juno and DX7 controls are separate, so going Analog → FM → Analog brings every knob back exactly where you left it.
+
 It also brings across the **chorus and EQ the preset carries in its own data** — most Juno patches are voiced around full chorus and an EQ tilt, and that *is* the sound — along with the patch’s own output level. Echo and reverb are left as you had them: those read as the room you put a patch in, not as part of it.
 
 > Piano and the AMYboard default (256–257) have no editable structure, so the button is greyed out for them — they play, but there’s nothing to decode.

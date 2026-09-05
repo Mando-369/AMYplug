@@ -1034,9 +1034,15 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
 
     // "To Editor": decode the selected factory DX7 preset into the editable FM tab.
     // Enabled only for DX7 presets (Juno analog patches need the wider 4-osc editor).
+    // ⚠️ This is the one that actually destroys an edit. Switching ENGINE does not: the
+    // analog and FM parameters are separate, so Analog -> FM -> Analog comes back with every
+    // knob where you left it (measured). "To Editor" is different — it decodes the factory
+    // patch straight over the editable voice, so the same guard the preset arrows use
+    // belongs here too.
     toEditorButton.onClick = [this]
     {
-        proc.loadFactoryPatchIntoEditor(lastPatch);   // sets engine -> timer switches the tab
+        confirmDiscardIfDirty([this]
+        { proc.loadFactoryPatchIntoEditor(lastPatch); });   // sets engine -> timer switches the tab
     };
     toEditorButton.setTooltip(tips::toEditor);
     content.addAndMakeVisible(toEditorButton);
