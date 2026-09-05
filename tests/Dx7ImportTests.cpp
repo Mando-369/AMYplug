@@ -301,7 +301,13 @@ TEST_CASE("Factory analog decode maps a Juno preset onto OSC A/B/C/D + VCF/LFO",
     // Four DCOs, in osc order v2->A, v3->B, v4->C, v5->D.
     REQUIRE(a.aWave == 1); REQUIRE(a.aFreq == Approx(220.0f).margin(0.5));
     REQUIRE(a.bWave == 3); REQUIRE(a.bFreq == Approx(220.0f).margin(0.5));
-    REQUIRE(a.bLevel == Approx(1.0f).margin(0.01));
+    // ⚠️ The DCO levels come out FOLDED with the patch's own voice level (v0a0.85), which
+    // is where the Juno patches keep it and which our emitter has no field for. Without the
+    // fold, "To Editor" played the patch at full level: measured 4.8x the browser's RMS on
+    // patch 20 (v0a0.26), 2.2x on patch 1. bLevel is the raw 1.0 scaled by 0.85.
+    REQUIRE(a.level  == Approx(0.85f).margin(0.01));
+    REQUIRE(a.bLevel == Approx(0.85f).margin(0.01));   // 1.0 (v3a1) x 0.85
+    REQUIRE(a.aLevel == Approx(0.0f).margin(0.01));    // v2a0 stays silent
     REQUIRE(a.cWave == 1); REQUIRE(a.cFreq == Approx(110.0f).margin(0.5));
     REQUIRE(a.dWave == 5);
 

@@ -484,6 +484,20 @@ bool factoryAnalogWireToParams(const juce::String& wire, PatchModel::AnalogParam
         }
     }
 
+    // ⚠️ The Juno patches carry their overall voice level on the VCF/VCA sink osc
+    // (`v0a0.26,…`), and it varies a lot — 0.26 on patch 20 against 0.85 on patch 0.
+    // emitAnalog has no field for it: it emits a fixed `a1,0,1,0,0,0` on osc 0 and puts
+    // the level on the DCOs. Left alone, "To Editor" therefore played every patch at full
+    // level — measured 4.8x the RMS of the same patch selected from the browser, on
+    // patch 20. So fold it into the DCO levels, which is where our emitter reads level
+    // from. Deliberately NOT a new parameter: AnalogParams::level is not param-backed, so
+    // a decoded value there would be wiped by the next syncModelFromParams.
+    if (a.level > 0.0f && a.level < 1.0f)
+    {
+        a.aLevel *= a.level; a.bLevel *= a.level;
+        a.cLevel *= a.level; a.dLevel *= a.level;
+    }
+
     out = a;
     return true;
 }
