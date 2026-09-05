@@ -125,7 +125,7 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 
 ## The interface, tab by tab
 
-Everything above the tabs is always visible: the **preset field** (click it to browse, ‹ › to step through everything factory and user in one list), **Save…**, **Import DX7…** and **To Editor**, the **OUT GAIN** master, an **engine indicator** showing whether you’re hearing Software or Hardware, the **engine selector**, and **PANIC**. Under the Save button sit the **size read-out** — click for 75/100/125/150%, or drag the window’s bottom-right corner to any size — and the **?** that turns hover help on and off.
+Everything above the tabs is always visible: the **preset field** (click it to browse, ‹ › to step through everything factory and user in one list — they stop at the ends and grey out there rather than wrapping round), **Save…**, **Import DX7…** and **To Editor**, the **OUT GAIN** master, an **engine indicator** showing whether you’re hearing Software or Hardware, the **engine selector**, and **PANIC**. Under the Save button sit the **size read-out** — click for 75/100/125/150%, or drag the window’s bottom-right corner to any size — and the **?** that turns hover help on and off.
 
 The preset field shows `Bank · Name`, and adds a **\*** the moment you move anything, so you always know whether you are hearing the preset or your edit of it.
 

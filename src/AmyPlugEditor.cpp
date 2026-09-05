@@ -1684,6 +1684,12 @@ void AmyPlugEditor::timerCallback()
             lastFieldShown = key;
             presetField.setText(ref.isUser() && ref.bank.isEmpty() ? juce::String("My Patches") : ref.bank,
                                 ref.name, dirty);
+            // The arrows stop at the ends rather than wrapping, so show it: a button that
+            // silently does nothing is the thing that reads as a bug. Built only when the
+            // identity actually moves — the catalogue rescans the library, so not per tick.
+            const auto cat = PresetCatalog::build(proc.patchLibrary());
+            prevButton.setEnabled(! cat.atEnd(ref, -1));
+            nextButton.setEnabled(! cat.atEnd(ref, +1));
         }
     }
 

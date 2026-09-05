@@ -2,6 +2,7 @@
 #pragma once
 
 #include "PresetRef.h"
+#include <algorithm>
 #include "PatchLibrary.h"
 #include <vector>
 
@@ -34,15 +35,28 @@ struct PresetCatalog
         return -1;
     }
 
-    // The neighbour `delta` steps away, wrapping. A preset that is not in the list
-    // (an orphan from another machine) steps from the top.
+    // The neighbour `delta` steps away, STOPPING at the ends — it used to wrap, and
+    // wrapping meant that pressing ‹ on the very first factory patch jumped you to some
+    // unrelated user patch in the last bank, which reads as a fault rather than as a
+    // feature. `atEnd` lets the editor grey the arrow out so the stop is visible.
+    // A preset that is not in the list (an orphan from another machine) steps from the end
+    // you are heading away from.
     PresetRef step(const PresetRef& from, int delta) const
     {
         if (items.empty()) return {};
         const int n = (int) items.size();
-        int i = indexOf(from);
-        i = (i < 0) ? (delta > 0 ? 0 : n - 1) : (((i + delta) % n) + n) % n;
-        return items[(size_t) i];
+        const int i = indexOf(from);
+        if (i < 0) return items[(size_t) (delta > 0 ? 0 : n - 1)];
+        return items[(size_t) std::clamp(i + delta, 0, n - 1)];
+    }
+
+    // True when stepping `delta` from `from` would go nowhere — the arrow is at its end.
+    bool atEnd(const PresetRef& from, int delta) const
+    {
+        if (items.empty()) return true;
+        const int i = indexOf(from);
+        if (i < 0) return false;
+        return (delta < 0 && i == 0) || (delta > 0 && i == (int) items.size() - 1);
     }
 
     // What a preset is, for the info panel: derived from the bank for factory patches
