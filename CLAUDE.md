@@ -104,7 +104,7 @@ ctest --preset mac-release             # unit tests
 - libamy built by `cmake/amy.cmake` as a static lib from the submodule `src/`.
 - Validate the built plugin with `pluginval` (wired into CI) and AU validation (`auval -v aumu Amyp Mand`). CI is enabled (`.github/workflows/build.yml`) and free on this public repo.
 - Tests use Catch2 (fetched by CMake). Start with `tests/WireMessageTests.cpp`.
-- **Before tagging a release, run `docs/TEST_PROTOCOL.md`.** It lists what the 80 automated
+- **Before tagging a release, run `docs/TEST_PROTOCOL.md`.** It lists what the 81 automated
   tests actually cover and — more importantly — the manual checks they cannot reach (hanging
   notes, recall, popup/dialog behaviour, editor resize, Hardware mode, multi-instance).
 

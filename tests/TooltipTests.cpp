@@ -20,6 +20,7 @@
 #include "AmyPlugEditor.h"
 #include "gui/Tooltips.h"
 #include "state/Parameters.h"
+#include "gui/AmyLookAndFeel.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <memory>
 
@@ -92,6 +93,56 @@ TEST_CASE("tooltip table resolves generated parameter ids", "[ui]")
     // A parameter with no row gets an empty string, not a placeholder — JUCE then shows
     // nothing at all, which is the right answer for a self-explanatory control.
     CHECK(tips::forParam("no_such_parameter").isEmpty());
+}
+
+// ---------------------------------------------------------------------------
+// Width. The box is capped at 200px in the LookAndFeel, and a tip that overflows it would
+// be clipped rather than wrapped — so this walks EVERY parameter the plugin has plus the
+// chrome strings, which is the whole table by construction. A tip added later that is too
+// long for one word to fit fails here rather than in a screenshot.
+// ---------------------------------------------------------------------------
+TEST_CASE("no tooltip is drawn wider than the cap", "[ui]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    amyplug::AmyLookAndFeel lnf;
+    const juce::Rectangle<int> surface(0, 0, 1280, 830);   // the design surface
+    const juce::Point<int> at(200, 200);                   // top-left quadrant: no edge flip
+
+    auto widthOf = [&] (const juce::String& tip)
+    { return lnf.getTooltipBounds(tip, at, surface).getWidth(); };
+
+    amyplug::AmyPlugProcessor proc;
+    int checked = 0;
+    for (auto* p : proc.getParameters())
+    {
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p);
+        if (rp == nullptr) continue;
+        const auto tip = tips::forParam(rp->paramID);
+        if (tip.isEmpty()) continue;
+        INFO(rp->paramID << ": " << tip);
+        CHECK(widthOf(tip) <= 200);
+        ++checked;
+    }
+    CHECK(checked > 80);   // it really did walk the table, not an empty list
+
+    for (const char* tip : { tips::help, tips::size, tips::preset, tips::prev, tips::next,
+                             tips::save, tips::import, tips::toEditor, tips::engine,
+                             tips::panic, tips::outGain, tips::status, tips::takeover,
+                             tips::pSearch, tips::pTree, tips::pList, tips::pSave,
+                             tips::pSaveAs, tips::pRename, tips::pMove, tips::pDelete,
+                             tips::pNewBank, tips::pReveal, tips::hwMidi, tips::hwSerial,
+                             tips::hwRefresh, tips::hwDetect, tips::hwConnect,
+                             tips::hwDisconn, tips::hwSend, tips::hwFirmware, tips::hwFlash })
+    {
+        INFO(tip);
+        CHECK(widthOf(tip) <= 200);
+    }
+    for (const char* tip : tips::tabs)
+    {
+        INFO(tip);
+        CHECK(widthOf(tip) <= 200);
+    }
 }
 
 // ---------------------------------------------------------------------------

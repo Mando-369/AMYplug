@@ -95,7 +95,7 @@ or in §3.2. Budget it like §3.1.
 
 ## Known-good expectations, so a surprise reads as a surprise
 
-- `ctest` = **80/80**. `[.stress]` = **67 assertions in 9 cases**.
+- `ctest` = **81/81**. `[.stress]` = **67 assertions in 9 cases**.
 - pluginval: an intermittent `Plugin state restoration` failure on a **bool** parameter is a
   documented race, not a bug — that is why it runs four times.
 - A build warning in `src/` is only a finding if it is *new*; the tree already carries ~130

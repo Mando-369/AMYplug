@@ -1829,15 +1829,15 @@ void AmyPlugEditor::layoutContent()
     importButton.setBounds(row.removeFromLeft(112)); row.removeFromLeft(4);
     toEditorButton.setBounds(row.removeFromLeft(96));
 
-    // Chrome strip under SAVE: the size read-out and the "?" toggle, as one pair centred on
-    // the button above them. Centre of the header, where the eye already is — the old spot
-    // under the brand wordmark read as part of the logo and went unfound.
-    constexpr int kSizeW = 58, kHelpW = 24, kChromeGap = 4, kChromeH = 22;
-    auto chrome = juce::Rectangle<int>(0, row.getBottom() + 4,
-                                       kSizeW + kChromeGap + kHelpW, kChromeH)
-                      .withX(saveArea.getCentreX() - (kSizeW + kChromeGap + kHelpW) / 2);
-    sizeButton.setBounds(chrome.removeFromLeft(kSizeW));
-    chrome.removeFromLeft(kChromeGap);
+    // Chrome strip under the browser row: the size read-out sits EXACTLY under SAVE — same
+    // x, same width — and the "?" takes the next slot across the same 4px gap SAVE/IMPORT
+    // use, so the two rows share one rhythm instead of floating. (This started under the
+    // brand wordmark, where it read as part of the logo and went unfound.)
+    constexpr int kHelpW = 24, kChromeH = 22;
+    auto chrome = juce::Rectangle<int>(saveArea.getX(), row.getBottom() + 4,
+                                       saveArea.getWidth() + 4 + kHelpW, kChromeH);
+    sizeButton.setBounds(chrome.removeFromLeft(saveArea.getWidth()));
+    chrome.removeFromLeft(4);
     helpButton.setBounds(chrome);
 
     full.removeFromTop(10);

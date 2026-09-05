@@ -425,13 +425,16 @@ static juce::TextLayout layoutTip(const juce::String& text, juce::Colour ink, fl
     return tl;
 }
 
-static constexpr float kTipMaxW = 300.0f, kTipPadX = 10.0f, kTipPadY = 7.0f;
+// kTipMaxW is the width of the BOX, not of the text — the text is measured and drawn at
+// kTipMaxW minus the padding, so a tip never renders wider than this whatever it says.
+static constexpr float kTipMaxW = 200.0f, kTipPadX = 10.0f, kTipPadY = 7.0f;
+static constexpr float kTipTextW = kTipMaxW - kTipPadX * 2.0f;
 
 juce::Rectangle<int> AmyLookAndFeel::getTooltipBounds(const juce::String& tipText,
                                                       juce::Point<int> screenPos,
                                                       juce::Rectangle<int> parentArea)
 {
-    const auto tl = layoutTip(tipText, juce::Colours::black, kTipMaxW);
+    const auto tl = layoutTip(tipText, juce::Colours::black, kTipTextW);
     const int w = (int) std::ceil(tl.getWidth())  + (int) (kTipPadX * 2.0f);
     const int h = (int) std::ceil(tl.getHeight()) + (int) (kTipPadY * 2.0f);
 
@@ -458,7 +461,7 @@ void AmyLookAndFeel::drawTooltip(juce::Graphics& g, const juce::String& text, in
     g.setColour(findColour(juce::TooltipWindow::outlineColourId));
     g.drawRoundedRectangle(r, 4.0f, 1.0f);
 
-    layoutTip(text, findColour(juce::TooltipWindow::textColourId), (float) width - kTipPadX * 2.0f)
+    layoutTip(text, findColour(juce::TooltipWindow::textColourId), kTipTextW)
         .draw(g, r.reduced(kTipPadX, kTipPadY));
 }
 

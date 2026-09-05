@@ -47,8 +47,9 @@ layout code works in design coordinates and knows nothing about scaling. Referen
   a host-driven resize all land in `resized()`, which writes the percentage back — so all
   three are remembered, and the button is a live *readout* (drag to an odd size and it shows
   `113%`, with no menu item ticked, which is correct: none of the presets *is* that size).
-- **The button sits under SAVE**, centred, with the `?` beside it. It began under the brand
-  wordmark, where it read as part of the logo and went unfound in the first test round.
+- **The button sits exactly under SAVE** — same x, same width — with the `?` in the next
+  slot across the same 4px gap SAVE/IMPORT use, so the two rows share one rhythm. It began
+  under the brand wordmark, where it read as part of the logo and went unfound in testing.
 - ⚠️ **Read the stored size BEFORE `setResizeLimits`.** It clamps the editor's *current*
   bounds — `0x0` during construction — to the minimum, firing `resized()`, which writes that
   back. Read it afterwards and the plugin opens at 60% forever while every menu item still
@@ -181,7 +182,11 @@ ever go quiet, look for the *window* first, not for the strings.
   while the read-out under it showed nothing.
 - `getTooltipBounds` / `drawTooltip` are overridden: `LookAndFeel_V4` inherits V2's stock
   grey box. Both share one `layoutTip` so the box is exactly the size of the text it is about
-  to draw. `amyplug_snapshot … chrome` renders a short and a wrapping tip.
+  to draw, and never wider than **200px** — `kTipMaxW` is the box, so the text is measured
+  and drawn at that minus the padding. `tests/TooltipTests.cpp` walks every parameter the
+  plugin has plus the chrome strings and asserts the drawn width against that cap, so a tip
+  added later that overflows fails there rather than in a screenshot.
+  `amyplug_snapshot … chrome` renders a short and a wrapping tip.
 - ⚠️ **The live hover is not verifiable headlessly.** `TooltipWindow::getTipFor` returns
   nothing unless the process is in the **foreground**, and the window's visibility is taken
   down by its own 123 ms poll as soon as nothing is under the mouse — both were tried as
