@@ -115,10 +115,10 @@ that reaches the test machine come from `mac-release`, which stays universal and
 - libamy built by `cmake/amy.cmake` as a static lib from the submodule `src/`.
 - Validate the built plugin with `pluginval` (wired into CI) and AU validation (`auval -v aumu Amyp Mand`). CI is enabled (`.github/workflows/build.yml`) and free on this public repo.
 - Tests use Catch2 (fetched by CMake). Start with `tests/WireMessageTests.cpp`.
-- **`docs/TESTS.md` says what each of the 81 tests covers and why.** Read it to pick the
+- **`docs/TESTS.md` says what each of the 83 tests covers and why.** Read it to pick the
   narrowest selection for a change instead of running everything; update it in the same commit
   that adds or removes a test. A font/colour/label/tooltip change needs a build, not tests.
-- **Before tagging a release, run `docs/TEST_PROTOCOL.md`.** It lists what the 81 automated
+- **Before tagging a release, run `docs/TEST_PROTOCOL.md`.** It lists what the 83 automated
   tests actually cover and — more importantly — the manual checks they cannot reach (hanging
   notes, recall, popup/dialog behaviour, editor resize, Hardware mode, multi-instance).
 

@@ -1078,8 +1078,69 @@ void AmyPlugProcessor::streamGlobalFx()
         std::snprintf(b, 80, "x%g,%g,%g", (double) mEqLow.last, (double) mEqMid.last, (double) mEqHigh.last); });
 }
 
+// A factory patch carries its own filter setting, amp envelope and effects in its wire.
+// toWireMessages then broadcasts OUR macros on top of it — filterFreq, resonance and (for
+// analog patches) bp0 — plus the global `h/k/M/x`. So selecting a preset used to play the
+// patch with our defaults stamped over it: cutoff 8000, resonance 0.7, a 5 ms attack, no
+// chorus and a flat EQ, whatever the patch actually said. Measured, patch 1's own attack is
+// 518 ms and patch 20's is 582 ms — you were hearing neither.
+//
+// Adopting the patch's values into the parameters makes the macros we broadcast agree with
+// the patch, so the preset sounds as it was voiced AND "To Editor" lands on the same sound
+// instead of a different one. Runs once per selection, on the message thread.
+void AmyPlugProcessor::adoptFactoryPatchSettings()
+{
+    if (auto* e = state.getRawParameterValue(params::id::engine);
+        e == nullptr || (int) std::lround(e->load()) != 0) return;      // Factory engine only
+
+    auto* pa = state.getRawParameterValue(params::id::patchA);
+    const int patch = pa != nullptr ? (int) std::lround(pa->load()) : -1;
+    if (patch == lastAdoptedPatch) return;                             // already done, or a knob moved
+    lastAdoptedPatch = patch;
+    if (patch < 0 || patch >= kBuiltinPatchCount) return;
+
+    const juce::String wire { kBuiltinPatchCommands[patch] };
+    auto setP = [this] (juce::StringRef id, float value)
+    { if (auto* p = state.getParameter(id)) p->setValueNotifyingHost(p->convertTo0to1(value)); };
+
+    // Effects the patch carries (`x` EQ, `k` chorus). Echo and reverb are left alone: they
+    // read as the room you put a patch in, and the factory patches do not set them.
+    if (FactoryFx fx; factoryFxFromWire(wire, fx))
+    {
+        if (fx.hasEq)
+        {
+            setP(params::id::eqLow, fx.eqLow); setP(params::id::eqMid, fx.eqMid);
+            setP(params::id::eqHigh, fx.eqHigh);
+            setP(params::id::eqOn, 1.0f);
+        }
+        if (fx.hasChorus)
+        {
+            setP(params::id::chorus, juce::jlimit(0.0f, 1.0f, fx.chorusLevel));
+            setP(params::id::chorusRate, fx.chorusRate);
+            setP(params::id::chorusDepth, fx.chorusDepth);
+            setP(params::id::chorusOn, 1.0f);
+        }
+    }
+
+    // The macros we would otherwise stamp over an analog patch: its filter, and its amp
+    // envelope. DX7 patches keep their own bp0 (it is the pitch envelope there, and
+    // ampEnvIsBp0 already skips them), so only the analog ones need this.
+    if (PatchModel::AnalogParams an; factoryAnalogWireToParams(wire, an))
+    {
+        setP(params::id::filterCutoff, an.vcfFreq);
+        setP(params::id::filterReso,   an.vcfReso);
+        setP(params::id::ampAttack,  an.ampA); setP(params::id::ampDecay,   an.ampD);
+        setP(params::id::ampSustain, an.ampS); setP(params::id::ampRelease, an.ampR);
+    }
+
+    // Those writes went through the dirty watcher. Adopting a preset's own settings IS the
+    // load, not an edit — so the patch is clean.
+    presetDirty.store(false, std::memory_order_relaxed);
+}
+
 void AmyPlugProcessor::handleAsyncUpdate()
 {
+    adoptFactoryPatchSettings();   // before the rebuild, so it emits the adopted values
     // Message thread. Apply a pending Software/Hardware switch (setMode rebuilds), or
     // otherwise a structural change (patch/voices/engine).
     const auto wanted = (pMode != nullptr && (int) std::lround(pMode->load()) != 0)
@@ -1389,6 +1450,12 @@ void AmyPlugProcessor::setStateInformation(const void* data, int size)
         // Defaults to 100 so a session written before the size picker existed still opens
         // at the design size. Goes through the setter, so a nonsense value is clamped.
         setUiScalePercent((int) root.getProperty("uiScale", 100));
+        // ⚠️ Seed the adoption guard with the RESTORED patch number. Without this the next
+        // async update would treat the restored session as a fresh selection and stamp the
+        // factory patch's settings over the ones the session saved — silently breaking
+        // recall for anyone who tweaked the filter or the envelope on a factory preset.
+        if (auto* pa = state.getRawParameterValue(params::id::patchA))
+            lastAdoptedPatch = (int) std::lround(pa->load());
         // Defaults to ON, so a session written before the "?" toggle existed opens with
         // tooltips available rather than silently suppressed.
         setHelpTipsEnabled((bool) root.getProperty("helpTips", true));

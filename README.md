@@ -139,6 +139,8 @@ Everything a bank can do lives here, so there is no convention to discover: **Sa
 
 ### Playing a preset vs. editing it — the “To Editor” button
 
+Selecting a preset also **adopts that patch's own settings** — its filter, its amp envelope and the chorus and EQ it carries — so you hear it as it was voiced. (Before this, the plugin stamped its own defaults over every preset: cutoff 8000, a 5 ms attack and no chorus, whatever the patch said.)
+
 AMY’s built-in presets are stored as the engine’s own patch data, not as knob positions. Selecting one in the browser **plays** it immediately, but the Juno/DX7 tabs are a separate editable voice — so they keep showing whatever *they* hold, not the preset that’s sounding. The **engine indicator** tells you which you’re hearing: `SOFTWARE · Factory` means a browser preset, `· Analog` or `· FM` means the editable voice.
 
 **“To Editor” bridges the two.** It decodes the selected factory preset into the editable engine, fills in every knob, and jumps you to the matching tab — Juno presets (0–127) to **Juno**, DX7 presets (128–255) to the **DX7** tabs. From there it’s yours to change and **Save…** as a user patch.

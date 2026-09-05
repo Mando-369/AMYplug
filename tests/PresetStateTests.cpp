@@ -7,6 +7,7 @@
 // Needs the real processor (a user load moves every parameter through applyPreset), so
 // it lives in the full-plugin test target beside EditorSizeTests.
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include "AmyPlugProcessor.h"
 #include "AmyPlugEditor.h"
@@ -179,4 +180,71 @@ TEST_CASE("loaded preset identity and dirty mark", "[preset]")
     }
 
     dir.deleteRecursively();
+}
+
+// ---------------------------------------------------------------------------
+// Selecting a factory patch adopts the patch's OWN settings.
+// ---------------------------------------------------------------------------
+TEST_CASE("a factory preset brings its own filter, envelope and chorus", "[preset]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto pump = [] { if (auto* mm = juce::MessageManager::getInstanceWithoutCreating()) mm->runDispatchLoopUntil(250); };
+
+    amyplug::AmyPlugProcessor proc;
+    proc.prepareToPlay(48000.0, 512);
+    auto set = [&] (const char* id, float v)
+    { if (auto* p = proc.apvts().getParameter(id)) p->setValueNotifyingHost(p->convertTo0to1(v)); };
+    auto val = [&] (const char* id)
+    { auto* r = proc.apvts().getRawParameterValue(id); return r ? r->load() : -1.0f; };
+
+    // ⚠️ toWireMessages broadcasts filterFreq, resonance and bp0 ON TOP of the baked patch,
+    // so without adoption you heard every Juno preset through cutoff 8000, resonance 0.7 and
+    // a 5 ms attack, whatever the patch said — and "To Editor", which decodes the real
+    // values, then sounded like a different instrument. Measured: patch 20's own attack is
+    // 582 ms and its own cutoff is 299 Hz.
+    set(amyplug::params::id::patchA, 20.0f);
+    pump();
+    CHECK(val(amyplug::params::id::filterCutoff) == Catch::Approx(298.86f).margin(0.5));
+    CHECK(val(amyplug::params::id::ampAttack)    == Catch::Approx(0.582f).margin(0.01));
+    CHECK(val(amyplug::params::id::chorus)       == Catch::Approx(1.0f).margin(0.01));
+    CHECK(val(amyplug::params::id::eqLow)        == Catch::Approx(7.0f).margin(0.1));
+    // Adopting a preset's own settings IS the load, not an edit.
+    CHECK_FALSE(proc.isPresetDirty());
+
+    // A DX7 patch has no analog structure, so only its effects are adopted — its bp0 is the
+    // PITCH envelope and must not be read as an amp ADSR.
+    set(amyplug::params::id::patchA, 224.0f);
+    pump();
+    CHECK(val(amyplug::params::id::ampAttack) == Catch::Approx(0.582f).margin(0.01));   // unchanged
+}
+
+TEST_CASE("reopening a session does not re-adopt over what it saved", "[preset]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto pump = [] { if (auto* mm = juce::MessageManager::getInstanceWithoutCreating()) mm->runDispatchLoopUntil(250); };
+
+    // ⚠️ The trap: adoption keys off the patch NUMBER, so a restored session looks like a
+    // fresh selection unless the guard is seeded from the restored state — and it would then
+    // stamp the factory values over the ones the user tuned and saved. Silent recall loss.
+    juce::MemoryBlock saved;
+    {
+        amyplug::AmyPlugProcessor proc;
+        proc.prepareToPlay(48000.0, 512);
+        auto set = [&] (const char* id, float v)
+        { if (auto* p = proc.apvts().getParameter(id)) p->setValueNotifyingHost(p->convertTo0to1(v)); };
+        set(amyplug::params::id::patchA, 20.0f);
+        pump();
+        set(amyplug::params::id::filterCutoff, 5000.0f);   // the user opens the filter right up
+        pump();
+        proc.getStateInformation(saved);
+    }
+    {
+        amyplug::AmyPlugProcessor proc;
+        proc.prepareToPlay(48000.0, 512);
+        proc.setStateInformation(saved.getData(), (int) saved.getSize());
+        pump();
+        auto* r = proc.apvts().getRawParameterValue(amyplug::params::id::filterCutoff);
+        REQUIRE(r != nullptr);
+        CHECK(r->load() == Catch::Approx(5000.0f).margin(1.0));   // NOT re-stamped back to 298.86
+    }
 }

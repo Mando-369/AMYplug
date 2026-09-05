@@ -2,7 +2,7 @@
 
 One line per test: what it holds down, and **why it exists** — the bug it caught, or the
 invariant that breaks silently without it. Read this to pick the narrowest selection that
-covers a change, instead of running all 81.
+covers a change, instead of running all 83.
 
 **Not every change needs tests.** A font, colour, label, layout or copy change gets a build
 and a look. Tests earn their minutes when a change touches the **engine, the note lifecycle,
@@ -146,7 +146,7 @@ user's files on disk.
 | 25 | BRASS 2 decode→emit reproduces the factory operators | One known-good patch as an end-to-end anchor |
 | 27 | Dx7Lfo conversions round-trip (speed/wave/depths) | |
 
-## `amyplug_ui_tests` — real editor + processor + libamy + fonts (6)
+## `amyplug_ui_tests` — real editor + processor + libamy + fonts (8)
 
 Slowest (builds a live editor). **Run on any change to the editor's construction, the preset
 identity, or the tooltip table.** Tags: `[ui]`, `[preset]`.
@@ -159,6 +159,8 @@ identity, or the tooltip table.** Tags: `[ui]`, `[preset]`.
 | 79 | no tooltip is drawn wider than the cap | Walks **every** parameter plus the chrome strings; an over-long tip added later is clipped, not wrapped |
 | 80 | hover help is wired into a live editor | `setTooltip` alone does nothing. Six calls sat in the editor with no `TooltipWindow` anywhere — dead code that read as a working feature. Asserts a **parented** window exists and that tips reached the controls on all eight tabs |
 | 81 | the help preference survives a session round-trip | The host destroys the editor on every window close, so the preference has to live on the processor |
+| 82 | a factory preset brings its own filter, envelope and chorus | `toWireMessages` broadcasts filterFreq, resonance and bp0 **on top of** the baked patch, so every Juno preset played through cutoff 8000, resonance 0.7 and a 5 ms attack whatever the patch said — and To Editor, which decodes the real values, then sounded like a different instrument. Patch 20's own attack is 582 ms and its own cutoff is 299 Hz |
+| 83 | reopening a session does not re-adopt over what it saved | The trap in the above: adoption keys off the patch NUMBER, so a restored session looks like a fresh selection unless the guard is seeded from the restored state — and would stamp factory values over the ones the user tuned and saved. Silent recall loss |
 
 ## Hidden: `[.stress]` — not in ctest
 

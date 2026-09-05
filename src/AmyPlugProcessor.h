@@ -119,6 +119,14 @@ public:
 
 private:
     int  uiScale  = 100;    // editor size, percent of the design surface
+
+    // Selecting a factory patch adopts that patch's OWN filter, amp envelope and effects
+    // into our parameters — see adoptFactoryPatchSettings. Guarded on the patch number so
+    // it runs once per selection and never fights the user's own knob moves.
+    // ⚠️ setStateInformation seeds it with the restored patch number, so re-opening a
+    // session does NOT re-adopt over the settings that session saved.
+    int  lastAdoptedPatch = -1;
+    void adoptFactoryPatchSettings();   // message thread only
     bool helpTips = true;   // hover tooltips. On by default: AMY is not a familiar synth.
 
     // Loaded-preset identity. The audio thread may touch ONLY the atomics: host automation
