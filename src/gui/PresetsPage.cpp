@@ -256,7 +256,14 @@ void PresetsPage::listBoxItemDoubleClicked(int row, const juce::MouseEvent& e) {
 
 void PresetsPage::loadRow(int row)
 {
-    const auto& ref = rows[(size_t) row];
+    // Copy, don't reference: the prompt is async, and rebuildRows() can reallocate `rows`
+    // while it is open.
+    const PresetRef ref = rows[(size_t) row];
+    dialogs.confirmDiscardIfDirty([this, ref] { loadRowNow(ref); });
+}
+
+void PresetsPage::loadRowNow(const PresetRef& ref)
+{
     if (ref.isFactory())
     {
         // Selecting a factory patch: engine -> Factory, then the patch number. The

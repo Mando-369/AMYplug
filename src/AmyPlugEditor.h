@@ -341,7 +341,8 @@ private:
     using Apvts = juce::AudioProcessorValueTreeState;
 
     void timerCallback() override;
-    void loadPreset(const PresetRef&);
+    void loadPreset(const PresetRef&);    // asks first if the loaded preset has unsaved edits
+    void loadPresetNow(const PresetRef&);
     void stepPreset(int delta);           // ‹ › over the flat catalogue, wrapping
     void showPresetMenu();                // the field's menu: FACTORY banks, USER banks, Presets tab
     void showSaveDialog();
@@ -365,6 +366,7 @@ private:
     juce::AlertWindow* beginDialog(const juce::String& title, const juce::String& message,
                                    juce::MessageBoxIconType icon) override;
     void showDialog(std::function<void (juce::AlertWindow&, int)> onResult) override;
+    void confirmDiscardIfDirty(std::function<void()> proceed) override;
     void dismissDialog();
 
     // Tabs by name. PRESETS is first, so a fresh Factory-engine instance opens on the

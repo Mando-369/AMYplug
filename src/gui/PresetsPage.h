@@ -20,6 +20,10 @@ struct DialogHost
     virtual juce::AlertWindow* beginDialog(const juce::String& title, const juce::String& message,
                                            juce::MessageBoxIconType icon) = 0;
     virtual void showDialog(std::function<void (juce::AlertWindow&, int)> onResult) = 0;
+    // Run `proceed` unless the loaded preset has unsaved edits, in which case ask first.
+    // Both routes into a preset load go through this — the header's arrows and menu, and
+    // the list here — so neither can forget it.
+    virtual void confirmDiscardIfDirty(std::function<void()> proceed) = 0;
 };
 
 // The PRESETS tab: a directory tree on the left (FACTORY banks, USER banks), the
@@ -60,7 +64,8 @@ private:
     void rebuildTree();
     void rebuildRows();
     void setFilter(Filter f);
-    void loadRow(int row);
+    void loadRow(int row);          // asks first if the loaded preset has unsaved edits
+    void loadRowNow(const PresetRef&);
     void updateInfo();
 
     // Actions (right column). Every destructive one confirms with explicit button IDs.

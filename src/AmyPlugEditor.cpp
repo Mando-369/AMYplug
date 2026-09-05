@@ -1475,7 +1475,40 @@ void PresetField::paintButton(juce::Graphics& g, bool over, bool down)
     }
 }
 
+// Loading a preset REPLACES every sound parameter, so an edited patch that has not been
+// saved is gone the moment it happens — and the arrows make that one stray click away.
+// Ask first. Nothing here decides for the user: Save As... hands them the save dialog and
+// does NOT load, so the load is always a second, deliberate action.
+void AmyPlugEditor::confirmDiscardIfDirty(std::function<void()> proceed)
+{
+    if (! proc.isPresetDirty()) { proceed(); return; }
+
+    const auto ref  = proc.loadedPreset();
+    const bool named = ref.isFactory() && ref.factoryIndex >= 0 && ref.factoryIndex < kBuiltinPatchCount;
+    const auto name = named ? juce::String(kBuiltinPatchNames[ref.factoryIndex])
+                            : (ref.name.isNotEmpty() ? ref.name : juce::String("This patch"));
+    auto* dlg = beginDialog("Unsaved changes",
+                            name + " has been edited.\nLoading another preset will discard those changes.",
+                            juce::MessageBoxIconType::WarningIcon);
+    if (dlg == nullptr) { proceed(); return; }   // a prompt is already up; don't stack them
+    dlg->addButton("Save As...", 2);
+    dlg->addButton("Discard",    1);
+    dlg->addButton("Cancel",     0);
+    styleDialogChrome(*dlg);
+    showDialog([this, proceed] (juce::AlertWindow&, int result)
+    {
+        if (result == 1) proceed();              // discard and load
+        else if (result == 2) presetsPage.saveAs();   // save; the load is theirs to repeat
+        // 0, escape, or the editor closing: stay where we are.
+    });
+}
+
 void AmyPlugEditor::loadPreset(const PresetRef& ref)
+{
+    confirmDiscardIfDirty([this, ref] { loadPresetNow(ref); });
+}
+
+void AmyPlugEditor::loadPresetNow(const PresetRef& ref)
 {
     if (ref.isFactory())
     {
