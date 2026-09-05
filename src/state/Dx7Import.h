@@ -62,4 +62,17 @@ bool factoryFmWireToParams(const juce::String& wire, PatchModel::FmParams& out);
 // osc0's amp envelope fills BOTH our amp and filter envelopes. Approximate (the
 // envelope routing differs from ours) but captures the patch's character for editing.
 bool factoryAnalogWireToParams(const juce::String& wire, PatchModel::AnalogParams& out);
+
+// The bus-directed effects a factory patch carries in its own wire — `x<low,mid,high>`
+// (EQ, dB) and `k<level,maxdelay,rate,depth>` (chorus). The Juno patches lean on this:
+// most of them ship chorus at full level and a +7/-3/-3 EQ tilt, and that IS the patch's
+// character. Without carrying it across, "To Editor" dropped it and the sound changed.
+// Returns false if the wire is bus-directed-command-free.
+struct FactoryFx
+{
+    bool  hasEq = false, hasChorus = false;
+    float eqLow = 0.0f, eqMid = 0.0f, eqHigh = 0.0f;          // dB
+    float chorusLevel = 0.0f, chorusRate = 0.5f, chorusDepth = 0.5f;
+};
+bool factoryFxFromWire(const juce::String& wire, FactoryFx& out);
 } // namespace amyplug

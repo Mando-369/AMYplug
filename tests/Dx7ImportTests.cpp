@@ -283,6 +283,33 @@ TEST_CASE("Factory wire decode rejects a non-FM (Juno) patch", "[dx7][factory]")
 }
 
 // --- Factory Juno (analog) decode ------------------------------------------
+TEST_CASE("Factory bus FX (chorus + EQ) decode off a patch's own wire", "[dx7][factory][fx]")
+{
+    // Most Juno patches end with `x<low,mid,high>k<level,,rate,depth>` — chorus at full
+    // level and a +7/-3/-3 tilt. That IS the patch: without carrying it across, "To Editor"
+    // dropped the chorus every Juno preset is voiced around. The tokens carry no `v`, so
+    // the osc decoders skip them, which is how this went unnoticed.
+    FactoryFx fx;
+    REQUIRE(factoryFxFromWire("v0w20Zv0a1Zx7,-3,-3k1,,0.5,0.5Z", fx));
+    CHECK(fx.hasEq);      CHECK(fx.eqLow == Approx(7.0f));  CHECK(fx.eqMid == Approx(-3.0f));
+    CHECK(fx.eqHigh == Approx(-3.0f));
+    CHECK(fx.hasChorus);  CHECK(fx.chorusLevel == Approx(1.0f));
+    CHECK(fx.chorusRate  == Approx(0.5f));    // idx 2 — idx 1 is maxdelay, left empty
+    CHECK(fx.chorusDepth == Approx(0.5f));
+
+    // Patch 40's form: EQ flat, chorus off, and the rate/depth fields absent entirely.
+    FactoryFx off;
+    REQUIRE(factoryFxFromWire("v0w20Zx0,0,0k0Z", off));
+    CHECK(off.eqLow == Approx(0.0f));
+    CHECK(off.chorusLevel == Approx(0.0f));
+    CHECK(off.chorusRate == Approx(0.5f));    // absent -> AMY's default, not 0
+
+    // A wire with no bus-directed command at all must say so rather than report zeros,
+    // or "To Editor" would silently wipe the user's FX on those patches.
+    FactoryFx none;
+    CHECK_FALSE(factoryFxFromWire("v0w20c2L1G4Zv2w1c3L1Z", none));
+}
+
 TEST_CASE("Factory analog decode maps a Juno preset onto OSC A/B/C/D + VCF/LFO", "[dx7][factory][analog]")
 {
     // Juno #0 "A11 Brass Set 1", verbatim from patches.h. 4 DCOs on v2..v5, VCF/VCA

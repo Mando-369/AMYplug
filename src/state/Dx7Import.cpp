@@ -410,6 +410,39 @@ float nthVal(const juce::String& list, int n, float def)
 }
 } // namespace
 
+bool factoryFxFromWire(const juce::String& wire, FactoryFx& out)
+{
+    // Bus-directed commands carry no `v`, so scanOsc returns osc < 0 for their token and
+    // the osc decoders skip it — which is exactly how this got missed. Same scanner,
+    // opposite filter.
+    juce::StringArray toks; toks.addTokens(wire, "Z", "");
+    FactoryFx fx;
+    for (auto& tk : toks)
+    {
+        if (tk.isEmpty()) continue;
+        OscFields o = scanOsc(tk);
+        if (o.osc >= 0) continue;                     // osc-directed, not ours
+        if (o.f.count('x'))
+        {
+            fx.hasEq  = true;
+            fx.eqLow  = nthVal(o.f.at('x'), 0, 0.0f);
+            fx.eqMid  = nthVal(o.f.at('x'), 1, 0.0f);
+            fx.eqHigh = nthVal(o.f.at('x'), 2, 0.0f);
+        }
+        if (o.f.count('k'))
+        {
+            // k<level,maxdelay,rate,depth> — maxdelay (idx 1) is a buffer size we pin to
+            // AMY's default and do not expose, and the patches leave it empty anyway.
+            fx.hasChorus   = true;
+            fx.chorusLevel = nthVal(o.f.at('k'), 0, 0.0f);
+            fx.chorusRate  = nthVal(o.f.at('k'), 2, 0.5f);
+            fx.chorusDepth = nthVal(o.f.at('k'), 3, 0.5f);
+        }
+    }
+    out = fx;
+    return fx.hasEq || fx.hasChorus;
+}
+
 bool factoryAnalogWireToParams(const juce::String& wire, PatchModel::AnalogParams& out)
 {
     // Juno patches define each osc across SEVERAL Z-tokens (structure, then params),

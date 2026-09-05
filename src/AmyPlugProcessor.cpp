@@ -1262,6 +1262,26 @@ bool AmyPlugProcessor::loadFactoryPatchIntoEditor(int patchNumber)
     if (model.synths.empty()) model.synths.push_back({});
     auto& s = model.synths[0];
 
+    // Carry the patch's OWN chorus and EQ across. Most Juno patches ship chorus at full
+    // level and a +7/-3/-3 tilt in their wire, and that is the patch's character — keeping
+    // the user's FX instead is what made "To Editor" sound like a different sound. Echo and
+    // reverb are deliberately NOT carried: they read as the room you put the patch in, not
+    // as part of it, and the factory patches leave them alone anyway.
+    if (FactoryFx fx; factoryFxFromWire(wire, fx))
+    {
+        if (fx.hasEq)
+        {
+            model.eqLow = fx.eqLow; model.eqMid = fx.eqMid; model.eqHigh = fx.eqHigh;
+            model.eqOn  = true;     // all-zero is AMY's own bypass, so this is still silent
+        }
+        if (fx.hasChorus)
+        {
+            model.chorus     = juce::jlimit(0.0f, 1.0f, fx.chorusLevel);
+            model.chorusRate = fx.chorusRate; model.chorusDepth = fx.chorusDepth;
+            model.chorusOn   = true;
+        }
+    }
+
     PatchModel::FmParams fm;
     if (factoryFmWireToParams(wire, fm))
     {
