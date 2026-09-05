@@ -111,8 +111,14 @@ public:
     // must not be able to produce an unusable window.
     void setUiScalePercent(int percent) { uiScale = juce::jlimit(kUiScaleMin, kUiScaleMax, percent); }
 
+    // The "?" toggle. Same reasoning as the size: a view preference, not a parameter, and
+    // it has to outlive the editor because the host destroys that on every window close.
+    bool helpTipsEnabled() const noexcept { return helpTips; }
+    void setHelpTipsEnabled(bool on) noexcept { helpTips = on; }
+
 private:
-    int  uiScale = 100;   // editor size, percent of the design surface
+    int  uiScale  = 100;    // editor size, percent of the design surface
+    bool helpTips = true;   // hover tooltips. On by default: AMY is not a familiar synth.
 
     // Loaded-preset identity. The audio thread may touch ONLY the atomics: host automation
     // moving patchA re-points the identity at a factory patch without building a string.

@@ -37,6 +37,7 @@ Branch `feat/ui-chrome-size-picker-and-engine-fixes`, six commits on top of `7ba
 | `e03d8ef` | **feat(preset)** bank operations — create / rename / move / delete, to the Trash |
 | `1d3cf79` | **feat(fx)** on/off switch on every FX card |
 | `3e77411` | **feat(preset)** PRESETS tab, one header field, bank-aware Save As and DX7 import |
+| *(new)* | **feat(ui)** hover help: a `?` toggle, ~190 tooltips, and the size picker moved under SAVE |
 
 AMY submodule stays at **1.2.16** (`dde55aac`). A bump to 1.2.162 was evaluated and **not
 taken** — see the `amy-submodule-bump` note if you have the memory dir, otherwise the short
@@ -65,6 +66,9 @@ clean machine. Record the JUCE version in §4.3.
 - **Arrows for user presets** — ‹ › now walk factory and user presets as one list, wrapping.
 - **Banks / subfolders** — the PRESETS tab; BANK is an editable box in Save As, Move, Import.
 - **Sticky user-preset menu** — not reproduced; left as a watch item in §3.3.
+- **Hover help** — new since your round: a `?` next to the size button turns tooltips on and
+  off (on by default), and the size button itself moved out from under the wordmark to under
+  SAVE, because you could not find it there.
 
 ## Where to concentrate
 
@@ -77,6 +81,10 @@ they are where a regression would actually live:
   close the window with a menu open; check menus scale **with** the panel at 150%.
 - **§3.4 editor size** — all new. Corner-drag to an odd size, close and reopen the window, save
   and reopen the project.
+- **§3.3b hover help** — all new, and the *only* part of tooltips a test can't reach: JUCE
+  refuses to show a tip unless the process is in the foreground, so a hover has to be done by
+  hand. This exact feature already shipped silently broken once (every `setTooltip` in the
+  editor was dead, because no `TooltipWindow` existed), so hover a knob before believing it.
 
 §3.2 recall matters more than usual too: the editor size AND the loaded-preset identity are
 new state on the `AMYplugState` root, so a project saved by the **previous** release must
@@ -87,7 +95,7 @@ or in §3.2. Budget it like §3.1.
 
 ## Known-good expectations, so a surprise reads as a surprise
 
-- `ctest` = **77/77**. `[.stress]` = **67 assertions in 9 cases**.
+- `ctest` = **80/80**. `[.stress]` = **67 assertions in 9 cases**.
 - pluginval: an intermittent `Plugin state restoration` failure on a **bool** parameter is a
   documented race, not a bug — that is why it runs four times.
 - A build warning in `src/` is only a finding if it is *new*; the tree already carries ~130

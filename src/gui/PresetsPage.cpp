@@ -3,6 +3,7 @@
 #include "AmyColours.h"
 #include "AmyFonts.h"
 #include "ScaledContent.h"
+#include "Tooltips.h"
 #include "../AmyPlugProcessor.h"
 #include "../state/Parameters.h"
 
@@ -100,17 +101,20 @@ PresetsPage::PresetsPage(AmyPlugProcessor& processor, DialogHost& d, std::functi
     search.setFont(fonts::label(16.0f));
     search.setIndents(9, 3);
     search.onTextChange = [this] { rebuildRows(); };
+    tips::applyDeep(search, tips::pSearch);
     addAndMakeVisible(search);
 
     tree.setRootItemVisible(false);
     tree.setDefaultOpenness(true);
     tree.setIndentSize(14);
     tree.setColour(juce::TreeView::backgroundColourId, col::panel);
+    tips::applyDeep(tree, tips::pTree);
     addAndMakeVisible(tree);
 
     list.setRowHeight(26);
     list.setColour(juce::ListBox::backgroundColourId, col::panel);
     list.setColour(juce::ListBox::outlineColourId, juce::Colours::transparentBlack);
+    tips::applyDeep(list, tips::pList);
     addAndMakeVisible(list);
 
     for (auto* b : { &saveBtn, &saveAsBtn, &renameBtn, &moveBtn, &deleteBtn, &newBankBtn, &importBtn, &revealBtn })
@@ -123,6 +127,14 @@ PresetsPage::PresetsPage(AmyPlugProcessor& processor, DialogHost& d, std::functi
     newBankBtn.onClick = [this] { newBank(); };
     importBtn.onClick  = [this] { if (importDx7) importDx7(); };
     revealBtn.onClick  = [this] { revealFolder(); };
+    saveBtn.setTooltip(tips::pSave);
+    saveAsBtn.setTooltip(tips::pSaveAs);
+    renameBtn.setTooltip(tips::pRename);
+    moveBtn.setTooltip(tips::pMove);
+    deleteBtn.setTooltip(tips::pDelete);
+    newBankBtn.setTooltip(tips::pNewBank);
+    importBtn.setTooltip(tips::import);
+    revealBtn.setTooltip(tips::pReveal);
 
     refresh();
     startTimerHz(10);

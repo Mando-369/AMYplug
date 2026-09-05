@@ -69,6 +69,25 @@ private:
     bool dirty = false;
 };
 
+// The hover-help window. Parented into the scaled content for exactly the reason a
+// PopupMenu is (JUCE-UI-LnF__15): a TooltipWindow with no parent puts itself on the
+// DESKTOP, so it would draw at 100% next to a panel scaled to 150%, outside the plugin
+// window, and — with several instances open — several at once. Parented, it inherits the
+// transform, is clipped to the editor, and JUCE only offers it components from our peer.
+// `getTipFor` is the on/off switch: returning nothing suppresses every tip while leaving
+// the window alive, so the "?" toggle costs no teardown.
+class TipWindow final : public juce::TooltipWindow
+{
+public:
+    explicit TipWindow(juce::Component* parent) : juce::TooltipWindow(parent, 550) {}
+    void setTipsEnabled(bool on) { enabled = on; if (! on) hideTip(); }
+    bool tipsEnabled() const noexcept { return enabled; }
+    juce::String getTipFor(juce::Component& c) override
+    { return enabled ? juce::TooltipWindow::getTipFor(c) : juce::String(); }
+private:
+    bool enabled = true;
+};
+
 // A panel of labelled controls (rotaries + choice combos) grouped into titled
 // sections laid out in columns — used for the Juno engine tab and the FX rack.
 class ControlPanel : public juce::Component
@@ -354,6 +373,8 @@ private:
     ScaledContent    content { [this] (juce::Graphics& g) { paintContent(g); },
                                [this] { layoutContent(); } };
     juce::TextButton sizeButton { "100%" };   // size picker + live readout of the real size
+    juce::TextButton helpButton { "?" };      // tooltips on/off (lit = on)
+    void setHelpEnabled(bool on);             // button + TipWindow + processor, in one place
 
     // Global top bar.
     PresetField      presetField;
@@ -420,6 +441,10 @@ private:
     int  lastEngine = -1;   // tri-state so the first tick always applies the dim
     int  lastTab    = -1;   // detect user tab clicks to drive the engine
     int  lastAlgo   = -1;   // refresh the algorithm diagram when it changes
+
+    // Declared last: members die in reverse, so the tooltip window unparents itself before
+    // `content` (its parent) goes. Constructed here too — `content` is already built by then.
+    TipWindow tips { &content };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmyPlugEditor)
 };

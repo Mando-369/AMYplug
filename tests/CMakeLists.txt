@@ -90,6 +90,7 @@ juce_add_console_app(amyplug_ui_tests)
 target_sources(amyplug_ui_tests PRIVATE
     EditorSizeTests.cpp
     PresetStateTests.cpp
+    TooltipTests.cpp
     StressTests.cpp
     ${CMAKE_SOURCE_DIR}/src/AmyPlugProcessor.cpp
     ${CMAKE_SOURCE_DIR}/src/AmyPlugEditor.cpp

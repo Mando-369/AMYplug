@@ -3,6 +3,7 @@
 #include "AmyColours.h"
 #include "AmyFonts.h"
 #include "ScaledContent.h"
+#include <cmath>
 
 namespace amyplug
 {
@@ -53,6 +54,12 @@ AmyLookAndFeel::AmyLookAndFeel()
     setColour(juce::CaretComponent::caretColourId,       col::engineCyan);
 
     setColour(juce::Label::textColourId, col::textDim);
+
+    // Tooltips. We draw them ourselves below, but the ids are set anyway so anything that
+    // reads them (a stock component, a future override) lands on the same palette.
+    setColour(juce::TooltipWindow::backgroundColourId, col::panelRaised);
+    setColour(juce::TooltipWindow::textColourId,       col::textPrimary);
+    setColour(juce::TooltipWindow::outlineColourId,    col::hairline);
 
     setColour(juce::TextButton::textColourOnId,  col::textPrimary);
     setColour(juce::TextButton::textColourOffId, col::textPrimary);
@@ -400,6 +407,59 @@ void AmyLookAndFeel::drawCornerResizer(juce::Graphics& g, int w, int h,
         const float inset = step * (float) i;
         g.drawLine(fw - inset, fh - 2.0f, fw - 2.0f, fh - inset, 1.2f);
     }
+}
+
+// ===========================================================================
+// Tooltips
+// ===========================================================================
+// Both hooks share one layout so the box is always exactly the size of the text it is
+// about to draw — measuring with one font and drawing with another is how tooltips end
+// up clipped on the last word.
+static juce::TextLayout layoutTip(const juce::String& text, juce::Colour ink, float maxWidth)
+{
+    juce::AttributedString as;
+    as.setJustification(juce::Justification::centredLeft);
+    as.append(text, fonts::label(15.0f), ink);
+    juce::TextLayout tl;
+    tl.createLayout(as, maxWidth);
+    return tl;
+}
+
+static constexpr float kTipMaxW = 300.0f, kTipPadX = 10.0f, kTipPadY = 7.0f;
+
+juce::Rectangle<int> AmyLookAndFeel::getTooltipBounds(const juce::String& tipText,
+                                                      juce::Point<int> screenPos,
+                                                      juce::Rectangle<int> parentArea)
+{
+    const auto tl = layoutTip(tipText, juce::Colours::black, kTipMaxW);
+    const int w = (int) std::ceil(tl.getWidth())  + (int) (kTipPadX * 2.0f);
+    const int h = (int) std::ceil(tl.getHeight()) + (int) (kTipPadY * 2.0f);
+
+    // Flip to the other side of the pointer near an edge, then clamp — the tip is parented
+    // into the scaled content, so `parentArea` is the editor and it can never escape the
+    // window the way a desktop tooltip does.
+    return juce::Rectangle<int>(screenPos.x > parentArea.getCentreX() ? screenPos.x - (w + 12)
+                                                                     : screenPos.x + 18,
+                                screenPos.y > parentArea.getCentreY() ? screenPos.y - (h + 8)
+                                                                     : screenPos.y + 18,
+                                w, h)
+             .constrainedWithin(parentArea);
+}
+
+void AmyLookAndFeel::drawTooltip(juce::Graphics& g, const juce::String& text, int width, int height)
+{
+    auto r = juce::Rectangle<float>((float) width, (float) height).reduced(0.5f);
+    // A parented tooltip has no peer, so there is no window shadow to inherit — a 1px offset
+    // scrim under the card does the lifting instead.
+    g.setColour(juce::Colours::black.withAlpha(0.35f));
+    g.fillRoundedRectangle(r.translated(0.0f, 1.0f), 4.0f);
+    g.setColour(findColour(juce::TooltipWindow::backgroundColourId));
+    g.fillRoundedRectangle(r, 4.0f);
+    g.setColour(findColour(juce::TooltipWindow::outlineColourId));
+    g.drawRoundedRectangle(r, 4.0f, 1.0f);
+
+    layoutTip(text, findColour(juce::TooltipWindow::textColourId), (float) width - kTipPadX * 2.0f)
+        .draw(g, r.reduced(kTipPadX, kTipPadY));
 }
 
 // ===========================================================================

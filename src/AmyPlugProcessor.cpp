@@ -1326,7 +1326,8 @@ void AmyPlugProcessor::getStateInformation(juce::MemoryBlock& dest)
         if (hw->isConnected())      root.setProperty("hwDevice", hw->connectedName(), nullptr);
         if (hw->serialConnected())  root.setProperty("hwSerial", hw->serialPortName(), nullptr);
     }
-    root.setProperty("uiScale", uiScale, nullptr);   // editor size (view preference)
+    root.setProperty("uiScale", uiScale, nullptr);     // editor size (view preference)
+    root.setProperty("helpTips", helpTips, nullptr);   // tooltips on/off (view preference)
     // The loaded preset's NAME rides with the sound. Without this a reload brought the
     // parameters back and left the browser field saying nothing.
     {
@@ -1362,6 +1363,9 @@ void AmyPlugProcessor::setStateInformation(const void* data, int size)
         // Defaults to 100 so a session written before the size picker existed still opens
         // at the design size. Goes through the setter, so a nonsense value is clamped.
         setUiScalePercent((int) root.getProperty("uiScale", 100));
+        // Defaults to ON, so a session written before the "?" toggle existed opens with
+        // tooltips available rather than silently suppressed.
+        setHelpTipsEnabled((bool) root.getProperty("helpTips", true));
 
         // Restore the loaded-preset identity AFTER replaceState: restoring the tree moved
         // every parameter and so tripped the dirty mark. Re-resolve by NAME and stop — never

@@ -6,6 +6,7 @@
 #include "state/Dx7Envelope.h"
 #include "gui/AmyFonts.h"
 #include "gui/AmyColours.h"
+#include "gui/Tooltips.h"
 #include "BuiltinPatchNames.h"
 #include <array>
 
@@ -137,6 +138,7 @@ void ControlPanel::addSection(const juce::String& title, juce::Colour accent, co
     const int sec = sectionTitles.size() - 1;
     auto btn = std::make_unique<PowerButton>();
     btn->setInk(col::headerTextOn(accent));
+    btn->setTooltip(tips::forParam(toggleParamId));
     // The attachment moves the button for a host/preset change as well as a click, and
     // any toggle change lands here — so the dim follows the PARAMETER, not the mouse.
     auto* raw = btn.get();
@@ -206,6 +208,11 @@ void ControlPanel::addKnob(const juce::String& paramId, const juce::String& name
     addAndMakeVisible(*c->knob);
     styleControlLabel(c->label, name);
     addAndMakeVisible(c->label);
+    // One funnel for every knob in the plugin: the tip comes from the parameter id, so a
+    // control added later is documented by adding a row to Tooltips.h, not by editing here.
+    const auto tip = tips::forParam(paramId);
+    tips::applyDeep(*c->knob, tip);
+    c->label.setTooltip(tip);
     c->ka = std::make_unique<Apvts::SliderAttachment>(apvts, paramId, *c->knob);
     controls.push_back(std::move(c));
 }
@@ -220,6 +227,9 @@ void ControlPanel::addChoice(const juce::String& paramId, const juce::String& na
     addAndMakeVisible(*c->combo);
     styleControlLabel(c->label, name);
     addAndMakeVisible(c->label);
+    const auto tip = tips::forParam(paramId);
+    tips::applyDeep(*c->combo, tip);
+    c->label.setTooltip(tip);
     c->ca = std::make_unique<Apvts::ComboBoxAttachment>(apvts, paramId, *c->combo);
     controls.push_back(std::move(c));
 }
@@ -369,11 +379,18 @@ HardwarePanel::HardwarePanel(AmyPlugProcessor& p) : proc(p)
     addAndMakeVisible(firmwareLabel);
     flashLink.setFont(fonts::mono(15.5f), false, juce::Justification::centred);
     flashLink.setColour(juce::HyperlinkButton::textColourId, col::engineCyan);
-    flashLink.setTooltip("Open the AMYboard WebSerial flasher to update the firmware");
+    flashLink.setTooltip(tips::hwFlash);
     addChildComponent(flashLink);   // only shown when an update is available
+    deviceBox.setTooltip(tips::hwMidi);
+    serialBox.setTooltip(tips::hwSerial);
     addAndMakeVisible(deviceBox);
     addAndMakeVisible(serialBox);
     for (auto* b : { &refreshBtn, &detectBtn, &connectBtn, &disconnectBtn, &sendBtn, &firmwareBtn }) addAndMakeVisible(*b);
+    refreshBtn.setTooltip(tips::hwRefresh);
+    detectBtn.setTooltip(tips::hwDetect);
+    connectBtn.setTooltip(tips::hwConnect);
+    disconnectBtn.setTooltip(tips::hwDisconn);
+    sendBtn.setTooltip(tips::hwSend);
 
     auto setMode = [this] (float hardware)   // 0 = Software, 1 = Hardware
     { if (auto* p = proc.apvts().getParameter(params::id::mode)) p->setValueNotifyingHost(hardware); };
@@ -415,7 +432,7 @@ HardwarePanel::HardwarePanel(AmyPlugProcessor& p) : proc(p)
     // over USB (tulip.version(), e.g. "20260627-abc1234") AND fetch the latest rolling build
     // from GitHub, then compare (hash + date). AMYboard has no version number — it's a
     // rolling release, so we present date + short hash. We never flash from the plugin.
-    firmwareBtn.setTooltip("Read the board's firmware and check GitHub for a newer AMYboard build");
+    firmwareBtn.setTooltip(tips::hwFirmware);
     firmwareBtn.onClick   = [this] { startFirmwareCheck(); };
 
     refreshDevices();
@@ -991,6 +1008,7 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     outGainKnob.setColour(juce::Slider::rotarySliderFillColourId, col::amber);
     outGainKnob.setNumDecimalPlacesToDisplay(1);
     outGainAtt = std::make_unique<Apvts::SliderAttachment>(s, params::id::outputGain, outGainKnob);
+    tips::applyDeep(outGainKnob, tips::outGain);
     content.addAndMakeVisible(outGainKnob);
     outGainLabel.setFont(fonts::label(13.0f).withExtraKerningFactor(0.06f));
     outGainLabel.setColour(juce::Label::textColourId, col::textDim);
@@ -999,14 +1017,18 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     // Preset row. One field names what is loaded (bank · name, " *" once edited); ‹ ›
     // step the flat catalogue; the field's menu and the PRESETS tab do the browsing.
     presetField.onClick = [this] { showPresetMenu(); };
+    presetField.setTooltip(tips::preset);
     content.addAndMakeVisible(presetField);
     prevButton.onClick = [this] { stepPreset(-1); };
     nextButton.onClick = [this] { stepPreset(+1); };
+    prevButton.setTooltip(tips::prev);
+    nextButton.setTooltip(tips::next);
     content.addAndMakeVisible(prevButton); content.addAndMakeVisible(nextButton);
     saveButton.onClick   = [this] { presetsPage.saveAs(); };
+    saveButton.setTooltip(tips::save);
     content.addAndMakeVisible(saveButton);
     importButton.onClick = [this] { importDx7(); };
-    importButton.setTooltip("Import a DX7 .syx cartridge as named FM user patches");
+    importButton.setTooltip(tips::import);
     content.addAndMakeVisible(importButton);
 
     // "To Editor": decode the selected factory DX7 preset into the editable FM tab.
@@ -1015,26 +1037,29 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     {
         proc.loadFactoryPatchIntoEditor(lastPatch);   // sets engine -> timer switches the tab
     };
-    toEditorButton.setTooltip("Load this factory preset's settings into the editable Juno / DX7 tab");
+    toEditorButton.setTooltip(tips::toEditor);
     content.addAndMakeVisible(toEditorButton);
 
     if (auto* ep = dynamic_cast<juce::AudioParameterChoice*>(s.getParameter(params::id::engine)))
         engineBox.addItemList(ep->choices, 1);
-    engineBox.setTooltip("Which engine drives synth 1: Factory preset, Analog (Juno tab), or FM (DX7 tab)");
+    tips::applyDeep(engineBox, tips::engine);
     engineAtt = std::make_unique<Apvts::ComboBoxAttachment>(s, params::id::engine, engineBox);
     content.addAndMakeVisible(engineBox);
     content.addAndMakeVisible(engineLabel);
 
     panicButton.setColour(juce::TextButton::buttonColourId, col::panicRed);
+    panicButton.setTooltip(tips::panic);
     panicButton.onClick = [this] { proc.requestPanic(); };
     content.addAndMakeVisible(panicButton);
 
     // Always-on engine status readout (text + colour set each tick in timerCallback).
     engineStatusLabel.setJustificationType(juce::Justification::centredRight);
     engineStatusLabel.setFont(fonts::header(13.0f).withExtraKerningFactor(0.06f));
+    engineStatusLabel.setTooltip(tips::status);
     content.addAndMakeVisible(engineStatusLabel);
     // The take-over button appears only when another instance holds the engine.
     takeoverButton.setColour(juce::TextButton::buttonColourId, col::amber);
+    takeoverButton.setTooltip(tips::takeover);
     takeoverButton.onClick = [this] { proc.takeOverSoftwareEngine(); };
     content.addChildComponent(takeoverButton);
 
@@ -1209,6 +1234,15 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     tabs.addTab("FX-MASTER", kPanel, &fxPage,   false);   // global FX + host master stage
     tabs.addTab("AMYboard",  kPanel, &hwPanel,  false);   // MIDI-out select + connect + send patch
     content.addAndMakeVisible(tabs);
+    // Tab buttons are built by addTab, so they can only be reached afterwards. The table is
+    // in tab order; the static_assert keeps the two from drifting apart.
+    {
+        auto& bar = tabs.getTabbedButtonBar();
+        static_assert((int) std::size(tips::tabs) == (int) Tab::Hardware + 1,
+                      "tips::tabs must have one entry per tab, in tab order");
+        for (int i = 0; i < bar.getNumTabs() && i < (int) std::size(tips::tabs); ++i)
+            if (auto* b = bar.getTabButton(i)) b->setTooltip(tips::tabs[i]);
+    }
 
     // Open on the tab matching the loaded engine, and seed lastTab so the first
     // timer tick doesn't read this as a user click (lastEngine stays -1 so the
@@ -1226,11 +1260,23 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     }
 
     // Size picker: a momentary button that is also a live readout of the real window size,
-    // so a corner-drag to an odd size shows "113%" rather than a label that lies.
+    // so a corner-drag to an odd size shows "113%" rather than a label that lies. It sits
+    // under SAVE, with the "?" beside it — under the brand wordmark, where it used to be,
+    // it read as part of the logo and went unnoticed.
     sizeButton.setClickingTogglesState(false);
-    sizeButton.setTooltip("Editor size - or drag the bottom-right corner");
+    sizeButton.setTooltip(tips::size);
     sizeButton.onClick = [this] { showSizeMenu(); };
     content.addAndMakeVisible(sizeButton);
+
+    // "?" — hover help on/off. Lit (cyan, dark glyph) means tips are on; its own tip goes
+    // quiet with all the others, so the lit state is what has to say "this is a switch".
+    helpButton.setClickingTogglesState(true);
+    helpButton.setColour(juce::TextButton::buttonOnColourId, col::engineCyan);
+    helpButton.setColour(juce::TextButton::textColourOnId,   col::panel);
+    helpButton.setTooltip(tips::help);
+    helpButton.onClick = [this] { setHelpEnabled(helpButton.getToggleState()); };
+    content.addAndMakeVisible(helpButton);
+    setHelpEnabled(proc.helpTipsEnabled());
 
     addAndMakeVisible(content);
 
@@ -1264,6 +1310,15 @@ void AmyPlugEditor::setUiScalePercent(int percent)
     percent = juce::jlimit(AmyPlugProcessor::kUiScaleMin, AmyPlugProcessor::kUiScaleMax, percent);
     proc.setUiScalePercent(percent);
     setSize(kBaseWidth * percent / 100, kBaseHeight * percent / 100);
+}
+
+// One place so the button, the tooltip window and the stored preference can never
+// disagree — including on the first paint, where the button starts unlit by default.
+void AmyPlugEditor::setHelpEnabled(bool on)
+{
+    proc.setHelpTipsEnabled(on);
+    tips.setTipsEnabled(on);
+    helpButton.setToggleState(on, juce::dontSendNotification);
 }
 
 void AmyPlugEditor::showSizeMenu()
@@ -1729,10 +1784,7 @@ void AmyPlugEditor::layoutContent()
 
     // --- header: brand | patch browser | OUT GAIN | status / engine·panic ---
     auto header = full.removeFromTop(92);             // +30px, for the bigger brand wordmark
-    auto brand = header.removeFromLeft(215);          // brand wordmark reserve (painted in paintContent)
-    // Size picker sits under the wordmark's subtitle — chrome next to chrome, clear of the
-    // patch browser. The wordmark occupies y 20..78 in content coords (see paintContent).
-    sizeButton.setBounds(brand.getX() + 4, 80, 58, 22);
+    header.removeFromLeft(215);                       // brand wordmark reserve (painted in paintContent)
     header = header.withSizeKeepingCentre(header.getWidth(), 62);   // centre the control band
 
     // Right cluster: status (top row), engine + PANIC (bottom row).
@@ -1772,9 +1824,21 @@ void AmyPlugEditor::layoutContent()
     prevButton.setBounds(row.removeFromLeft(30));  row.removeFromLeft(3);
     nextButton.setBounds(row.removeFromLeft(30));  row.removeFromLeft(8);
     presetField.setBounds(row.removeFromLeft(340)); row.removeFromLeft(8);
-    saveButton.setBounds(row.removeFromLeft(72));  row.removeFromLeft(4);
+    const auto saveArea = row.removeFromLeft(72);
+    saveButton.setBounds(saveArea);                row.removeFromLeft(4);
     importButton.setBounds(row.removeFromLeft(112)); row.removeFromLeft(4);
     toEditorButton.setBounds(row.removeFromLeft(96));
+
+    // Chrome strip under SAVE: the size read-out and the "?" toggle, as one pair centred on
+    // the button above them. Centre of the header, where the eye already is — the old spot
+    // under the brand wordmark read as part of the logo and went unfound.
+    constexpr int kSizeW = 58, kHelpW = 24, kChromeGap = 4, kChromeH = 22;
+    auto chrome = juce::Rectangle<int>(0, row.getBottom() + 4,
+                                       kSizeW + kChromeGap + kHelpW, kChromeH)
+                      .withX(saveArea.getCentreX() - (kSizeW + kChromeGap + kHelpW) / 2);
+    sizeButton.setBounds(chrome.removeFromLeft(kSizeW));
+    chrome.removeFromLeft(kChromeGap);
+    helpButton.setBounds(chrome);
 
     full.removeFromTop(10);
     auto r = full;

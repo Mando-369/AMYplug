@@ -10,7 +10,8 @@
 //     scale:    editor size in percent (60-150); the editor opens at whatever the
 //               processor has stored, which is what the size picker persists.
 //   amyplug_snapshot <out.png> chrome
-//     the modal chrome — a popup menu in every item state, plus both dialogs. These are
+//     the modal chrome — a popup menu in every item state, both dialogs, and the hover
+//     tooltip at its short and its wrapping length. These are
 //     modal objects the editor never contains, so they can't appear in a tab snapshot;
 //     this renders the LookAndFeel hooks JUCE itself calls. It proves the DRAWING only —
 //     parenting, click-to-close and dismissal need a real host (see JUCE-UI-LnF__15).
@@ -102,14 +103,27 @@ void drawDialog(juce::Graphics& g, juce::AlertWindow& w, juce::Point<int> at)
     w.paintEntireComponent(g, false);
 }
 
+// A tooltip, sized and painted through the same two hooks TooltipWindow calls. The real
+// window is a child of the scaled content and only appears after a hover dwell, so this is
+// the only way to see it without a host. `at` is the mouse position it is pointing at.
+void drawTip(juce::Graphics& g, amyplug::AmyLookAndFeel& lnf,
+             const juce::String& text, juce::Point<int> at, juce::Rectangle<int> parentArea)
+{
+    const auto box = lnf.getTooltipBounds(text, at, parentArea);
+    juce::Graphics::ScopedSaveState save(g);
+    g.setOrigin(box.getPosition());
+    lnf.drawTooltip(g, text, box.getWidth(), box.getHeight());
+}
+
 int renderChrome(const juce::String& outPath)
 {
     namespace col = amyplug::colours;
     amyplug::AmyLookAndFeel lnf;
 
-    juce::Image img(juce::Image::ARGB, 1280, 620, true);
+    constexpr int kW = 1280, kH = 700;
+    juce::Image img(juce::Image::ARGB, kW, kH, true);
     juce::Graphics g(img);
-    g.setGradientFill({ col::shellTop, 0.0f, 0.0f, col::shellBottom, 0.0f, 620.0f, false });
+    g.setGradientFill({ col::shellTop, 0.0f, 0.0f, col::shellBottom, 0.0f, (float) kH, false });
     g.fillAll();
 
     // --- patch-browser menu: bank headings, a ticked selection, a lit row -------
@@ -145,10 +159,16 @@ int renderChrome(const juce::String& outPath)
     save.setLookAndFeel(nullptr);
     info.setLookAndFeel(nullptr);
 
+    // --- tooltips: one that fits on a line, one long enough to wrap -------------
+    const juce::Rectangle<int> sheet(0, 0, kW, kH);
+    drawTip(g, lnf, "Reverb on or off", { 60, 500 }, sheet);
+    drawTip(g, lnf, "This oscillator's pitch at A4 (note 69); it tracks the keyboard from "
+                    "there. 440 is normal, 220 an octave down.", { 360, 500 }, sheet);
+
     g.setColour(col::textFaint);
     g.setFont(amyplug::fonts::mono(13.0f));
-    g.drawText(juce::String::fromUTF8("popup menus + dialogs \xe2\x80\x94 LookAndFeel hooks, rendered offscreen"),
-               12, 620 - 24, 900, 16, juce::Justification::centredLeft);
+    g.drawText(juce::String::fromUTF8("popup menus + dialogs + tooltips \xe2\x80\x94 LookAndFeel hooks, rendered offscreen"),
+               12, kH - 24, 900, 16, juce::Justification::centredLeft);
 
     writePng(img, outPath);
     return 0;

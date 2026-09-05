@@ -47,6 +47,8 @@ layout code works in design coordinates and knows nothing about scaling. Referen
   a host-driven resize all land in `resized()`, which writes the percentage back — so all
   three are remembered, and the button is a live *readout* (drag to an odd size and it shows
   `113%`, with no menu item ticked, which is correct: none of the presets *is* that size).
+- **The button sits under SAVE**, centred, with the `?` beside it. It began under the brand
+  wordmark, where it read as part of the logo and went unfound in the first test round.
 - ⚠️ **Read the stored size BEFORE `setResizeLimits`.** It clamps the editor's *current*
   bounds — `0x0` during construction — to the minimum, firing `resized()`, which writes that
   back. Read it afterwards and the plugin opens at 60% forever while every menu item still
@@ -147,6 +149,46 @@ prompt added later cannot forget any of it:
 ⚠️ **None of the *behaviour* here is verifiable headlessly** — parenting, click-to-close and
 dismissal all need a real modal state and a window to drag. `amyplug_snapshot … chrome`
 verifies the **drawing** only; confirm the rest in a host.
+
+## Hover help — the `?` toggle and `Tooltips.h`
+
+⚠️ **`setTooltip` on its own does nothing.** A tip is only ever shown by a live
+`TooltipWindow`, and until this was built there was none anywhere in AMYplug — every
+`setTooltip` call in the editor was dead code that read as a working feature. If tooltips
+ever go quiet, look for the *window* first, not for the strings.
+
+- **One window, parented into `content`** (`TipWindow`, `AmyPlugEditor.h`). Same rule as a
+  `PopupMenu`: unparented, a `TooltipWindow` puts itself on the **desktop**, so it would draw
+  at 100% beside a panel scaled to 150%, escape the plugin window, and multiply with every
+  open instance (JUCE even asserts on two sharing a parent). Parented, it inherits the
+  transform, is clipped to the design surface, and JUCE only offers it components from our
+  own peer.
+- **The `?` button gates it via `getTipFor`**, which returns nothing while help is off — the
+  window stays alive, it just stops answering, so the toggle costs no teardown. Lit (cyan,
+  dark glyph) means tips are on. The preference lives on the **processor** (`helpTips` on the
+  `AMYplugState` root), for the same reason the size does: the host destroys the editor on
+  every window close. Defaults **on** — AMY is not a familiar synth.
+- **The strings live in `src/gui/Tooltips.h`**, keyed by parameter id, and
+  `ControlPanel::addKnob` / `addChoice` / `addSection` look them up. A control added later is
+  documented by adding a row to that header, not by editing the editor. A parameter with no
+  row gets an empty string and shows nothing, which is the right answer for a control whose
+  label already says it — a tip that only re-reads the label is worse than none.
+- ⚠️ **`tips::applyDeep`, not `setTooltip`, for compound controls.** The hovered component is
+  whatever is topmost under the mouse, which for a knob is its **LCD value box** and for a
+  combo its **text label**. Worse, `Slider` copies the owner's tooltip into that value box
+  when the box is *built* (`juce_Slider.cpp:606`) and never again — and the box is built by
+  the `Slider` constructor, before any caller can set a tooltip. So a knob would carry a tip
+  while the read-out under it showed nothing.
+- `getTooltipBounds` / `drawTooltip` are overridden: `LookAndFeel_V4` inherits V2's stock
+  grey box. Both share one `layoutTip` so the box is exactly the size of the text it is about
+  to draw. `amyplug_snapshot … chrome` renders a short and a wrapping tip.
+- ⚠️ **The live hover is not verifiable headlessly.** `TooltipWindow::getTipFor` returns
+  nothing unless the process is in the **foreground**, and the window's visibility is taken
+  down by its own 123 ms poll as soon as nothing is under the mouse — both were tried as
+  assertions and both passed with the toggle deleted. `tests/TooltipTests.cpp` therefore
+  asserts what *is* observable (a parented window exists, 722 of 749 tooltip-capable
+  components carry a tip across all eight tabs, a knob's children carry it too, and the
+  button flips the window's own flag); the hover itself is protocol §3.3.
 
 ## Fonts — bundled, `DeletedAtShutdown`
 

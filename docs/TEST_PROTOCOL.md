@@ -83,7 +83,7 @@ cmake --preset mac-release && cmake --build --preset mac-release
 New warnings are not automatically a blocker, but read them. A warning in `src/` that was
 not there last release is a finding until someone says otherwise.
 
-### 1.2 Unit tests — 77 cases, ~1400 assertions
+### 1.2 Unit tests — 80 cases, ~1500 assertions
 
 ```bash
 ctest --preset mac-release --output-on-failure
@@ -96,7 +96,7 @@ Four targets, and knowing which one broke tells you where to look:
 | `amyplug_tests` | 11 | Wire-message builder (`AmyWire`), SysEx framing, BitCrusher, WDF clipper | nothing — pure logic |
 | `amyplug_engine_tests` | 10 | The **real AMY engine** renders, silences on note-off, honours panic; FM octave tuning; pitch bend moves the audio oscs but **not** the LFOs | libamy |
 | `amyplug_logic_tests` | 54 | `NoteRouter` lifecycle (every note-on balanced, sustain, mono stack, transport stop), `PatchModel` round-trip, DX7 import/decode, patch library + **bank operations**, both engines' wire emission, **FX switches**, the preset catalogue | JUCE, no GUI |
-| `amyplug_ui_tests` | 2 | Editor **construction** (opens at the stored size, corner grip, a dragged size survives a round-trip, **constructing the editor dirties nothing**) and the **loaded-preset identity + dirty mark** at the real processor | full editor + libamy + fonts |
+| `amyplug_ui_tests` | 5 | Editor **construction** (opens at the stored size, corner grip, a dragged size survives a round-trip, **constructing the editor dirties nothing**), the **loaded-preset identity + dirty mark** at the real processor, and **hover help** (a parented `TooltipWindow` exists, every tab's controls carry tips, the `?` toggle round-trips) | full editor + libamy + fonts |
 
 ⚠️ **A green `ctest` does not mean the plugin works.** These are logic and construction
 tests. Everything a user actually touches is in § 3.
@@ -237,10 +237,30 @@ this proves the *behaviour*, and the two fail independently.
 - [ ] At 150%: menus and dialogs scale **with** the panel, not at 100% over it
 - [ ] ⚠️ *Watch item:* the preset field's menu was once reported as "opens and closes immediately" on an M1, not reproduced since. If it recurs, note the editor size and the host before anything else.
 
+### 3.3b Hover help — the only part of tooltips a machine cannot check
+
+⚠️ **This is the one that has already shipped broken once.** Before the `?` toggle existed,
+`setTooltip` was called all over the editor with no `TooltipWindow` anywhere, so not a single
+tip could ever appear — and nothing failed. `tests/TooltipTests.cpp` now proves a parented
+window exists and that 722 of 749 tooltip-capable components carry a tip; it **cannot** prove
+a hover shows one, because `TooltipWindow` refuses to answer unless the process is in the
+foreground. So hover, here, in a host.
+
+- [ ] Hover a knob for ~half a second → a tip appears, in the AMYplug palette (not stock grey)
+- [ ] Hover the knob's **LCD read-out** → the *same* tip (this is the `Slider` value-box trap)
+- [ ] Hover a **combo's text**, a tab button, PANIC, the preset field → each has its own tip
+- [ ] **Drag a knob** → no tip appears while the button is down
+- [ ] Click **`?`** → it goes dark, and no tip appears anywhere afterwards
+- [ ] Click `?` again → tips are back
+- [ ] Save the project with `?` off, reopen → still off; a project saved before this build opens with tips **on**
+- [ ] At 150%: the tip scales **with** the panel, and never draws outside the plugin window
+- [ ] A long tip (e.g. an oscillator's Freq) wraps to two lines and is not clipped
+
 ### 3.4 Editor size — needs a window to drag
 
 Reference: `Code Repo/JUCE-UI-LnF__13`.
 
+- [ ] The size button is **under SAVE**, with `?` beside it (it moved out from under the wordmark)
 - [ ] Menu presets 75 / 100 / 125 / 150 % all apply
 - [ ] **Drag the corner** to an odd size → button reads that size (e.g. `113%`), no menu item ticked
 - [ ] Close and reopen the plugin window → it comes back at the size you left it
@@ -346,6 +366,7 @@ Put this in the release notes — a bug report against "AMYplug 0.x" is unaction
 | 3.1 | **No hanging notes** | | | |
 | 3.2 | Recall | | | |
 | 3.3 | Modal chrome | | | |
+| 3.3b | Hover help | | | |
 | 3.4 | Editor size | | | |
 | 3.5 | Hardware mode | | | |
 | 3.6 | Multi-instance | | | |

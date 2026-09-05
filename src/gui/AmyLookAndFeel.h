@@ -60,6 +60,13 @@ public:
     // Corner grip -----------------------------------------------------------
     void drawCornerResizer(juce::Graphics&, int w, int h, bool over, bool dragging) override;
 
+    // Tooltips ---------------------------------------------------------------
+    // Pure virtuals on TooltipWindow::LookAndFeelMethods — LookAndFeel_V4 inherits V2's
+    // stock grey box, which is the one piece of chrome that had no AMYplug styling.
+    juce::Rectangle<int> getTooltipBounds(const juce::String& tipText, juce::Point<int> screenPos,
+                                          juce::Rectangle<int> parentArea) override;
+    void drawTooltip(juce::Graphics&, const juce::String& text, int width, int height) override;
+
     // Dialogs (AlertWindow) --------------------------------------------------
     // Same story as popup menus: an AlertWindow is a top-level window, so it only
     // gets this LookAndFeel if it is handed it or parented into the editor.
