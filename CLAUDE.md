@@ -100,6 +100,17 @@ cmake --build --preset mac-release
 ctest --preset mac-release             # unit tests
 ```
 
+**For iteration, use `local-fast` instead** — Ninja + ccache + arm64-only, and it does NOT
+install into `~/Library`. A one-line UI edit rebuilds in ~23s against ~150s for `mac-release`.
+
+```bash
+cmake --preset local-fast && cmake --build --preset local-fast
+cmake --build --preset local-fast --target amyplug_snapshot   # narrower still
+```
+
+⚠️ **Never package or install from `local-fast`** — it is arm64-only. The zip and everything
+that reaches the test machine come from `mac-release`, which stays universal and Xcode-built.
+
 - JUCE plugin defined via the JUCE CMake API (`juce_add_plugin`). Formats: `AU VST3 Standalone`.
 - libamy built by `cmake/amy.cmake` as a static lib from the submodule `src/`.
 - Validate the built plugin with `pluginval` (wired into CI) and AU validation (`auval -v aumu Amyp Mand`). CI is enabled (`.github/workflows/build.yml`) and free on this public repo.

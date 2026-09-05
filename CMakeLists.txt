@@ -21,6 +21,29 @@ endif()
 
 option(AMYPLUG_BUILD_TESTS "Build AMYplug unit tests" ON)
 
+# ccache — a compile cache keyed on the source + the exact flags, so recompiling an
+# unchanged translation unit is a disk read. Worth a lot here: a one-line UI edit still
+# drags JUCE's headers through the compiler.
+#
+# ⚠️ Only wired in for generators that honour COMPILER_LAUNCHER (Ninja, Makefiles). The
+# Xcode generator IGNORES it, so the mac-debug / mac-release presets are unchanged and the
+# release artefact is built exactly as before. No hard dependency: absent ccache, silent.
+# ⚠️ juce_add_plugin's COPY_PLUGIN_AFTER_BUILD installs into ~/Library/Audio/Plug-Ins after
+# every build. Fine for the release presets; NOT fine for a fast arm64-only iteration build,
+# which would silently replace the universal bundle your DAW loads with a different binary.
+# The local-fast preset turns this OFF.
+option(AMYPLUG_COPY_PLUGIN "Install built plug-ins into ~/Library/Audio/Plug-Ins" ON)
+
+option(AMYPLUG_USE_CCACHE "Use ccache when available (Ninja/Makefile generators only)" ON)
+if(AMYPLUG_USE_CCACHE AND NOT CMAKE_GENERATOR MATCHES "Xcode|Visual Studio")
+    find_program(CCACHE_PROGRAM ccache)
+    if(CCACHE_PROGRAM)
+        set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_PROGRAM}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+        message(STATUS "AMYplug: ccache enabled (${CCACHE_PROGRAM})")
+    endif()
+endif()
+
 # ---------------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------------
@@ -77,7 +100,7 @@ juce_add_plugin(AMYplug
     NEEDS_MIDI_INPUT            TRUE
     NEEDS_MIDI_OUTPUT           TRUE          # for Hardware mode (SysEx to AMYboard)
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-    COPY_PLUGIN_AFTER_BUILD     TRUE
+    COPY_PLUGIN_AFTER_BUILD     ${AMYPLUG_COPY_PLUGIN}
     VST3_CATEGORIES             "Instrument" "Synth"
     AU_MAIN_TYPE                "kAudioUnitType_MusicDevice")
 
@@ -144,7 +167,7 @@ juce_add_plugin(AMYplugFX
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
     NEEDS_MIDI_OUTPUT           FALSE
-    COPY_PLUGIN_AFTER_BUILD     TRUE
+    COPY_PLUGIN_AFTER_BUILD     ${AMYPLUG_COPY_PLUGIN}
     VST3_CATEGORIES             "Fx" "Distortion"
     AU_MAIN_TYPE                "kAudioUnitType_Effect")
 
