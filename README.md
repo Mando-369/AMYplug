@@ -110,8 +110,12 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 
   > **The real limit is your CPU.** AMY renders every voice in software, and each one costs: the analog engine builds 6 oscillators per voice (more with Unison), and each DX7 voice runs 6 FM operators. So 16 voices with Unison 4 is *many* times the load of the 6-voice default. If you hear crackles or your DAW reports overload, lower **Voices** (or **Unison**) first, or raise your audio buffer size.
 - **Juno LFO** modes (Poly / Free / Key / Tempo-Sync).
-- **AMY’s full FX bus** on the master — EQ, chorus, echo and reverb.
-- **Two extra output effects of our own**, on top of AMY’s bus: a **Bit Crusher** (independent sample-rate + bit-depth reduction) and a **Diode Clipper** — a wave-digital-filter model of an antiparallel diode pair, for analog-style saturation rather than generic distortion. Both are Faust ports, and both are automatable like everything else.
+- **AMY’s FX bus** on the master — chorus, echo and reverb — plus **Synth Vol**, the engine’s own output level, which is what drives the two effects after it.
+- **Three output effects of our own**, after AMY’s bus: a **3-band EQ**, a **Bit Crusher** (independent sample-rate + bit-depth reduction) and a **Diode Clipper** — a wave-digital-filter model of an antiparallel diode pair, for analog-style saturation rather than generic distortion. All automatable like everything else.
+
+  > **Why our own EQ?** AMY’s runs its three bands *in parallel* and sums them, which only reconstructs the signal while all three gains are equal — move one band alone and the cancellation that made it work becomes a notch. Measured against a flat reference on AMY 1.2.16, a **+1 dB** low boost put a **−7.7 dB** hole at 1.5 kHz; +6 dB put it at −15.1 dB. Ours runs a low shelf, a bell and a high shelf **in series**, so the bands are independent and the control is monotonic. Findings and a proposed upstream fix are written up in [`docs/upstream/AMY-eq-issue.md`](docs/upstream/AMY-eq-issue.md); if AMY changes it, one flag hands the job back.
+- **Hover help** — a **?** next to the size read-out turns tooltips on and off (on by default). Every knob, menu and button explains itself.
+- **Resizable editor** — 60–150% from the size button, or drag the bottom-right corner to any size. It is remembered with the project.
 - **A second plugin included — [AMYplugFX](#amyplugfx--the-synths-whole-fx-bus-as-an-effect-plugin)**: the entire output section (filter + EQ + chorus + echo + reverb + bit crusher + diode clipper) as an AU/VST3 **audio effect** you can insert on *any* track. Unlike the instrument, you can run as many of these as you like.
 - **Full host automation** of every sound parameter, with **bit-faithful recall** — the plugin keeps a canonical patch model that saves and restores with your DAW project.
 - **No hanging notes**: deterministic note-off, transport-stop flush, and a Panic button.
@@ -121,13 +125,25 @@ See [`CLAUDE.md`](CLAUDE.md) for the architecture brief and [`docs/`](docs/) for
 
 ## The interface, tab by tab
 
-Everything above the tabs is always visible: the **patch browser** (factory presets + your own user patches, with Import DX7 and “To Editor”), the **OUT GAIN** master, an **engine indicator** showing whether you’re hearing Software or Hardware, the **engine selector**, and **PANIC**.
+Everything above the tabs is always visible: the **preset field** (click it to browse, ‹ › to step through everything factory and user in one list), **Save…**, **Import DX7…** and **To Editor**, the **OUT GAIN** master, an **engine indicator** showing whether you’re hearing Software or Hardware, the **engine selector**, and **PANIC**. Under the Save button sit the **size read-out** — click for 75/100/125/150%, or drag the window’s bottom-right corner to any size — and the **?** that turns hover help on and off.
+
+The preset field shows `Bank · Name`, and adds a **\*** the moment you move anything, so you always know whether you are hearing the preset or your edit of it.
+
+### Presets — browsing, saving, banks
+
+![The Presets tab](docs/screenshots/presets.png)
+
+The full browser. A **tree** on the left (FACTORY banks — Juno, DX7, Piano, AMYboard — then your USER banks), the **list** in the middle, and the loaded preset’s details plus every library action on the right. Click a row to load it; type in **Search** to filter.
+
+Everything a bank can do lives here, so there is no convention to discover: **Save** / **Save As…** (into a bank you pick or type), **Rename…**, **Move to Bank…**, **Delete**, **New Bank…**, **Import DX7…** and **Reveal Folder**. Banks are simply folders on disk, so you can also organise them in the Finder. Deletes go to the **Trash**, never straight to `rm` — these are your files.
 
 ### Playing a preset vs. editing it — the “To Editor” button
 
 AMY’s built-in presets are stored as the engine’s own patch data, not as knob positions. Selecting one in the browser **plays** it immediately, but the Juno/DX7 tabs are a separate editable voice — so they keep showing whatever *they* hold, not the preset that’s sounding. The **engine indicator** tells you which you’re hearing: `SOFTWARE · Factory` means a browser preset, `· Analog` or `· FM` means the editable voice.
 
-**“To Editor” bridges the two.** It decodes the selected factory preset into the editable engine, fills in every knob, and jumps you to the matching tab — Juno presets (0–127) to **Juno**, DX7 presets (128–255) to the **DX7** tabs. From there it’s yours to change and **Save…** as a user patch. Your effects and output settings are kept; only the synth voice is replaced.
+**“To Editor” bridges the two.** It decodes the selected factory preset into the editable engine, fills in every knob, and jumps you to the matching tab — Juno presets (0–127) to **Juno**, DX7 presets (128–255) to the **DX7** tabs. From there it’s yours to change and **Save…** as a user patch.
+
+It also brings across the **chorus and EQ the preset carries in its own data** — most Juno patches are voiced around full chorus and an EQ tilt, and that *is* the sound — along with the patch’s own output level. Echo and reverb are left as you had them: those read as the room you put a patch in, not as part of it.
 
 > Piano and the AMYboard default (256–257) have no editable structure, so the button is greyed out for them — they play, but there’s nothing to decode.
 >
@@ -167,7 +183,13 @@ Each operator has the DX7's 4-stage rate/level envelope (**R1–R4**, **L1–L4*
 
 ![FX-Master tab](docs/screenshots/fx-master.png)
 
-Shared by both engines: **EQ** (low/mid/high), **Chorus** (level/rate/depth), **Echo** (level/time/feedback/tone) and **Reverb** (level/size/damping) — these are AMY’s own bus effects. Then the two host-side effects: **Bit Crusher** (sample rate + bit depth) and the **Diode Clipper**, a wave-digital-filter diode saturator whose **Drive** you push against **Synth Vol**, the level feeding it.
+Shared by both engines, and laid out in signal order:
+
+**Chorus** (level/rate/depth), **Echo** (level/time/feedback/tone) and **Reverb** (level/size/damping) are AMY’s own bus effects, inside the engine. **Synth Vol** is the last level *inside* AMY — so it is the **drive into everything after it**: push it and the Diode Clipper works harder. Then the host-side stage: the **EQ** (low shelf / bell / high shelf), the **Bit Crusher** (sample rate + bit depth) and the **Diode Clipper**, a wave-digital-filter diode saturator.
+
+**OUT GAIN**, up in the header, is different: it sits at the very end, *after* the clipper, so it drives nothing — it just sets how loud the plugin leaves. It is also the only control that can push past 0 dBFS, since the diode is otherwise the ceiling.
+
+Every effect card has a **power switch**. Off is silent, not removed — the knobs keep their settings, and the switch is part of the patch, so a sound saved with its reverb off recalls that way. Synth Vol has no switch: it is a level, not an effect.
 
 ### AMYboard — hardware control
 
