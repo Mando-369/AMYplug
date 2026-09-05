@@ -1274,25 +1274,19 @@ bool AmyPlugProcessor::loadFactoryPatchIntoEditor(int patchNumber)
     if (model.synths.empty()) model.synths.push_back({});
     auto& s = model.synths[0];
 
-    // Carry the patch's OWN chorus and EQ across. Most Juno patches ship chorus at full
-    // level and a +7/-3/-3 tilt in their wire, and that is the patch's character — keeping
-    // the user's FX instead is what made "To Editor" sound like a different sound. Echo and
-    // reverb are deliberately NOT carried: they read as the room you put the patch in, not
-    // as part of it, and the factory patches leave them alone anyway.
-    if (FactoryFx fx; factoryFxFromWire(wire, fx))
-    {
-        if (fx.hasEq)
-        {
-            model.eqLow = fx.eqLow; model.eqMid = fx.eqMid; model.eqHigh = fx.eqHigh;
-            model.eqOn  = true;     // all-zero is AMY's own bypass, so this is still silent
-        }
-        if (fx.hasChorus)
-        {
-            model.chorus     = juce::jlimit(0.0f, 1.0f, fx.chorusLevel);
-            model.chorusRate = fx.chorusRate; model.chorusDepth = fx.chorusDepth;
-            model.chorusOn   = true;
-        }
-    }
+    // ⚠️ The patch's OWN chorus and EQ are deliberately NOT applied here, even though
+    // factoryFxFromWire can read them. Carrying them across was tried and MEASURED WORSE:
+    // selecting a factory preset does not play the patch's FX either — toWireMessages emits
+    // our global `k`/`x` after the patch, overwriting them — so the preset you hear has no
+    // chorus and a flat EQ. Adding them on To Editor therefore moved the sound FURTHER
+    // apart, not closer: rendered RMS against the same preset selected from the browser went
+    // from 1.35x to 6.94x on patch 1 and 7.82x on patch 20, and every decoded patch arrived
+    // with full chorus and a +7 dB low shelf that were never audible before.
+    //
+    // The two paths have to be made to agree at the SELECTION end instead — adopt the
+    // patch's FX when the patch is loaded, so browsing a Juno preset gives you the chorus it
+    // was voiced with. That changes how every factory preset sounds, so it is a decision,
+    // not a fix. factoryFxFromWire and its tests stay for it.
 
     PatchModel::FmParams fm;
     if (factoryFmWireToParams(wire, fm))

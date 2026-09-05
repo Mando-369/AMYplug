@@ -163,7 +163,7 @@ void ControlPanel::setSectionDimmedAt(int sec, bool dimmed)
     // Fade this section's controls (the card + title bar are handled in paint()).
     const float a = dimmed ? 0.4f : 1.0f;
     for (auto& c : controls)
-        if (c->section == sec)
+        if (c->section == sec && c->dimsWithSwitch)
         {
             c->label.setAlpha(a);
             if (c->knob)  c->knob->setAlpha(a);
@@ -189,10 +189,11 @@ void styleControlLabel(juce::Label& l, const juce::String& name)
 }
 } // namespace
 
-void ControlPanel::addKnob(const juce::String& paramId, const juce::String& name)
+void ControlPanel::addKnob(const juce::String& paramId, const juce::String& name, bool dimsWithSwitch)
 {
     auto c = std::make_unique<Control>();
     c->section = juce::jmax(0, sectionTitles.size() - 1);
+    c->dimsWithSwitch = dimsWithSwitch;
     c->knob = std::make_unique<juce::Slider>(juce::Slider::RotaryHorizontalVerticalDrag,
                                              juce::Slider::TextBoxBelow);
     c->knob->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 22);
@@ -1203,14 +1204,13 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fxPanelL.addKnob(params::id::echoTime, "Time");
     fxPanelL.addKnob(params::id::echoFeedback, "F.back");
     fxPanelL.addKnob(params::id::echoTone, "Tone");
-    // SYNTH VOL is its own card, directly before BIT CRUSHER, because that is where it sits
-    // in the chain: it is AMY's `V`, the LAST thing inside the engine, so it is the DRIVE
-    // into the crusher and the diode — push it and the diode works harder. It had been a
-    // second knob on the DIODE CLIPPER card, where the power switch dimmed it as though
-    // switching the diode off silenced it. No switch of its own: it is a level, not an effect.
-    fxPanelL.addSection("SYNTH VOL", col::statusGreen);
-    fxPanelL.addKnob(params::id::masterVolume, "Level");
-    fxPanelL.addSection("BIT CRUSHER", col::amber, params::id::crushOn);
+    // Synth Vol shares the crusher's row rather than taking a card of its own: it is AMY's
+    // `V`, the LAST thing inside the engine, so it is the DRIVE into the crusher and the
+    // diode — push it and the diode works harder. On its own card it left a tall box holding
+    // one knob and pushed the rack to 4 cards against 3. It does NOT dim with the crusher's
+    // switch: turning the crusher off does not silence the synth, and fading it would say so.
+    fxPanelL.addSection("SYNTH VOL / BIT CRUSHER", col::amber, params::id::crushOn);
+    fxPanelL.addKnob(params::id::masterVolume, "Synth Vol", false);   // never dims: not the crusher
     fxPanelL.addKnob(params::id::bcFreq, "Freq");           // bitcrusher: downsample rate
     fxPanelL.addKnob(params::id::bcBits, "Bit");            // bitcrusher: bit depth
 

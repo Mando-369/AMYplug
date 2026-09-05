@@ -189,7 +189,7 @@ Shared by both engines, and laid out in signal order:
 
 **OUT GAIN**, up in the header, is different: it sits at the very end, *after* the clipper, so it drives nothing — it just sets how loud the plugin leaves. It is also the only control that can push past 0 dBFS, since the diode is otherwise the ceiling.
 
-Every effect card has a **power switch**. Off is silent, not removed — the knobs keep their settings, and the switch is part of the patch, so a sound saved with its reverb off recalls that way. Synth Vol has no switch: it is a level, not an effect.
+Every effect card has a **power switch**. Off is silent, not removed — the knobs keep their settings, and the switch is part of the patch, so a sound saved with its reverb off recalls that way. Synth Vol shares the Bit Crusher's card because it is the level feeding it, but it is **not** switched by it: turn the crusher off and Synth Vol stays lit and stays working.
 
 ### AMYboard — hardware control
 

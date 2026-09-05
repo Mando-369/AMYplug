@@ -99,7 +99,11 @@ public:
     // PowerButton in the header bar, and the card dims while it is off.
     void addSection(const juce::String& title, juce::Colour accent = amyplug::colours::engineCyan,
                     const juce::String& toggleParamId = {});
-    void addKnob(const juce::String& paramId, const juce::String& name);
+    // `dimsWithSwitch=false` keeps a control at full brightness while the section's power
+    // switch is off. For a control that SHARES a card without being part of the effect —
+    // Synth Vol sits on the crusher's row because it is the level feeding it, but switching
+    // the crusher off does not silence it, and dimming it would say otherwise.
+    void addKnob(const juce::String& paramId, const juce::String& name, bool dimsWithSwitch = true);
     void addChoice(const juce::String& paramId, const juce::String& name);
     void addGraph(juce::Component& g);   // reserve a viewer at the LEFT of the current section's row
 
@@ -119,6 +123,7 @@ private:
     struct Control
     {
         int          section = 0;
+        bool         dimsWithSwitch = true;
         juce::Label  label;
         std::unique_ptr<juce::Slider>   knob;
         std::unique_ptr<juce::ComboBox> combo;
