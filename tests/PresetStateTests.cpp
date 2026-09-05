@@ -248,3 +248,29 @@ TEST_CASE("reopening a session does not re-adopt over what it saved", "[preset]"
         CHECK(r->load() == Catch::Approx(5000.0f).margin(1.0));   // NOT re-stamped back to 298.86
     }
 }
+
+// ---------------------------------------------------------------------------
+// DX7 Detune is stored as the SysEx byte but shown the way the hardware shows it.
+// ---------------------------------------------------------------------------
+TEST_CASE("DX7 Detune reads -7..+7 like the hardware, stores 0..14", "[preset]")
+{
+    // ⚠️ The DX7's panel shows detune as -7..+7 with 0 = in tune; the SysEx byte is 0..14
+    // with 7 as centre. We store the byte — so recall, host automation and fm.py's maths are
+    // untouched — and display the hardware number. Showing the raw byte made an UNDETUNED
+    // patch (SYN-LEAD 2: every ratio exactly 1 or 2) read as "detune 7" on all six
+    // operators, which looks like a bug and is not one.
+    amyplug::AmyPlugProcessor proc;
+    auto* rp = dynamic_cast<juce::RangedAudioParameter*>(
+                   proc.apvts().getParameter(amyplug::params::id::fmOp(1, "detune")));
+    REQUIRE(rp != nullptr);
+    const auto& range = rp->getNormalisableRange();
+    CHECK(range.start == 0.0f);                   // stored range unchanged
+    CHECK(range.end   == 14.0f);
+    juce::AudioProcessorParameter* p = rp;        // getText is public on the base
+    CHECK(p->getText(rp->convertTo0to1(7.0f),  8) == "0");    // centre = in tune
+    CHECK(p->getText(rp->convertTo0to1(0.0f),  8) == "-7");   // fully flat
+    CHECK(p->getText(rp->convertTo0to1(14.0f), 8) == "7");    // fully sharp
+    CHECK(p->getValueForText("0")  == Catch::Approx(rp->convertTo0to1(7.0f)));
+    CHECK(p->getValueForText("-7") == Catch::Approx(rp->convertTo0to1(0.0f)));
+}
+

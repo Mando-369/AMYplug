@@ -339,8 +339,16 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
             ParameterID { id::fmOp(op, "coarse"), 1 }, "Op " + juce::String(op) + " Coarse", 0, 31, 1));
         layout.add(std::make_unique<AudioParameterInt>(
             ParameterID { id::fmOp(op, "fine"), 1 }, "Op " + juce::String(op) + " Fine", 0, 99, 0));
+        // ⚠️ Stored 0..14 (the SysEx byte, centre 7) but DISPLAYED -7..+7, which is what the
+        // DX7's own panel shows and what every DX7 patch chart means by "detune 0". Showing
+        // the raw byte made an undetuned patch read as "7 detune" on every operator. Display
+        // only — the stored value, the automation range and recall are untouched.
         layout.add(std::make_unique<AudioParameterInt>(
-            ParameterID { id::fmOp(op, "detune"), 1 }, "Op " + juce::String(op) + " Detune", 0, 14, 7));
+            ParameterID { id::fmOp(op, "detune"), 1 }, "Op " + juce::String(op) + " Detune", 0, 14, 7,
+            AudioParameterIntAttributes().withStringFromValueFunction (
+                [] (int v, int) { return juce::String (v - 7); })
+                                        .withValueFromStringFunction (
+                [] (const juce::String& t) { return juce::jlimit (0, 14, t.getIntValue() + 7); })));
         layout.add(std::make_unique<AudioParameterInt>(
             ParameterID { id::fmOp(op, "outlvl"), 1 }, "Op " + juce::String(op) + " Level", 0, 99, outLvl));
         // DX7 4-rate / 4-level operator envelope (each 0..99) — the native DX7 EG.

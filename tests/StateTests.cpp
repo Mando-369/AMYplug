@@ -572,3 +572,4 @@ TEST_CASE("FX switches: off emits the effect's neutral value and round-trips", "
     REQUIRE(legacy.reverbOn); REQUIRE(legacy.eqOn); REQUIRE(legacy.crushOn);
 }
 
+
