@@ -83,7 +83,7 @@ cmake --preset mac-release && cmake --build --preset mac-release
 New warnings are not automatically a blocker, but read them. A warning in `src/` that was
 not there last release is a finding until someone says otherwise.
 
-### 1.2 Unit tests — 83 cases, ~1700 assertions
+### 1.2 Unit tests — 84 cases, ~3000 assertions
 
 ```bash
 ctest --preset mac-release --output-on-failure
@@ -95,7 +95,7 @@ Four targets, and knowing which one broke tells you where to look:
 |---|--:|---|---|
 | `amyplug_tests` | 11 | Wire-message builder (`AmyWire`), SysEx framing, BitCrusher, WDF clipper | nothing — pure logic |
 | `amyplug_engine_tests` | 10 | The **real AMY engine** renders, silences on note-off, honours panic; FM octave tuning; pitch bend moves the audio oscs but **not** the LFOs | libamy |
-| `amyplug_logic_tests` | 54 | `NoteRouter` lifecycle (every note-on balanced, sustain, mono stack, transport stop), `PatchModel` round-trip, DX7 import/decode, patch library + **bank operations**, both engines' wire emission, **FX switches**, the preset catalogue | JUCE, no GUI |
+| `amyplug_logic_tests` | 55 | `NoteRouter` lifecycle (every note-on balanced, sustain, mono stack, transport stop), `PatchModel` round-trip, DX7 import/decode, patch library + **bank operations**, both engines' wire emission, **FX switches**, the preset catalogue | JUCE, no GUI |
 | `amyplug_ui_tests` | 8 | Editor **construction** (opens at the stored size, corner grip, a dragged size survives a round-trip, **constructing the editor dirties nothing**), the **loaded-preset identity + dirty mark** at the real processor, and **hover help** (a parented `TooltipWindow` exists, every tab's controls carry tips, the `?` toggle round-trips, no tip is drawn wider than the 200px cap) | full editor + libamy + fonts |
 
 ⚠️ **A green `ctest` does not mean the plugin works.** These are logic and construction

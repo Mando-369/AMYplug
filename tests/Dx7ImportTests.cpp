@@ -442,3 +442,55 @@ TEST_CASE("AMS follows the DX7's non-linear sensitivity table")
     REQUIRE(amsScale(-1) == Approx(amsScale(0)));
     REQUIRE(amsScale(99) == Approx(amsScale(3)));
 }
+
+// ---------------------------------------------------------------------------
+// Every DX7 factory operator ratio must survive decode -> re-emit.
+// ---------------------------------------------------------------------------
+#include "BuiltinPatchNames.h"
+#include "state/Dx7Osc.h"
+TEST_CASE("every DX7 factory operator ratio round-trips", "[dx7][factory][fm]")
+{
+    // ⚠️ This is the test that was missing. splitFineDetune's epsilon was 1e-6, too tight to
+    // survive the float32 parse the ratios arrive through: 0.99125 comes back as
+    // 0.9912499785, so x = -0.8750021 and the |x| <= 0.875 guard missed by two millionths.
+    // It then took the fine branch — round(-0.875) = -1, clipped to fine 0 while detune was
+    // still computed from -1 — and produced detune 8 (+0.125%) for what is detune 0
+    // (-0.875%). The detune INVERTED. On E.PIANO 1, two near-unison operators beating
+    // against each other, that is phasiness and a lost transient: a 6-note phrase measured
+    // 82% mean-abs away from the same preset played from the browser, and 0.08% after.
+    int checked = 0, worst = -1;
+    double worstErr = 0.0;
+    for (int patch = 128; patch <= 255; ++patch)
+    {
+        const juce::String wire { kBuiltinPatchCommands[patch] };
+        PatchModel::FmParams fm;
+        if (! factoryFmWireToParams(wire, fm)) continue;
+
+        // Pull each operator osc's `I<ratio>` straight out of the factory wire.
+        juce::StringArray toks; toks.addTokens(wire, "Z", "");
+        for (const auto& tk : toks)
+        {
+            if (! tk.startsWithChar('v') || ! tk.contains("I")) continue;
+            const int osc = tk.substring(1).getIntValue();
+            if (osc < 2 || osc > 7) continue;
+            const juce::String after = tk.fromFirstOccurrenceOf("I", false, false);
+            int end = 0;
+            while (end < after.length() && ! juce::CharacterFunctions::isLetter(after[end])) ++end;
+            const double factoryRatio = after.substring(0, end).getDoubleValue();
+            if (factoryRatio <= 0.0) continue;
+
+            // emitFm places operator k on osc 7-k (matching fm.py), so invert that here.
+            const auto& op = fm.ops[(size_t) (7 - osc)];
+            if (op.fixedFreq) continue;                       // fixed ops carry Hz, not a ratio
+            const double got = dx7osc::coarseFineRatio(op.coarse, op.fine, op.detune);
+            const double err = std::abs(got - factoryRatio) / factoryRatio;
+            if (err > worstErr) { worstErr = err; worst = patch; }
+            INFO("patch " << patch << " osc " << osc << ": factory " << factoryRatio << " got " << got);
+            CHECK(got == Approx(factoryRatio).epsilon(1.0e-4));
+            ++checked;
+        }
+    }
+    INFO("worst patch " << worst << " relative error " << worstErr);
+    CHECK(checked > 400);            // it really walked the bank, not an empty list
+    CHECK(worstErr < 1.0e-4);
+}

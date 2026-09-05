@@ -65,25 +65,66 @@ struct CoarseFineDetune { int coarse, fine, detune; };
 // mis-reading it as fine 1 + detune 6 — which would dodge the real +/-2-cent curve.)
 inline void splitFineDetune(double x, int& fine, int& detune)
 {
-    const double f = (std::abs(x) <= 0.875 + 1e-6) ? 0.0 : std::round(x);
-    fine   = juce::jlimit(0, 99, (int) f);
-    detune = juce::jlimit(0, 14, (int) std::lround((x - f) * 8.0) + 7);
+    // ⚠️ The epsilon must absorb a float32 round-trip. Factory ratios reach us through
+    // juce::String::getFloatValue(), and 0.99125 as a float is 0.9912499785 — so x is
+    // -0.8750021, which a 1e-6 window around 0.875 MISSES by two millionths. It then took
+    // the fine branch: round(-0.875) = -1, which jlimit clipped to fine 0 while detune was
+    // still computed against -1, giving detune 8 (+0.125%) for what is detune 0 (-0.875%).
+    // The operator's detune INVERTED. On DX7 E.PIANO 1, where two near-unison operators
+    // beat against each other, that is heard as phasiness and a lost transient after
+    // "To Editor" — measured 82% mean-abs against the same preset played from the browser.
+    const double f = (std::abs(x) <= 0.875 + 1e-4) ? 0.0 : std::round(x);
+    // Clamp fine FIRST and derive detune from the CLAMPED value: otherwise a negative
+    // round() is clipped here while detune is still computed from the raw one, and the two
+    // stop describing the same ratio.
+    const double fc = juce::jlimit(0.0, 99.0, f);
+    fine   = (int) fc;
+    detune = juce::jlimit(0, 14, (int) std::lround((x - fc) * 8.0) + 7);
 }
+// ⚠️ SEARCH, do not invert arithmetically. fm.py's forward map is
+//     ratio = coarse * (1 + (fine + (detune-7)/8) / 100),  coarse 0 meaning 0.5
+// and coarse is genuinely AMBIGUOUS: 3.14 is not coarse 3 (which cannot reach it — the
+// nearest is 3.13875) but coarse 2, fine 57, detune 7, i.e. 2 x 1.57. Picking coarse by
+// round() or floor() therefore mis-reads part of the bank: 43 of the 752 factory operator
+// ratios came back wrong, the worst by 32%. Trying every coarse and keeping the closest
+// exact triple recovers all of them, because the bank was GENERATED from integer
+// coarse/fine/detune in the first place. ~64 candidates, at decode time only.
 inline CoarseFineDetune ratioToCoarseFineDetune(double ratio)
 {
-    CoarseFineDetune r {};
-    r.coarse = (ratio < 0.75) ? 0 : juce::jlimit(1, 31, (int) std::lround(ratio));
-    const double base = (r.coarse == 0) ? 0.5 : (double) r.coarse;
-    splitFineDetune((ratio / base - 1.0) * 100.0, r.fine, r.detune);
-    return r;
+    CoarseFineDetune best { 1, 0, 7 };
+    double bestErr = 1.0e30;
+    for (int coarse = 0; coarse <= 31; ++coarse)
+    {
+        const double base = (coarse == 0) ? 0.5 : (double) coarse;
+        const double x = (ratio / base - 1.0) * 100.0;      // = fine + (detune-7)/8
+        if (x < -1.0 || x > 100.0) continue;                // outside what fine+detune spans
+        for (int fine = juce::jmax(0, (int) std::floor(x)); fine <= juce::jmin(99, (int) std::ceil(x)); ++fine)
+        {
+            const int detune = juce::jlimit(0, 14, (int) std::lround((x - fine) * 8.0) + 7);
+            const double err = std::abs(coarseFineRatio(coarse, fine, detune) - ratio);
+            if (err < bestErr) { bestErr = err; best = { coarse, fine, detune }; }
+        }
+    }
+    return best;
 }
+// Same search, for fixed-frequency operators: hz = 10^(coarse + (fine + (detune-7)/8)/100).
 inline CoarseFineDetune fixedHzToCoarseFineDetune(double hz)
 {
-    CoarseFineDetune r {};
+    CoarseFineDetune best { 0, 0, 7 };
+    double bestErr = 1.0e30;
     const double lg = (hz > 0.0) ? std::log10(hz) : 0.0;
-    r.coarse = juce::jlimit(0, 3, (int) std::floor(lg));
-    splitFineDetune((lg - r.coarse) * 100.0, r.fine, r.detune);
-    return r;
+    for (int coarse = 0; coarse <= 3; ++coarse)
+    {
+        const double x = (lg - coarse) * 100.0;
+        if (x < -1.0 || x > 100.0) continue;
+        for (int fine = juce::jmax(0, (int) std::floor(x)); fine <= juce::jmin(99, (int) std::ceil(x)); ++fine)
+        {
+            const int detune = juce::jlimit(0, 14, (int) std::lround((x - fine) * 8.0) + 7);
+            const double err = std::abs(coarseFineFixedHz(coarse, fine, detune) - hz);
+            if (err < bestErr) { bestErr = err; best = { coarse, fine, detune }; }
+        }
+    }
+    return best;
 }
 
 // Key Velocity Sensitivity (0..7) done the DX7 way: velocity scales the operator's

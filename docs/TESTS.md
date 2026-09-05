@@ -2,7 +2,7 @@
 
 One line per test: what it holds down, and **why it exists** — the bug it caught, or the
 invariant that breaks silently without it. Read this to pick the narrowest selection that
-covers a change, instead of running all 83.
+covers a change, instead of running all 84.
 
 **Not every change needs tests.** A font, colour, label, layout or copy change gets a build
 and a look. Tests earn their minutes when a change touches the **engine, the note lifecycle,
@@ -145,6 +145,7 @@ user's files on disk.
 | 24 | DX7 import builds a recallable FM PatchModel | Import is worthless if it does not survive a project reload |
 | 25 | BRASS 2 decode→emit reproduces the factory operators | One known-good patch as an end-to-end anchor |
 | 27 | Dx7Lfo conversions round-trip (speed/wave/depths) | |
+| — | **every DX7 factory operator ratio round-trips** | The one that was missing. `ratioToCoarseFineDetune` inverted fm.py's `coarse × (1 + (fine + (detune−7)/8)/100)` by rounding, but coarse is **ambiguous** — 3.14 is not coarse 3 (which cannot reach it) but coarse 2, fine 57. It also had an epsilon too tight to survive the float32 parse the ratios arrive through, so 0.99125 → x = −0.8750021 missed the guard and the **detune inverted** (0 → 8). 43 of the bank's 752 ratios were wrong, the worst by 32%. On E.PIANO 1 — two near-unison operators beating — a 6-note phrase sat **82% mean-abs** away from the same preset in the browser; 0.08% after. Walks all 128 DX7 patches |
 
 ## `amyplug_ui_tests` — real editor + processor + libamy + fonts (8)
 

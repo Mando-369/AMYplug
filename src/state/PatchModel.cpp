@@ -153,7 +153,13 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
 {
     const auto& fm = s.fm;
     const juce::String pre = "i" + juce::String(s.channel);
-    auto F = [] (float v) { return juce::String(v, 4); };
+    // ⚠️ SEVEN decimals here, where the other emitters use four. A DX7's character is
+    // operators beating a fraction of a percent apart — factory ratios are values like
+    // 1.00875 and 0.99125 — and printing those at 4 dp (1.0087 / 0.9913) quantises the very
+    // interval that makes an electric piano sound like one. Four is fine for a frequency in
+    // Hz; it is not fine for a ratio. The wire is text and AMY parses a float, so there is
+    // no reason to round: emit the number we computed.
+    auto F = [] (float v) { return juce::String(v, 7); };
 
     // 8 oscs per voice (matches fm.py): 0 = ALGO controller, 1 = LFO, 2..7 = operators.
     out.emplace_back((pre + "iv" + juce::String(juce::jlimit(1, 16, s.numVoices)) + "in8Z").toStdString());
@@ -164,7 +170,13 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
         const auto& op = fm.ops[i];
-        const int osc = i + 2;   // operators live on oscs 2..7 (osc 1 is the LFO)
+        // ⚠️ Operator k goes on osc 7-k, NOT 2+k, and the algo list below is ascending —
+        // both to match fm.py, which generated AMY's factory bank. We had the mirror image
+        // (op1 on osc7, `O7,6,5,4,3,2`): topologically the same algorithm, which is why RMS
+        // and the attack envelope matched, but AMY renders oscillators BY INDEX, so the
+        // mirror put every modulator on the far side of its carrier in render order. Same
+        // notes, smeared modulation — heard as phasiness and lost pluck after "To Editor".
+        const int osc = 7 - i;   // operators live on oscs 2..7 (osc 1 is the LFO)
         // Frequency from DX7 Coarse/Fine/Detune: a harmonic ratio, or an absolute Hz
         // in fixed mode. Fixed MUST zero the note coef (f<hz>,0) — else the operator
         // still key-tracks and a high note + high fixed Hz pushes log-freq past AMY's
@@ -252,7 +264,7 @@ void emitFm(std::vector<std::string>& out, const PatchModel::Synth& s)
         + "A" + pitchEnv                 // DX7 pitch envelope (all-50 default = flat = +1 octave)
         + "b" + F(fm.feedback)
         + "L1"                           // mod_source = osc 1 (the LFO)
-        + "O7,6,5,4,3,2"
+        + "O2,3,4,5,6,7"          // ascending, exactly as fm.py emits it
         + "o" + juce::String(juce::jlimit(1, 32, fm.algorithm))
         + "Z").toStdString());
 }

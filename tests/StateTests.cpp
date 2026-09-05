@@ -291,14 +291,18 @@ TEST_CASE("FM engine builds the 6-operator ALGO voice", "[state][fm]")
     REQUIRE(anyContains(w, "v0w8"));       // osc0 = ALGO wave (8)
     REQUIRE(anyContains(w, "o22"));        // algorithm 22
     REQUIRE(anyContains(w, "b0.1600"));    // feedback on the ALGO osc
-    REQUIRE(anyContains(w, "O7,6,5,4,3,2"));   // operator list on oscs 7..2 (AMY orders ops 6→1)
-    REQUIRE(anyContains(w, "v2w0"));       // operator 1 = sine (now osc 2)
-    REQUIRE(anyContains(w, "v7w0"));       // operator 6 = sine (now osc 7)
-    REQUIRE(anyContains(w, "I1.0000"));    // op1 ratio = coarseFineRatio(1,0,7)
-    REQUIRE(anyContains(w, "I2.0000"));    // op2 ratio = coarseFineRatio(2,0,7)
-    REQUIRE(anyContains(w, "a2.0000,0,0.0000,1,0,0.0000"));  // op1 amp: level 99 -> amp 2.0; vel 0, no tremolo
+    // ⚠️ ASCENDING, and operator k lives on osc 7-k — exactly as fm.py lays the factory
+    // bank out. We used to emit the mirror image (op1 on osc 2, `O7,6,5,4,3,2`): the same
+    // algorithm, so it sounded the same, but it made a factory patch and our re-emission of
+    // it impossible to compare line by line — which is how the detune bug below hid.
+    REQUIRE(anyContains(w, "O2,3,4,5,6,7"));
+    REQUIRE(anyContains(w, "v7w0"));       // operator 1 = sine, on osc 7
+    REQUIRE(anyContains(w, "v2w0"));       // operator 6 = sine, on osc 2
+    REQUIRE(anyContains(w, "I1.0000000"));    // op1 ratio = coarseFineRatio(1,0,7)
+    REQUIRE(anyContains(w, "I2.0000000"));    // op2 ratio = coarseFineRatio(2,0,7)
+    REQUIRE(anyContains(w, "a2.0000000,0,0.0000000,1,0,0.0000000"));  // op1 amp: level 99 -> amp 2.0; vel 0, no tremolo
     REQUIRE(anyContains(w, "0.16210"));    // op1 env L1 peak = levelToLinear(78), NOT 1.0
-    REQUIRE(anyContains(w, "f100.0000,0")); // op3 fixed-frequency (f<hz>,0 — note coef zeroed)
+    REQUIRE(anyContains(w, "f100.0000000,0")); // op3 fixed-frequency (f<hz>,0 — note coef zeroed)
     REQUIRE(anyContains(w, "v1w4"));       // osc 1 = LFO (default wave 0 -> AMY TRIANGLE 4)
     REQUIRE(anyContains(w, "L1"));         // operators + ALGO mod_source = LFO (osc 1)
     REQUIRE_FALSE(anyContains(w, "K"));    // FM never loads a factory patch
@@ -317,13 +321,13 @@ TEST_CASE("FM LFO: vibrato/tremolo emit as mod-coefs on the ALGO/operator oscs",
     const auto w = m.toWireMessages();
 
     REQUIRE(anyContains(w, "v1w0"));           // LFO wave = AMY SINE
-    REQUIRE(anyContains(w, "f6.1667"));        // LFO speed 37 -> 6.1667 Hz
+    REQUIRE(anyContains(w, "f6.1666665"));     // LFO speed 37 -> 6.1667 Hz
     // ALGO freq coefs carry the vibrato depth in mod-coef slot (index 5):
     // pitchLfoAmp(7, 50) = 0.6 * 1.7^6 * 50 / 1188 = 0.6095. (const 0 always.)
-    REQUIRE(anyContains(w, "f0,1,0,1,0,0.6095"));
-    // Operator 1 (osc 2) has tremolo in its amp mod-coef; operator 2 (osc 3) does not.
-    REQUIRE(anyContains(w, "v2w0a2.0000,0,0.0000,1,0,1.0000"));   // level 99 -> amp 2.0; amp_lfo_amp(99) = 1.0
-    REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0,0.0000"));   // AMS off -> mod-coef 0
+    REQUIRE(anyContains(w, "f0,1,0,1,0,0.6095346"));
+    // Operator 1 (osc 7) has tremolo in its amp mod-coef; operator 2 (osc 6) does not.
+    REQUIRE(anyContains(w, "v7w0a2.0000000,0,0.0000000,1,0,1.0000000"));   // level 99 -> amp 2.0; amp_lfo_amp(99) = 1.0
+    REQUIRE(anyContains(w, "v6w0a2.0000000,0,0.0000000,1,0,0.0000000"));   // AMS off -> mod-coef 0
 }
 
 TEST_CASE("FM Velocity Sensitivity: operators bake NO COEF_VEL (velocity scales level live)", "[state][fm]")
@@ -340,8 +344,8 @@ TEST_CASE("FM Velocity Sensitivity: operators bake NO COEF_VEL (velocity scales 
     // op. Velocity is DX7-style: it scales the operator LEVEL at note-on (streamFmParams,
     // via velLevelScale), NOT baked into the wire. So the emitted amp coef's vel slot is
     // 0 for every operator; the const is the full-level amp (2.0).
-    REQUIRE(anyContains(w, "v2w0a2.0000,0,0.0000,1,0"));   // OP1: vel slot 0
-    REQUIRE(anyContains(w, "v3w0a2.0000,0,0.0000,1,0"));   // OP2: vel slot 0
+    REQUIRE(anyContains(w, "v7w0a2.0000000,0,0.0000000,1,0"));   // OP1 (osc 7): vel slot 0
+    REQUIRE(anyContains(w, "v6w0a2.0000000,0,0.0000000,1,0"));   // OP2 (osc 6): vel slot 0
 }
 
 TEST_CASE("velLevelScale: DX7 KVS scales operator level by velocity", "[state][fm][dx7]")
@@ -567,3 +571,4 @@ TEST_CASE("FX switches: off emits the effect's neutral value and round-trips", "
     PatchModel legacy; legacy.fromValueTree(old);
     REQUIRE(legacy.reverbOn); REQUIRE(legacy.eqOn); REQUIRE(legacy.crushOn);
 }
+

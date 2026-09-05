@@ -955,7 +955,13 @@ void AmyPlugProcessor::streamFmParams()
 
     for (int i = 0; i < PatchModel::kFmOps; ++i)
     {
-        const int osc = i + 2;   // operators live on oscs 2..7 (osc 1 is the LFO)
+        // ⚠️ Operator k goes on osc 7-k, NOT 2+k, and the algo list below is ascending —
+        // both to match fm.py, which generated AMY's factory bank. We had the mirror image
+        // (op1 on osc7, `O7,6,5,4,3,2`): topologically the same algorithm, which is why RMS
+        // and the attack envelope matched, but AMY renders oscillators BY INDEX, so the
+        // mirror put every modulator on the far side of its carrier in render order. Same
+        // notes, smeared modulation — heard as phasiness and lost pluck after "To Editor".
+        const int osc = 7 - i;   // operators live on oscs 2..7 (osc 1 is the LFO)
         // Coarse/Fine/Detune -> the operator frequency: a ratio (I) or, in fixed mode,
         // an absolute Hz (f<hz>,0). Streamed as a coef update on change (mode toggle
         // itself is structural). Derived via the DX7 math so values stay in AMY's range.
