@@ -335,9 +335,14 @@ std::vector<std::string> PatchModel::toWireMessages() const
       out.emplace_back(w.str()); }
     { WireBuilder w; w.raw("M").raw((F(echoOn ? echo : 0.0f) + "," + F(echoTime) + ",743," + F(echoFeedback) + "," + F(echoTone)).toStdString().c_str());
       out.emplace_back(w.str()); }
-    { WireBuilder w; w.raw("x")
-        .raw((juce::String(eqOn ? eqLow : 0.0f, 2) + "," + juce::String(eqOn ? eqMid : 0.0f, 2) + ","
-              + juce::String(eqOn ? eqHigh : 0.0f, 2)).toStdString().c_str());   // off = flat
+    // EQ: flat to AMY unless kUseAmyEq (see PatchModel.h) — ours runs in the master stage.
+    // Still EMITTED rather than omitted: an omitted field is UNSET on the wire, which leaves
+    // whatever the previous patch set in place, so a patch with a tilt would leak into the
+    // next one. All-zero is also AMY's own bypass fast path.
+    { const bool amyEq = kUseAmyEq && eqOn;
+      WireBuilder w; w.raw("x")
+        .raw((juce::String(amyEq ? eqLow : 0.0f, 2) + "," + juce::String(amyEq ? eqMid : 0.0f, 2) + ","
+              + juce::String(amyEq ? eqHigh : 0.0f, 2)).toStdString().c_str());
       out.emplace_back(w.str()); }
 
     return out;

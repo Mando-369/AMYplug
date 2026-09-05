@@ -5,6 +5,7 @@
 #include "engine/IAmyBackend.h"
 #include "dsp/BitCrusher.h"
 #include "dsp/WdfClipper.h"
+#include "dsp/ShelfPeakEq.h"
 #include "midi/NoteRouter.h"
 #include "state/PatchModel.h"
 #include "state/PatchLibrary.h"
@@ -216,8 +217,16 @@ private:
     // the audio leaves the plugin: bitcrusher (retro grit) -> WDF diode saturator
     // (analog warmth). Both stream from params; the clipper's gain compensation is
     // internal. Software mode only (Hardware's buffer is silence).
+    // ⚠️ The EQ is OURS, not AMY's. AMY sums its three bands in parallel, so moving one
+    // notches another (+1 dB low measured a -7.7 dB hole at 1.5 kHz); see ShelfPeakEq.h and
+    // docs/upstream/AMY-eq-issue.md. PatchModel therefore always sends AMY a flat `x`.
+    // It runs FIRST in the master stage, so it also shapes what drives the crusher + diode.
+    ShelfPeakEq       eq;
     BitCrusher        crush;
     WdfClipper        clip;
+    std::atomic<float>* pEqLow     = nullptr;
+    std::atomic<float>* pEqMid     = nullptr;
+    std::atomic<float>* pEqHigh    = nullptr;
     std::atomic<float>* pBcFreq    = nullptr;
     std::atomic<float>* pBcBits    = nullptr;
     std::atomic<float>* pClipDrive = nullptr;

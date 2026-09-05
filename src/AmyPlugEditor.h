@@ -429,7 +429,7 @@ private:
     ControlPanel     fxPanelL  { proc.apvts() };
     ControlPanel     fxPanelR  { proc.apvts() };
     TwoColumnPanels  fxCols    { fxPanelL, fxPanelR };
-    TabPage          fxPage { fxCols, "FX-", "MASTER", juce::String::fromUTF8("EQ \xC2\xB7 CHORUS \xC2\xB7 ECHO \xC2\xB7 REVERB \xC2\xB7 CRUSH \xC2\xB7 DIST") };
+    TabPage          fxPage { fxCols, "FX-", "MASTER", juce::String::fromUTF8("EQ \xC2\xB7 CHORUS \xC2\xB7 ECHO \xC2\xB7 REVERB \xC2\xB7 VOL \xC2\xB7 CRUSH \xC2\xB7 DIST") };
     HardwarePanel    hwPanel   { proc };            // AMYboard tab
     PresetsPage      presetsPage { proc, *this, [this] { importDx7(); } };   // PRESETS tab
 

@@ -98,6 +98,9 @@ void AmyPlugProcessor::cacheParamPointers()
     pBcFreq      = state.getRawParameterValue(params::id::bcFreq);
     pBcBits      = state.getRawParameterValue(params::id::bcBits);
     pOutputGain  = state.getRawParameterValue(params::id::outputGain);
+    pEqLow       = state.getRawParameterValue(params::id::eqLow);
+    pEqMid       = state.getRawParameterValue(params::id::eqMid);
+    pEqHigh      = state.getRawParameterValue(params::id::eqHigh);
 
     mVcfKbd.ptr    = state.getRawParameterValue(params::id::vcfKbd);
     mVcfEnv.ptr    = state.getRawParameterValue(params::id::vcfEnv);
@@ -223,6 +226,7 @@ void AmyPlugProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     else
         software->release();
     router.prepare();
+    eq.prepare(sampleRate);
     if (pBcFreq) crush.setFreqHz(pBcFreq->load());
     if (pBcBits) crush.setBits(pBcBits->load());
     crush.prepare(sampleRate);
@@ -364,6 +368,13 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     // board colours its own output).
     if (activeKind == IAmyBackend::Kind::Software && buffer.getNumChannels() > 0)
     {
+        // EQ first: it shapes what the crusher and the diode are fed, which is where a
+        // master EQ earns its place. Off = all three bands at 0 dB, which ShelfPeakEq skips
+        // outright, so "off" is bit-identical to no EQ rather than an approximation of it.
+        const bool eqOn = pEqOn == nullptr || pEqOn->load(std::memory_order_relaxed) >= 0.5f;
+        eq.setGainsDb(eqOn && pEqLow  ? pEqLow ->load(std::memory_order_relaxed) : 0.0f,
+                      eqOn && pEqMid  ? pEqMid ->load(std::memory_order_relaxed) : 0.0f,
+                      eqOn && pEqHigh ? pEqHigh->load(std::memory_order_relaxed) : 0.0f);
         const bool crushOn = pCrushOn == nullptr || pCrushOn->load(std::memory_order_relaxed) >= 0.5f;
         const bool clipOn  = pClipOn  == nullptr || pClipOn->load(std::memory_order_relaxed)  >= 0.5f;
         if (pBcFreq)    crush.setFreqHz(pBcFreq->load(std::memory_order_relaxed));
@@ -373,6 +384,7 @@ void AmyPlugProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         if (pClipDrive) clip.setDriveDb(clipOn ? pClipDrive->load(std::memory_order_relaxed) : 0.0f);
         float* chans[2] = { buffer.getWritePointer(0),
                             buffer.getNumChannels() > 1 ? buffer.getWritePointer(1) : nullptr };
+        eq.process(chans, buffer.getNumChannels(), buffer.getNumSamples());
         if (crushOn) crush.process(chans, buffer.getNumChannels(), buffer.getNumSamples());   // true bypass
         clip.process(chans, buffer.getNumChannels(), buffer.getNumSamples());
 

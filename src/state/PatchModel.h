@@ -15,6 +15,16 @@
 
 namespace amyplug
 {
+// ⚠️ AMY's own 3-band EQ is a PARALLEL `LPF - BPF + HPF` sum (third_party/amy/src/filters.c:575),
+// so scaling one band breaks the complementary reconstruction the other two rely on: measured
+// on 1.2.16, +1 dB on the low band puts a -7.7 dB notch at 1.5 kHz, +6 dB puts it at -15.1 dB.
+// We therefore send AMY a FLAT `x` always and do the EQ ourselves in the master stage
+// (src/dsp/ShelfPeakEq.h — low shelf -> bell -> high shelf, in series).
+//
+// Flip this to true to hand the EQ back to AMY once upstream cascades its bands; the wire
+// emission, the parameters and the recall path all still work. See docs/upstream/AMY-eq-issue.md.
+inline constexpr bool kUseAmyEq = false;
+
 class PatchModel
 {
 public:

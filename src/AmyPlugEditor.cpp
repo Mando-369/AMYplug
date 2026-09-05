@@ -1203,6 +1203,13 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fxPanelL.addKnob(params::id::echoTime, "Time");
     fxPanelL.addKnob(params::id::echoFeedback, "F.back");
     fxPanelL.addKnob(params::id::echoTone, "Tone");
+    // SYNTH VOL is its own card, directly before BIT CRUSHER, because that is where it sits
+    // in the chain: it is AMY's `V`, the LAST thing inside the engine, so it is the DRIVE
+    // into the crusher and the diode — push it and the diode works harder. It had been a
+    // second knob on the DIODE CLIPPER card, where the power switch dimmed it as though
+    // switching the diode off silenced it. No switch of its own: it is a level, not an effect.
+    fxPanelL.addSection("SYNTH VOL", col::statusGreen);
+    fxPanelL.addKnob(params::id::masterVolume, "Level");
     fxPanelL.addSection("BIT CRUSHER", col::amber, params::id::crushOn);
     fxPanelL.addKnob(params::id::bcFreq, "Freq");           // bitcrusher: downsample rate
     fxPanelL.addKnob(params::id::bcBits, "Bit");            // bitcrusher: bit depth
@@ -1218,7 +1225,6 @@ AmyPlugEditor::AmyPlugEditor(AmyPlugProcessor& p)
     fxPanelR.addKnob(params::id::reverbDamping, "Damp");
     fxPanelR.addSection("DIODE CLIPPER", col::junoRed, params::id::clipOn);
     fxPanelR.addKnob(params::id::clipDrive, "Drive");       // WDF diode saturator (analog warmth)
-    fxPanelR.addKnob(params::id::masterVolume, "Synth Vol"); // AMY engine volume (upstream)
 
     // --- tabs -------------------------------------------------------------
     tabs.setOutline(0);

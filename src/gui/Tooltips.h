@@ -76,8 +76,8 @@ struct Row { const char* key; const char* tip; };
 // built and never again, so a map would buy nothing but a static initialiser.
 inline constexpr Row byId[] = {
     // --- voicing / levels (both engines) ---
-    { "master_volume",  "AMY's engine volume, upstream of the effects. 10 is unity." },
-    { "output_gain",    "Output gain at the very end of the chain, in dB" },
+    { "master_volume",  "The last level inside the engine, so it is the drive into the crusher and the diode. 10 is unity." },
+    { "output_gain",    "The very end of the chain, after the diode - the only control that can pass 0 dBFS" },
     { "num_voices",     "Polyphony - how many notes can sound at once" },
     { "voice_mode",     "Poly, Mono (each note retriggers) or Legato (glides, no retrigger)" },
     { "glide",          "Portamento: time to slide from the previous note, in ms" },
@@ -121,9 +121,9 @@ inline constexpr Row byId[] = {
     { "fm_lfo_amd",     "Tremolo depth. Reaches only the operators whose AMS is on, below." },
 
     // --- FX ---
-    { "eq_low",         "Low shelf, in dB" },
-    { "eq_mid",         "Mid band, in dB" },
-    { "eq_high",        "High shelf, in dB" },
+    { "eq_low",         "Low shelf below 800 Hz, in dB" },
+    { "eq_mid",         "Bell at 2.5 kHz, in dB" },
+    { "eq_high",        "High shelf above 7 kHz, in dB" },
     { "echo_level",     "How much echo is mixed in" },
     { "echo_time",      "Delay between repeats, in ms" },
     { "echo_feedback",  "How much of each repeat is fed back in - how many you hear" },
@@ -142,7 +142,7 @@ inline constexpr Row byId[] = {
     { "reverb_on",      "Reverb on or off. Off is silent, not removed - the knobs stay where you left them." },
     { "chorus_on",      "Chorus on or off" },
     { "echo_on",        "Echo on or off" },
-    { "eq_on",          "EQ on or off. Off is flat, not bypassed." },
+    { "eq_on",          "EQ on or off. Off is a true bypass - the bands are skipped outright." },
     { "crush_on",       "Bit crusher on or off" },
     { "clip_on",        "Diode clipper on or off. Off still keeps the 0 dBFS ceiling." },
 };
