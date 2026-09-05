@@ -128,6 +128,11 @@ that reaches the test machine come from `mac-release`, which stays universal and
 - Keep AMY's C behind `extern "C"` includes in one translation unit boundary (`SoftwareBackend`).
 - Plugin codes: manufacturer `Mand`, plugin `Amyp` (AU type `aumu`). Bundle id `com.mando369.amyplug`.
 - Conventional commits (`feat:`, `fix:`, `docs:`…). Small PRs aligned to roadmap milestones.
+- **Feature work lives on a branch until it passes `docs/TEST_PROTOCOL.md` § 3, then merges to
+  `main`.** `main` is the tested line, not the finished-code line — a green `ctest` and a green
+  CI run are not the bar. Merging is the maintainer's call, never an assistant's. CI fires on
+  `pull_request` as well as pushes to `main`, so open a PR to get the independent JUCE 8.0.13
+  build without `main` carrying untested work.
 - Don't break recall: any sound-affecting change updates `PatchModel` + serialize + rebuild together.
 
 ## 7. First tasks (M0 → M1, see ROADMAP)
